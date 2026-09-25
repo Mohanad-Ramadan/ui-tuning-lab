@@ -11,20 +11,32 @@ const LAB =
 
 function App() {
   const [open, setOpen] = useState(false);
+  const panelRef = useRef(null);
   useEffect(() => {
-    if (!LAB) return;
-    const onKey = (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === "L") setOpen((v) => !v);
+    if (!LAB || !open) return;
+    const el = panelRef.current;
+    if (!el) return;
+    if (typeof el.showPopover === "function") el.showPopover();
+    const onToggle = (e) => {
+      if (e.newState === "closed") setOpen(false);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+    el.addEventListener("toggle", onToggle);
+    return () => {
+      el.removeEventListener("toggle", onToggle);
+      if (typeof el.hidePopover === "function" && el.matches(":popover-open")) {
+        el.hidePopover();
+      }
+    };
+  }, [open]);
   if (!LAB) return <Feature />;
   return (
     <>
       <Feature />
+      <button type="button" onClick={() => setOpen(true)}>
+        Open lab
+      </button>
       {open && (
-        <div popover="auto" data-tuning-lab>
+        <div ref={panelRef} popover="auto" data-tuning-lab>
           <LabControls />
         </div>
       )}
