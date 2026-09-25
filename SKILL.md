@@ -32,10 +32,11 @@ Do NOT use for static one-shot edits with no comparison, backend-only work with 
 | Need | Load |
 |---|---|
 | Interview flow, questions, fallback | See `references/interview-protocol.md` |
-| Platform container matrix | See `references/surface-matrix.md` (Phase 2) |
-| Tuning the container itself | See `references/container-tuning.md` (Phase 2) |
+| Platform container matrix | See `references/surface-matrix.md` |
+| Tuning the container itself | See `references/container-tuning.md` |
 | Config and profile schema | See `profiles/_template.md` + `assets/*.template.json` |
-| Verification and teardown | See `references/verify-protocol.md` (Phase 2) |
+| Verification and teardown | See `references/verify-protocol.md` |
+| Edge cases, listed and unlisted | See `references/edge-cases.md` |
 
 ## Execution Steps
 
@@ -54,5 +55,8 @@ Return: files created or modified; profile saved or reused; baseline location; v
 ## References
 
 - See `references/interview-protocol.md` for the questioning protocol.
+- See `references/verify-protocol.md` for verification, teardown, and the prod gate.
+- See `references/edge-cases.md` for the discretion protocol on unlisted edges.
+- Run `scripts/verify.sh` for the lab.json gate, `scripts/verify.sh --prod` for release absence.
 - See `profiles/_template.md` for the profile shape.
 - See `CHANGELOG.md` for version history.

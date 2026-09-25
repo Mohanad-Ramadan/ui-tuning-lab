@@ -27,15 +27,20 @@ Then invoke `ui-tuning-lab` before tuning any visible surface.
 ## Layout
 
 - `SKILL.md` — orchestrator: activation, hard rules (INV-1..6), gates, steps.
-- `references/interview-protocol.md` — Q0–Q7 batched interview + fallback.
+- `references/` — `interview-protocol`, `surface-matrix` (tiered 7-platform),
+  `container-tuning` (experimental), `verify-protocol`, `edge-cases`.
 - `profiles/_template.md` — uniform profile shape.
 - `assets/*.template.json` — LabConfig and profile starters (`schemaVersion: 1`).
+- `scripts/verify.sh` — dependency-free lab.json and `--prod` absence gates.
+- `examples/` — Web + SwiftUI verified, macOS + Android minimal,
+  Windows/Flutter/RN community stubs.
 - `CHANGELOG.md` / `VERSION` — semver history, bumped on release only.
 
 ## Status
 
-v1.0.0 skeleton. Phase 2 adds `surface-matrix`, `container-tuning`,
-`verify-protocol`, tiered per-platform examples, and `verify --prod`.
+v1.0.0 complete: skeleton plus Phase 2 references, examples, and verify
+gates. Tier 1 (Web, SwiftUI) verified; Tier 2 (macOS, Android) minimal;
+Tier 3 (Windows, Flutter, RN) community stubs.
 
 ## License
 
