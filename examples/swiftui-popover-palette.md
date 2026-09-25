@@ -10,6 +10,12 @@ struct FeatureScreen: View {
     @State private var labConfig = LabConfig.baseline
     #endif
 
+    #if DEBUG
+    private var labConfigOrBaseline: LabConfig { labConfig }
+    #else
+    private var labConfigOrBaseline: LabConfig { LabConfig.baseline }
+    #endif
+
     var body: some View {
         FeatureView(config: labConfigOrBaseline)
             #if DEBUG
