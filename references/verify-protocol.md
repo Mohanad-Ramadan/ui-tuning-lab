@@ -29,9 +29,12 @@ RN: overlay null, sensor stopped by the native manager.
 
 ## Prod gate
 
-Run `scripts/verify.sh --prod` from the repo root. It fails on any lab
-reference (`ui-tuning-lab`, `UITuningLab`, `LabPanel`, `.ui-tuning-lab`)
-in release configuration. No green gate, no ship.
+Run `scripts/verify.sh --prod` from the repo root. It is a source-hygiene
+check (not a build-artifact inspection): it fails on any UNGATED lab
+reference (`ui-tuning-lab`, `UITuningLab`, `LabPanel`, `.ui-tuning-lab`).
+References inside correctly `#if DEBUG` / `#ifdef DEBUG` … `#endif`
+blocks (any case for DEBUG, with nesting and `#else`/`#elif` handling —
+the `#else` branch is still checked) are allowed. No green gate, no ship.
 
 ## Perf budget
 
