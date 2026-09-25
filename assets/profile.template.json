@@ -1,0 +1,13 @@
+{
+  "name": "default",
+  "platform": "Web",
+  "container": "SettingsScreen",
+  "scope": ["appearance"],
+  "configRef": "../assets/labconfig.template.json",
+  "schemaVersion": 1,
+  "build": "DEBUG",
+  "viewport": "390x844 @2x",
+  "appearance": "system",
+  "overrides": {},
+  "notes": ""
+}
