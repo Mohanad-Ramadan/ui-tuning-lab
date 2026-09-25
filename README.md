@@ -44,4 +44,4 @@ Tier 3 (Windows, Flutter, RN) community stubs.
 
 ## License
 
-Apache-2.0. See `LICENSE.txt`.
+Proprietary — TODO: choose license. See `LICENSE.txt`.

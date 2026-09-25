@@ -1,4 +1,2 @@
-Apache License 2.0 — placeholder.
-
-Full Apache-2.0 license text to be added at release.
-SPDX-License-Identifier: Apache-2.0
+Proprietary — All rights reserved.
+License to be chosen (TODO). No license granted yet.

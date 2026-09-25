@@ -1,7 +1,7 @@
 ---
 name: ui-tuning-lab
 description: "Trigger: live lab, visual variants, try options live. Use BEFORE tuning animation/layout/appearance/logic on the real screen in-app when you want to visualize and combine variants."
-license: Apache-2.0
+license: Proprietary — TODO: choose license
 compatibility: Web + iOS/iPadOS + macOS + Android + Windows; DEBUG/tester-gated, no prod dependency
 metadata:
   author: "you"
