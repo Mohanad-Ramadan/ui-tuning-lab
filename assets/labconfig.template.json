@@ -1,9 +1,12 @@
 {
   "schemaVersion": 1,
-  "labTarget": "feature",
-  "scope": ["appearance"],
-  "container": "SettingsScreen",
-  "baseline": {},
+  "labTarget": "REPLACE-ME-feature-or-container",
+  "scope": ["REPLACE-ME-scope"],
+  "container": "REPLACE-ME-HostName",
+  "baseline": {
+    "_note": "REPLACE-ME with measured baseline values before scaffolding",
+    "metric": "REPLACE-ME"
+  },
   "variants": [],
   "persist": "none",
   "profile": "default"

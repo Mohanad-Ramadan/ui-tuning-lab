@@ -67,8 +67,33 @@ test -f .ui-tuning-lab/lab.json || {
   echo "FAIL: .ui-tuning-lab/lab.json missing — run the interview first"
   exit 1
 }
-grep -q '"schemaVersion"' .ui-tuning-lab/lab.json || {
-  echo "FAIL: lab.json has no schemaVersion"
+for _key in schemaVersion labTarget scope container baseline; do
+  grep -q "\"$_key\"" .ui-tuning-lab/lab.json || {
+    echo "FAIL: lab.json missing required key: $_key"
+    exit 1
+  }
+done
+unset _key
+if grep -qE '"baseline"[[:space:]]*:[[:space:]]*\{[[:space:]]*\}' .ui-tuning-lab/lab.json; then
+  echo "FAIL: lab.json baseline must be a non-empty object — replace template placeholder"
   exit 1
-}
-echo "PASS: lab.json present with schemaVersion"
+fi
+if command -v jq >/dev/null 2>&1; then
+  jq -e . .ui-tuning-lab/lab.json >/dev/null 2>&1 || {
+    echo "FAIL: lab.json is not valid JSON"
+    exit 1
+  }
+  jq -e 'has("schemaVersion") and has("labTarget") and has("scope") and has("container") and has("baseline") and has("variants")' .ui-tuning-lab/lab.json >/dev/null 2>&1 || {
+    echo "FAIL: lab.json missing required keys (jq check)"
+    exit 1
+  }
+  jq -e '(.baseline | type == "object") and ((.baseline | length) > 0)' .ui-tuning-lab/lab.json >/dev/null 2>&1 || {
+    echo "FAIL: lab.json baseline must be a non-empty object"
+    exit 1
+  }
+  jq -e '(.variants | type == "array")' .ui-tuning-lab/lab.json >/dev/null 2>&1 || {
+    echo "FAIL: lab.json variants must be an array"
+    exit 1
+  }
+fi
+echo "PASS: lab.json present with required keys (schemaVersion, labTarget, scope, container, baseline)"
