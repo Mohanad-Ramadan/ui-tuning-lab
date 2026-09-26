@@ -1,8 +1,7 @@
 ---
 name: ui-tuning-lab
-description: "Trigger: live lab, visual variants, try options live. Use BEFORE tuning animation/layout/appearance/logic on the real screen in-app when you want to visualize and combine variants."
-license: Proprietary — TODO: choose license
-compatibility: Web, Apple (iOS/iPadOS/macOS/visionOS), Android, HarmonyOS, Windows, Linux, Flutter, RN; DEBUG/tester-gated, no prod dependency
+description: "Trigger: live lab, visual variants, try options live. Use before tuning animation, layout, appearance, or visible logic on the real screen when live comparison is useful."
+license: "Proprietary — TODO: choose license"
 metadata:
   author: "you"
   version: "1.0"
@@ -10,53 +9,66 @@ metadata:
 
 # UI Tuning Lab
 
-Spin up a lightweight toggleable in-app lab on the real screen. Visualize, customize, and combine variants. Tune the feature or the container. Leave zero cost when closed.
+Build a temporary in-app control surface beside the real feature so variants
+can be compared, combined, reset, and deliberately saved.
 
-## Activation Contract
+## Guarantees
 
-Use when the user wants to try options live, compare variants, or tune animation, layout, logic, or appearance on the real screen.
+Every lab must satisfy all four:
 
-Do NOT use for static one-shot edits with no comparison, backend-only work with no visible surface, or production settings pages. A lab is a development instrument, not a feature.
+1. **Internal only.** Compile or mount the lab only in DEBUG, development, or
+   tester builds. Source lint is advisory; inspect the final release artifact.
+2. **Reversible.** Capture the feature's real configuration before opening.
+   Reset restores that exact baseline, including behavior as well as appearance.
+3. **Explicit persistence.** Default to no persistence. Save only on an explicit
+   action and only under `variantLab.*` or `.ui-tuning-lab/`; never reuse a
+   production preference key.
+4. **Complete teardown.** Closing unmounts or releases the lab and cancels every
+   timer, observer, listener, task, and duplicate render tree it owns.
 
-## Hard Rules
+## Workflow
 
-- INV-1 Lightest container only. Never use an expensive object that noticeably affects performance or memory unless the user explicitly asks.
-- INV-2 Closed means unmounted. Unmounted or removed from the tree plus timers, observers, and listeners cancelled. `display:none` alone is not closed.
-- INV-3 Absent from production. Gated to DEBUG, tester, or internal builds. Prove absence with `verify --prod`.
-- INV-4 Explicit Save only. Never write on every edit. Capture enough context to reproduce a result, including schema version.
-- INV-5 Baseline restorable. Record baseline before the lab opens. Opening at baseline must look and behave identically. Reset returns to it.
-- INV-6 Namespaced persistence. Lab keys live under `variantLab.*` or `.ui-tuning-lab/`. Never touch production keys.
+1. Inspect the project first: platform, build system, target feature, existing
+   configuration model, natural development gate, native presentation surface,
+   persistence conventions, and test commands.
+2. Infer safe defaults: feature target, scopes named by the request, the
+   platform-native container, persistence off, and one unnamed working draft.
+3. Ask at most one focused question only when an unresolved choice materially
+   changes the implementation. Otherwise state the inferred choices and proceed.
+4. Capture the baseline from the same configuration object the feature renders.
+   Keep draft edits separate; reset copies the baseline back into the draft.
+5. Add at least two meaningful presets plus direct controls. Applying either must
+   update that shared configuration rather than a preview-only duplicate.
+6. Add an explicit Save action only when persistence was requested. Report write
+   errors without losing the draft.
+7. Verify baseline equivalence, variants, inputs, accessibility, dismissal, and
+   teardown. Then inspect a release build or bundle for absence.
 
-## Decision Gates
+An ephemeral lab needs no `lab.json`. Create `.ui-tuning-lab/lab.json` only for
+a reusable or saved profile, then validate it with:
 
-| Need | Load |
-|---|---|
-| Interview flow, questions, fallback | See `references/interview-protocol.md` |
-| Platform container matrix | See `references/surface-matrix.md` |
-| Tuning the container itself | See `references/container-tuning.md` |
-| Config and profile schema | See `profiles/_template.md` + `assets/*.template.json` |
-| Verification and teardown | See `references/verify-protocol.md` |
-| Edge cases, listed and unlisted | See `references/edge-cases.md` |
+```sh
+scripts/verify.sh config .ui-tuning-lab/lab.json
+```
 
-## Execution Steps
+Use `scripts/verify.sh source-gates <source-path>` as an advisory lint check. It
+does not prove absence from a release artifact. An `N/A` result means nothing
+relevant was checked and must not be reported as a pass.
 
-1. Init. Detect platform, build variant, and read existing `.ui-tuning-lab/lab.json` if present.
-2. Interview. Follow `references/interview-protocol.md`. Do not scaffold until valid `lab.json` plus baseline exist.
-3. Build lab. Lightest container from the matrix. Controls outside the feature layout and interaction paths. Cap 5 active variants.
-4. Variants. Combine via explicit profile, not full matrix. Coalesce rapid edits; defer expensive work until settle.
-5. Save. Explicit operation only. Atomic local write off the interaction path. Show errors and saved result.
-6. Verify. Baseline equivalence, meaningful variants, input and accessibility paths, capture behavior, gate absence in prod.
-7. Teardown. Close removes everything. No timer, observer, or listener survives.
+## Route to Details
 
-## Output Contract
+- Read `references/setup-protocol.md` when project inspection leaves ambiguity.
+- Read `references/surface-matrix.md` for candidate native containers and gates.
+- Read `references/container-tuning.md` only when tuning the host itself.
+- Read `references/verify-protocol.md` before claiming validation.
+- Use `assets/labconfig.template.json` and `profiles/_template.md` only for a
+  reusable profile.
+- Use the matching candidate in `examples/` as a starting point, not as evidence
+  that the user's app has passed validation.
 
-Return: files created or modified; profile saved or reused; baseline location; verification evidence (baseline equivalence, closed-cost check, prod-absence check).
+## Report
 
-## References
-
-- See `references/interview-protocol.md` for the questioning protocol.
-- See `references/verify-protocol.md` for verification, teardown, and the prod gate.
-- See `references/edge-cases.md` for the discretion protocol on unlisted edges.
-- Run `scripts/verify.sh` for the lab.json gate, `scripts/verify.sh --prod` for release absence.
-- See `profiles/_template.md` for the profile shape.
-- See `CHANGELOG.md` for version history.
+Return the files changed, inferred or chosen container and gate, baseline source,
+save location if any, commands run, and verification evidence. Distinguish static
+lint, hands-on checks, and release-artifact inspection. Never mark an unrun check
+as passed.

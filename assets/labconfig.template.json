@@ -1,13 +1,16 @@
 {
   "schemaVersion": 1,
-  "labTarget": "REPLACE-ME-feature-or-container",
-  "scope": ["REPLACE-ME-scope"],
-  "container": "REPLACE-ME-HostName",
+  "labTarget": "feature",
+  "scope": ["appearance"],
+  "container": "FeatureScreen",
   "baseline": {
-    "_note": "REPLACE-ME with measured baseline values before scaffolding",
-    "metric": "REPLACE-ME"
+    "cornerRadius": 12,
+    "spacing": 8
   },
-  "variants": [],
+  "variants": [
+    { "name": "compact", "overrides": { "cornerRadius": 4, "spacing": 4 } },
+    { "name": "relaxed", "overrides": { "cornerRadius": 20, "spacing": 16 } }
+  ],
   "persist": "none",
   "profile": "default"
 }

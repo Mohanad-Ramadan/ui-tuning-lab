@@ -1,7 +1,7 @@
-# Unverified stubs — Windows, Flutter, RN (community tier)
+# Unvalidated adaptations — Windows, Flutter, React Native
 
-These rows follow the matrix but are NOT verified. Confirm teardown on
-your stack and report back before relying on them.
+These notes are not validation claims. Complete the full protocol on the target
+stack before relying on them.
 
 - Windows (WinUI 3): `Flyout` on a debug toolbar button. Never
   `ContentDialog` for the lab. Gate `_DEBUG`, `Ctrl+Shift+L`.

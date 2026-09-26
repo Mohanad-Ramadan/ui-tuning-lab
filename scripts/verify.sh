@@ -1,99 +1,204 @@
 #!/bin/sh
-# verify.sh — dependency-free checks (POSIX sh + grep only).
-# Usage: ./scripts/verify.sh [--prod]
-#   default: lab.json exists and carries schemaVersion
-#   --prod:  fail if any lab reference exists in release configuration
+# Static checks for UI Tuning Lab configuration and source gating.
+# These checks do not inspect compiled or bundled release artifacts.
 set -eu
 
-if [ "${1:-}" = "--prod" ]; then
-  # Source-hygiene gate: fail only on UNGATED lab references.
-  # Lines inside correctly DEBUG-gated blocks are allowed:
-  #   #if DEBUG / #ifdef DEBUG (any case for DEBUG) ... #endif
-  # with nesting plus #else/#elif handling (the #else branch IS checked).
-  # POSIX sh + grep only.
-  pattern='ui-tuning-lab|UITuningLab|LabPanel|\.ui-tuning-lab'
-  candidates=$(grep -rlE "$pattern" \
-    --include="*.js" --include="*.ts" --include="*.tsx" \
-    --include="*.swift" --include="*.kt" --include="*.cs" \
-    --include="*.dart" --exclude-dir=node_modules \
-    --exclude-dir=.git --exclude-dir=build --exclude-dir=Release . 2>/dev/null || true)
-  if [ -z "$candidates" ]; then
-    echo "PASS: no lab references in release scope"
-    exit 0
-  fi
-  fail=0
-  IFS='
-'
-  for f in $candidates; do
-    depth=0
-    lineno=0
-    while IFS= read -r line || [ -n "$line" ]; do
-      lineno=$((lineno + 1))
-      if printf '%s\n' "$line" | grep -qiE '^[[:space:]]*#[[:space:]]*if(def)?[[:space:]]+debug([^A-Za-z0-9_]|$)'; then
-        depth=$((depth + 1))
-        continue
-      fi
-      if [ "$depth" -gt 0 ]; then
-        if printf '%s\n' "$line" | grep -qiE '^[[:space:]]*#[[:space:]]*if([^A-Za-z0-9_]|$)'; then
-          depth=$((depth + 1))
-          continue
-        fi
-        if printf '%s\n' "$line" | grep -qiE '^[[:space:]]*#[[:space:]]*endif([^A-Za-z0-9_]|$)'; then
-          depth=$((depth - 1))
-          continue
-        fi
-        if [ "$depth" -eq 1 ] && printf '%s\n' "$line" | grep -qiE '^[[:space:]]*#[[:space:]]*el(se|if)([^A-Za-z0-9_]|$)'; then
-          depth=0
-          continue
-        fi
-        continue
-      fi
-      if printf '%s\n' "$line" | grep -qE "$pattern"; then
-        printf '%s:%s:%s\n' "$f" "$lineno" "$line"
-        fail=1
-      fi
-    done < "$f"
-  done
-  unset IFS
-  if [ "$fail" -ne 0 ]; then
-    echo "FAIL: lab references found in release scope"
-    exit 1
-  fi
-  echo "PASS: no lab references in release scope"
-  exit 0
-fi
+usage() {
+  echo "Usage: $0 config <lab.json> | source-gates <file-or-directory>" >&2
+  exit 2
+}
 
-test -f .ui-tuning-lab/lab.json || {
-  echo "FAIL: .ui-tuning-lab/lab.json missing — run the interview first"
+fail() {
+  echo "FAIL: $*" >&2
   exit 1
 }
-for _key in schemaVersion labTarget scope container baseline; do
-  grep -q "\"$_key\"" .ui-tuning-lab/lab.json || {
-    echo "FAIL: lab.json missing required key: $_key"
-    exit 1
-  }
-done
-unset _key
-if grep -qE '"baseline"[[:space:]]*:[[:space:]]*\{[[:space:]]*\}' .ui-tuning-lab/lab.json; then
-  echo "FAIL: lab.json baseline must be a non-empty object — replace template placeholder"
-  exit 1
-fi
-if command -v jq >/dev/null 2>&1; then
-  jq -e . .ui-tuning-lab/lab.json >/dev/null 2>&1 || {
-    echo "FAIL: lab.json is not valid JSON"
-    exit 1
-  }
-  jq -e 'has("schemaVersion") and has("labTarget") and has("scope") and has("container") and has("baseline") and has("variants")' .ui-tuning-lab/lab.json >/dev/null 2>&1 || {
-    echo "FAIL: lab.json missing required keys (jq check)"
-    exit 1
-  }
-  jq -e '(.baseline | type == "object") and ((.baseline | length) > 0)' .ui-tuning-lab/lab.json >/dev/null 2>&1 || {
-    echo "FAIL: lab.json baseline must be a non-empty object"
-    exit 1
-  }
-  jq -e '(.variants | type == "array")' .ui-tuning-lab/lab.json >/dev/null 2>&1 || {
-    echo "FAIL: lab.json variants must be an array"
-    exit 1
-  }
-fi
-echo "PASS: lab.json present with required keys (schemaVersion, labTarget, scope, container, baseline)"
+
+not_applicable() {
+  echo "N/A: $*" >&2
+  exit 3
+}
+
+validate_config() {
+  file=$1
+  [ -f "$file" ] || fail "config not found: $file"
+  command -v jq >/dev/null 2>&1 || fail "config validation requires jq"
+  jq -e . "$file" >/dev/null 2>&1 || fail "invalid JSON: $file"
+  compact_json=$(tr '\n\r\t' '   ' < "$file")
+  printf '%s\n' "$compact_json" | grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1[[:space:]]*[,}]' || \
+    fail "schemaVersion must use the integer literal 1: $file"
+  jq -e '
+    type == "object" and
+    has("schemaVersion") and (.schemaVersion == 1) and
+    has("labTarget") and (.labTarget | type == "string" and length > 0) and
+    has("scope") and (.scope | type == "array" and length > 0 and all(.[]; type == "string" and length > 0)) and
+    has("container") and (.container | type == "string" and length > 0) and
+    has("baseline") and (.baseline | type == "object" and length > 0) and
+    has("variants") and (.variants | type == "array" and all(.[];
+      type == "object" and
+      has("name") and (.name | type == "string" and length > 0) and
+      has("overrides") and (.overrides | type == "object"))) and
+    has("persist") and (.persist == "none" or .persist == "session" or .persist == "namespaced-save") and
+    has("profile") and (.profile | type == "string" and length > 0)
+  ' "$file" >/dev/null 2>&1 || fail "missing or invalid required configuration fields: $file"
+  jq -e '[.. | strings | select(test("REPLACE-ME|TODO|<[^>]+>"; "i"))] | length == 0' \
+    "$file" >/dev/null 2>&1 || fail "placeholder value found: $file"
+  echo "PASS: valid lab configuration: $file"
+}
+
+lint_swift() {
+  file=$1
+  awk '
+    function debug_if(line, s) {
+      s = tolower(line)
+      return (s ~ /^[[:space:]]*#[[:space:]]*ifdef[[:space:]]+debug[[:space:]]*$/ ||
+              s ~ /^[[:space:]]*#[[:space:]]*if[[:space:]]+debug([[:space:]]*&&[[:space:]]*[a-z_][a-z0-9_]*)*[[:space:]]*$/)
+    }
+    function debug_elseif(line, s) {
+      s = tolower(line)
+      return (s ~ /^[[:space:]]*#[[:space:]]*(elseif|elif)[[:space:]]+debug([[:space:]]*&&[[:space:]]*[a-z_][a-z0-9_]*)*[[:space:]]*$/)
+    }
+    BEGIN { depth = 0; violations = 0 }
+    /^[[:space:]]*#[[:space:]]*if(def)?[[:space:]]+/ {
+      parent = depth > 0 ? safe[depth] : 0
+      depth++
+      safe[depth] = parent || debug_if($0)
+      next
+    }
+    /^[[:space:]]*#[[:space:]]*(else|elseif|elif)/ {
+      parent = depth > 1 ? safe[depth - 1] : 0
+      safe[depth] = parent || debug_elseif($0)
+      next
+    }
+    /^[[:space:]]*#[[:space:]]*endif/ {
+      delete safe[depth]; if (depth > 0) depth--
+      next
+    }
+    /ui-tuning-lab|UITuningLab|LabPanel|\.ui-tuning-lab/ {
+      guarded = depth > 0 ? safe[depth] : 0
+      if (!guarded) { print FILENAME ":" FNR ":" $0; violations = 1 }
+    }
+    END { exit violations }
+  ' "$file"
+}
+
+lint_web() {
+  file=$1
+  awk '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s
+    }
+    function dev_condition(s) {
+      return (s ~ /^if[[:space:]]*\([[:space:]]*import\.meta\.env\.DEV[[:space:]]*\)$/ ||
+              s ~ /^if[[:space:]]*\([^)]*process\.env\.NODE_ENV[[:space:]]*!==?[[:space:]]*[^[:alnum:][:space:]_]production[^[:alnum:][:space:]_][[:space:]]*\)$/)
+    }
+    function brace_in_quote(s, q,    n,a,i) {
+      n = split(s, a, q)
+      for (i = 2; i <= n; i += 2) if (a[i] ~ /[{}]/) return 1
+      return 0
+    }
+    function scrub_quotes(s, q,    n,a,i,out) {
+      n = split(s, a, q); out = a[1]
+      for (i = 3; i <= n; i += 2) out = out a[i]
+      return out
+    }
+    BEGIN { depth = 0; safe_depth = 0; pending_gate = 0; violations = 0; squote = sprintf("%c", 39) }
+    {
+      raw = $0; text = trim(raw)
+      if (pending_gate) {
+        if (text == "") next
+        if (text == "{") {
+          depth++; safe_depth = depth; pending_gate = 0; next
+        }
+        print FILENAME ":" FNR ": ambiguous development guard; expected { on the next line"
+        violations = 1; pending_gate = 0; safe_depth = 0
+      }
+
+      inline_gate = 0
+      if (text ~ /\{[[:space:]]*$/) {
+        condition = text; sub(/\{[[:space:]]*$/, "", condition); condition = trim(condition)
+        inline_gate = dev_condition(condition)
+      } else if (dev_condition(text)) {
+        pending_gate = 1; next
+      }
+
+      comment_at = index(raw, "//")
+      comment_brace = comment_at > 0 && substr(raw, comment_at) ~ /[{}]/
+      ambiguous = (raw ~ /\/\*|\*\// || comment_brace ||
+                   brace_in_quote(raw, "\"") || brace_in_quote(raw, squote) || brace_in_quote(raw, "`"))
+      if (ambiguous) {
+        print FILENAME ":" FNR ": ambiguous brace in string or comment"
+        violations = 1; safe_depth = 0
+      }
+
+      structural = raw
+      sub(/\/\/.*/, "", structural)
+      structural = scrub_quotes(structural, "\"")
+      structural = scrub_quotes(structural, squote)
+      structural = scrub_quotes(structural, "`")
+      branch_else = (structural ~ /}[[:space:]]*else([[:space:]]|{)/)
+      if (branch_else && safe_depth > 0 && depth == safe_depth) safe_depth = 0
+      guarded = safe_depth > 0 || inline_gate
+      if ($0 ~ /ui-tuning-lab|UITuningLab|LabPanel|\.ui-tuning-lab/ && !guarded) {
+        print FILENAME ":" FNR ":" $0
+        violations = 1
+      }
+      opens = gsub(/\{/, "{", structural)
+      closes = gsub(/\}/, "}", structural)
+      depth += opens - closes
+      if (depth < 0) { print FILENAME ":" FNR ": unmatched }"; violations = 1; depth = 0; safe_depth = 0 }
+      if (inline_gate && opens > closes) safe_depth = depth
+      if (safe_depth > 0 && depth < safe_depth) safe_depth = 0
+    }
+    END {
+      if (pending_gate) { print FILENAME ":EOF: development guard missing {"; violations = 1 }
+      exit violations
+    }
+  ' "$file"
+}
+
+lint_sources() {
+  target=$1
+  [ -e "$target" ] || fail "source path not found: $target"
+  if [ -f "$target" ]; then
+    files=$target
+  else
+    files=$(find "$target" -type f \
+      \( -name '*.swift' -o -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' \) \
+      ! -path '*/node_modules/*' ! -path '*/.git/*' ! -path '*/build/*' ! -path '*/dist/*')
+  fi
+  failed=0
+  supported=0
+  references=0
+  old_ifs=$IFS
+  IFS='
+'
+  for file in $files; do
+    case "$file" in
+      *.swift)
+        supported=$((supported + 1))
+        if grep -qE 'ui-tuning-lab|UITuningLab|LabPanel|\.ui-tuning-lab' "$file"; then
+          references=$((references + 1)); lint_swift "$file" || failed=1
+        fi
+        ;;
+      *.js|*.jsx|*.ts|*.tsx)
+        supported=$((supported + 1))
+        if grep -qE 'ui-tuning-lab|UITuningLab|LabPanel|\.ui-tuning-lab' "$file"; then
+          references=$((references + 1)); lint_web "$file" || failed=1
+        fi
+        ;;
+    esac
+  done
+  IFS=$old_ifs
+  [ "$supported" -gt 0 ] || not_applicable "no supported Swift or web source files in $target"
+  [ "$references" -gt 0 ] || not_applicable "supported sources contain no lab references in $target"
+  [ "$failed" -eq 0 ] || fail "ungated lab references found"
+  echo "PASS: supported source gates found around lab references in $target"
+  echo "NOTE: source lint is not proof of absence from a compiled release artifact"
+}
+
+[ "$#" -eq 2 ] || usage
+case "$1" in
+  config) validate_config "$2" ;;
+  source-gates) lint_sources "$2" ;;
+  *) usage ;;
+esac

@@ -1,33 +1,108 @@
-# Example — SwiftUI popover palette (verified tier)
+# Candidate — SwiftUI iOS/iPadOS palette
 
-Binding-driven presentation. When `showLab` is false the lab has no
-identity and costs nothing.
+This is implementation guidance, not a completed validation. The feature and lab
+share one `CardStyle`; the immutable baseline is captured before presentation.
 
 ```swift
+struct CardStyle: Codable, Equatable {
+    var cornerRadius: CGFloat
+    var spacing: CGFloat
+    static let appDefault = Self(cornerRadius: 12, spacing: 8)
+    static let compact = Self(cornerRadius: 4, spacing: 4)
+    static let relaxed = Self(cornerRadius: 24, spacing: 16)
+}
+
+struct LabProfile: Codable {
+    let schemaVersion = 1
+    let name = "default"
+    let platform = "ios"
+    let container = "FeatureScreen.popover"
+    let scope = ["appearance", "layout"]
+    let overrides: CardStyle
+    let notes = ""
+}
+
 struct FeatureScreen: View {
+    @State private var style = CardStyle.appDefault
     #if DEBUG
     @State private var showLab = false
-    @State private var labConfig = LabConfig.baseline
-    #endif
-
-    #if DEBUG
-    private var labConfigOrBaseline: LabConfig { labConfig }
-    #else
-    private var labConfigOrBaseline: LabConfig { LabConfig.baseline }
+    @State private var baseline: CardStyle?
     #endif
 
     var body: some View {
-        FeatureView(config: labConfigOrBaseline)
+        CardFeature(style: style)
             #if DEBUG
+            .toolbar {
+                Button("Tune", action: openLab)
+                    .disabled(showLab)
+            }
             .popover(isPresented: $showLab) {
-                LabControls(config: $labConfig)
+                LabControls(
+                    style: $style,
+                    reset: { if let baseline { style = baseline } },
+                    save: saveProfile
+                )
+                // On compact width, either accept the adaptive sheet or add
+                // .presentationCompactAdaptation(.popover) deliberately.
+            }
+            .onChange(of: showLab) { _, open in
+                if !open { baseline = nil }
             }
             #endif
     }
+
+    #if DEBUG
+    private func openLab() {
+        guard !showLab, baseline == nil else { return }
+        baseline = style
+        showLab = true
+    }
+
+    private func saveProfile() throws {
+        let data = try JSONEncoder().encode(LabProfile(overrides: style))
+        let directory = URL.applicationSupportDirectory
+            .appending(path: ".ui-tuning-lab", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        try data.write(to: directory.appending(path: "default.json"),
+                       options: .atomic)
+    }
+    #endif
 }
+
+#if DEBUG
+private struct LabControls: View {
+    @Binding var style: CardStyle
+    let reset: () -> Void
+    let save: () throws -> Void
+    @State private var saveError: String?
+
+    var body: some View {
+        Form {
+            HStack {
+                Button("Compact") { style = .compact }
+                Button("Relaxed") { style = .relaxed }
+            }
+            Slider(value: $style.cornerRadius, in: 0...32) {
+                Text("Corner radius")
+            }
+            Slider(value: $style.spacing, in: 0...24) { Text("Spacing") }
+            HStack {
+                Button("Reset", action: reset)
+                Button("Save") {
+                    do { try save(); saveError = nil }
+                    catch { saveError = error.localizedDescription }
+                }
+            }
+            if let saveError { Text(saveError).foregroundStyle(.red) }
+        }
+        .frame(minWidth: 280)
+    }
+}
+#endif
 ```
 
-iPhone compact: add `.presentationCompactAdaptation(.popover)` only when a
-popover is genuinely required; otherwise accept the adaptive sheet with
-detents and verify the tuned gesture still works. Toggle via shake or
-triple-tap, DEBUG only.
+Dismissal destroys `LabControls`; no timer, observer, or gesture registration is
+created. Validate iPhone compact and iPad regular-width behavior, rotation,
+Dynamic Type, VoiceOver, Reduce Motion, focus, and the archived Release product
+before changing the receipt from pending.

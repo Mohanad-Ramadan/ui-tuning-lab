@@ -1,47 +1,63 @@
-# Verify Protocol
+# Verification Protocol
 
-Bounded passes, not loops. Build fully, inspect once batched (desktop plus
-mobile on web; shipped device classes on native), fix the batch, confirm at
-most once, then stop.
+Keep three kinds of evidence distinct:
 
-## Checklist
+1. **Static checks** validate reusable configuration and recognize a limited set
+   of Swift/web source gates.
+2. **Hands-on checks** exercise behavior, accessibility, inputs, and teardown in
+   the running app.
+3. **Release-artifact inspection** establishes that the compiled archive or
+   production bundle contains no activatable lab. Static source lint cannot make
+   this claim.
 
-1. Baseline equivalence: opening the lab at baseline changes nothing visible.
-2. Meaningful variants: each variant visibly differs; cap 5 active.
-3. Input paths: tap, click, keyboard, focus, selection, gestures still work.
-4. Accessibility: labels, focus order, ESC or light-dismiss, Reduce Motion
-   alternative for animation variants.
-5. Numeric limits: sliders and inputs clamp; requested vs effective
-   (viewport-clamped) values stay distinct where it matters.
-6. A/B slots: switching applies a complete config without destroying an
-   unsaved draft.
-7. Capture: explicit Save writes atomically off the interaction path and
-   reports errors plus the saved result.
-8. Gate absence: the lab is absent from production builds (see below).
+## Static checks
 
-## Teardown checklist (per platform)
+```sh
+sh tests/verify.sh
+scripts/verify.sh config .ui-tuning-lab/lab.json
+scripts/verify.sh source-gates path/to/app/source
+```
 
-Confirm no timer, display link, observer, listener, or duplicate render tree
-survives closing. Web: unmounted, not `display:none`. SwiftUI: presentation
-binding false, no polling. macOS: panel ordered out. Android: removed from
-composition. Windows: flyout closed, no presenter. Flutter: entry removed.
-RN: overlay null, sensor stopped by the native manager.
+The source linter recognizes exact `#if DEBUG` / `#ifdef DEBUG` in Swift. It also
+accepts positive identifier conjunctions such as `#if DEBUG && INTERNAL_LAB`.
+OR expressions, negations, literals, and release-inclusive conditions fail closed;
+the same restriction applies to `#elseif`. For web it recognizes block-form
+`if (import.meta.env.DEV)` or a `process.env.NODE_ENV !=/!== "production"`
+comparison in JavaScript/TypeScript. Production-only and `else` branches are not
+safe. Other valid gate styles require manual review or an
+app-specific test. A passing lint result means only that recognized source
+references are guarded.
 
-## Prod gate
+Web parsing deliberately accepts a narrow block form: the opening `{` must be on
+the guard line or the next nonblank line. Nested blocks are tracked. Ambiguous
+structural braces in strings or comments fail closed rather than extending safe
+scope. Rewrite the guard into the supported form or review it manually; do not
+treat an ambiguity failure as evidence of a production leak.
 
-Run `scripts/verify.sh --prod` from the repo root. It is a source-hygiene
-check (not a build-artifact inspection): it fails on any UNGATED lab
-reference (`ui-tuning-lab`, `UITuningLab`, `LabPanel`, `.ui-tuning-lab`).
-References inside correctly `#if DEBUG` / `#ifdef DEBUG` … `#endif`
-blocks (any case for DEBUG, with nesting and `#else`/`#elif` handling —
-the `#else` branch is still checked) are allowed. No green gate, no ship.
+Exit `3` with an `N/A:` message means the target had no supported Swift/web files
+or no matching lab references. It is not a pass and supplies no gating evidence.
 
-## Perf budget
+## Hands-on checks
 
-Open under 100ms. No new dependency over 50KB. Zero network. No timers
-when closed. "Lightest" is measured against these, not asserted.
+- Opening at baseline is visually and behaviorally equivalent to the feature
+  without the lab.
+- At least two presets differ meaningfully and all direct controls update the same
+  configuration consumed by the feature.
+- Reset restores the captured baseline exactly; an explicit Save writes only the
+  requested namespaced profile and retains the draft on failure.
+- Touch, pointer, keyboard, focus, selection, gestures, screen-reader navigation,
+  large text, reduced motion, resizing, rotation, and dismissal remain usable as
+  applicable.
+- After close, instruments/logging show no lab-owned work or retained UI.
 
-## Uninstall
+## Release-artifact inspection
 
-Delete the lab call site and its profile files, rerun the prod gate.
-A clean gate is the proof of removal.
+- iOS/macOS: archive the Release scheme, inspect the built product for lab symbols,
+  strings, commands, menu items, and resources, then launch that archived product
+  and try every development activation path.
+- Web: produce the production bundle, search emitted assets and source maps (when
+  shipped) for lab code/strings, then serve the bundle and try query, storage,
+  keyboard, and developer-menu activation paths.
+
+Record the exact commands, artifact identity, observations, and evidence links in
+the matching file under `validation/`. Failed or unrun checks remain blocking.

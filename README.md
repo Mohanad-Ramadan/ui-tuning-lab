@@ -1,47 +1,41 @@
 # ui-tuning-lab
 
-Spin up a lightweight, toggleable in-app lab on the real screen. Visualize,
-customize, and combine variants while tuning animation, layout, logic, or
-appearance — on Web, iOS/iPadOS, macOS, Android, Windows, Flutter, and RN.
+A development-only skill for adding a temporary control surface to a real app
+screen so visual and interaction variants can be compared live.
 
-Core guarantees:
+The workflow is inspect-first: it derives the platform, gate, container,
+configuration, and baseline from the project and asks at most one material
+question. Ephemeral labs need no configuration file. Reusable profiles use a
+validated `.ui-tuning-lab/lab.json` and explicit namespaced saves.
 
-- Lightest native container per platform only. Closed lab costs nothing:
-  unmounted, timers and observers cancelled, listeners released.
-- Absent from production. Gated to DEBUG, tester, or internal builds.
-- Explicit Save only. Baseline recorded first and always restorable.
-- Agent-proof interview before any lab code is generated.
+## Guarantees
 
-## Install
+- Development, DEBUG, internal, or tester builds only.
+- Exact baseline capture and reset.
+- Persistence off by default; explicit namespaced Save when requested.
+- Closing releases all lab-owned UI, timers, observers, listeners, and tasks.
 
-Copy this folder into your agent's skills directory, e.g.:
+## Verification
 
-```bash
-cp -r ui-tuning-lab ~/.agents/skills/
-# or per-project
-cp -r ui-tuning-lab .agents/skills/
+```sh
+sh tests/verify.sh
+scripts/verify.sh config path/to/lab.json
+scripts/verify.sh source-gates path/to/source
 ```
 
-Then invoke `ui-tuning-lab` before tuning any visible surface.
+Source lint cannot prove production absence. Approval requires inspection of the
+compiled archive or production bundle using `references/verify-protocol.md` and a
+completed receipt under `validation/`.
 
-## Layout
-
-- `SKILL.md` — orchestrator: activation, hard rules (INV-1..6), gates, steps.
-- `references/` — `interview-protocol`, `surface-matrix` (tiered 7-platform),
-  `container-tuning` (experimental), `verify-protocol`, `edge-cases`.
-- `profiles/_template.md` — uniform profile shape.
-- `assets/*.template.json` — LabConfig and profile starters (`schemaVersion: 1`).
-- `scripts/verify.sh` — dependency-free lab.json and `--prod` absence gates.
-- `examples/` — Web + SwiftUI verified, macOS + Android minimal,
-  Windows/Flutter/RN community stubs.
-- `CHANGELOG.md` / `VERSION` — semver history, bumped on release only.
+`source-gates` exits `3` with `N/A:` when the path contains no supported Swift or
+web files, or when supported files contain no lab reference. This is deliberately
+distinct from PASS: there was nothing relevant to validate.
 
 ## Status
 
-v1.0.0 complete: skeleton plus Phase 2 references, examples, and verify
-gates. Tier 1 (Web, SwiftUI) verified; Tier 2 (macOS, Android) minimal;
-Tier 3 (Windows, Flutter, RN) community stubs.
+iOS, macOS, and web guidance is **candidate**, pending hands-on validation against
+one commit. Android, Windows, Flutter, React Native, visionOS, Linux, and HarmonyOS
+are unvalidated adaptation notes. Nothing here records a completed platform pilot.
 
-## License
-
-Proprietary — TODO: choose license. See `LICENSE.txt`.
+`VERSION`, release notes, author metadata, and license remain unchanged during
+the private refactor and validation cycle. Publishing is a separate explicit step.
