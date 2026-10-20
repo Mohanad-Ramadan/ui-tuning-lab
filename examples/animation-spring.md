@@ -14,6 +14,10 @@ Every lab in this example provides:
   draft, replaying each time.
 - **Reduced motion**: the feature keeps its own reduced animation, and the lab says
   when that is what you are seeing.
+- **Copy values**: copies the draft fields that differ from the baseline and logs
+  them as one `UITUNINGLAB_VALUES {...}` line for landing
+  (`references/landing-protocol.md`). Speed and the flip are preview settings and
+  are never included.
 
 ## SwiftUI (iOS 17+)
 
@@ -56,33 +60,33 @@ import SwiftUI
 struct EntranceScreen: View {
     @State private var motion = EntranceMotion.appDefault
     #if DEBUG
-    @State private var showLab = false
-    @State private var baseline: EntranceMotion?
-    @State private var lab = UITuningLabMotionState()
+    @State private var showUITuningLab = false
+    @State private var uiTuningLabBaseline: EntranceMotion?
+    @State private var uiTuningLab = UITuningLabMotionState()
     #endif
 
     var body: some View {
         #if DEBUG
-        EntranceCard(motion: lab.rendered(draft: motion, baseline: baseline))
-            .id(lab.replayToken)
+        EntranceCard(motion: uiTuningLab.rendered(draft: motion, baseline: uiTuningLabBaseline))
+            .id(uiTuningLab.replayToken)
             .frame(maxHeight: .infinity, alignment: .top)
             .toolbar {
-                Button("Tune", action: openLab)
-                    .disabled(showLab)
+                Button("Tune", action: openUITuningLab)
+                    .disabled(showUITuningLab)
             }
-            .popover(isPresented: $showLab) {
+            .popover(isPresented: $showUITuningLab) {
                 UITuningLabMotionControls(
                     motion: $motion,
-                    lab: $lab,
-                    reset: { if let baseline { motion = baseline } }
+                    lab: $uiTuningLab,
+                    baseline: uiTuningLabBaseline ?? motion
                 )
                 // Compact width adapts to a sheet; keep the card visible above it.
                 .presentationDetents([.medium])
                 .presentationBackgroundInteraction(.enabled)
             }
-            .onChange(of: showLab) { _, open in
+            .onChange(of: showUITuningLab) { _, open in
                 // Keep the replay token so closing does not re-create the card.
-                if !open { baseline = nil; lab.speed = 1; lab.showBaseline = false }
+                if !open { uiTuningLabBaseline = nil; uiTuningLab.speed = 1; uiTuningLab.showBaseline = false }
             }
         #else
         EntranceCard(motion: motion)
@@ -91,10 +95,10 @@ struct EntranceScreen: View {
     }
 
     #if DEBUG
-    private func openLab() {
-        guard !showLab, baseline == nil else { return }
-        baseline = motion
-        showLab = true
+    private func openUITuningLab() {
+        guard !showUITuningLab, uiTuningLabBaseline == nil else { return }
+        uiTuningLabBaseline = motion
+        showUITuningLab = true
     }
     #endif
 }
@@ -120,7 +124,8 @@ struct UITuningLabMotionState {
 struct UITuningLabMotionControls: View {
     @Binding var motion: EntranceMotion
     @Binding var lab: UITuningLabMotionState
-    let reset: () -> Void
+    let baseline: EntranceMotion
+    @State private var status: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let snappy = EntranceMotion(duration: 0.3, bounce: 0, offset: 24)
@@ -154,8 +159,12 @@ struct UITuningLabMotionControls: View {
             Toggle("Show baseline", isOn: $lab.showBaseline)
             HStack {
                 Button("Replay") { lab.replayToken += 1 }
-                Button("Reset") { reset(); lab.replayToken += 1 }
+                Button("Reset") { motion = baseline; lab.replayToken += 1 }
+                Button("Copy values") {
+                    status = uiTuningLabCopyValues(from: baseline, to: motion)
+                }
             }
+            if let status { Text(status).font(.footnote) }
         }
         .onChange(of: lab.showBaseline) { lab.replayToken += 1 }
         // Editing the draft shows the draft, so a change is never hidden.
@@ -173,6 +182,81 @@ struct UITuningLabMotionControls: View {
 
     private func replayWhenReleased(_ editing: Bool) {
         if !editing { lab.replayToken += 1 }
+    }
+}
+#endif
+```
+
+<!-- file: UITuningLabValues.swift -->
+```swift
+import Foundation
+import os
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
+
+#if DEBUG
+private let uiTuningLabLog = Logger(subsystem: "ui-tuning-lab", category: "values")
+
+struct UITuningLabValuesError: LocalizedError {
+    var errorDescription: String? { "the configuration does not encode as a JSON object" }
+}
+
+/// The draft fields that differ from the baseline, as one line of sorted JSON.
+/// Floating-point numbers are rounded to three decimals at any depth, so slider
+/// noise is not reported. A field the draft cleared to nil is reported as null.
+func uiTuningLabChangedValues<Value: Encodable>(from baseline: Value, to draft: Value) throws -> String {
+    let before = try uiTuningLabFields(baseline)
+    let after = try uiTuningLabFields(draft)
+    var changed: [String: Any] = [:]
+    for key in Set(before.keys).union(after.keys)
+    where (before[key] as? NSObject) != (after[key] as? NSObject) {
+        changed[key] = after[key] ?? NSNull()
+    }
+    let data = try JSONSerialization.data(withJSONObject: changed, options: [.sortedKeys])
+    return String(decoding: data, as: UTF8.self)
+}
+
+/// Copies the changed values and logs them on one line the agent can find:
+/// `UITUNINGLAB_VALUES {...}`. Returns a status message for the panel.
+func uiTuningLabCopyValues<Value: Encodable>(from baseline: Value, to draft: Value) -> String {
+    let values: String
+    do { values = try uiTuningLabChangedValues(from: baseline, to: draft) }
+    catch { return "Values not copied: \(error.localizedDescription)" }
+    #if canImport(UIKit)
+    UIPasteboard.general.string = values
+    #elseif canImport(AppKit)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(values, forType: .string)
+    #endif
+    uiTuningLabLog.notice("UITUNINGLAB_VALUES \(values, privacy: .public)")
+    return values == "{}" ? "No changes from baseline" : "Copied \(values)"
+}
+
+private func uiTuningLabFields<Value: Encodable>(_ value: Value) throws -> [String: Any] {
+    let data = try JSONEncoder().encode(value)
+    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        throw UITuningLabValuesError()
+    }
+    return object.mapValues(uiTuningLabNormalized)
+}
+
+/// Numbers become decimals so they print in their shortest form (0.35, not
+/// 0.34999999999999998): floats rounded to three places, integers kept exact.
+private func uiTuningLabNormalized(_ field: Any) -> Any {
+    switch field {
+    case let array as [Any]:
+        return array.map(uiTuningLabNormalized)
+    case let object as [String: Any]:
+        return object.mapValues(uiTuningLabNormalized)
+    case let number as NSNumber where CFGetTypeID(number) != CFBooleanGetTypeID():
+        guard CFNumberIsFloatType(number) else { return NSDecimalNumber(string: number.stringValue) }
+        let rounded = (number.doubleValue * 1000).rounded() / 1000
+        return NSDecimalNumber(string: "\(rounded)")
+    default:
+        return field
     }
 }
 #endif
@@ -285,12 +369,19 @@ const presets = {
 } satisfies Record<string, EntranceMotion>;
 const speeds = [1, 0.5, 0.25, 0.1];
 
+// The draft fields that differ from the baseline.
+function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
+  return Object.fromEntries(Object.entries(draft).filter(
+    ([key, value]) => value !== baseline[key as keyof T])) as Partial<T>;
+}
+
 export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHostProps) {
   const [open, setOpen] = useState(false);
   const [baseline, setBaseline] = useState<EntranceMotion | null>(null);
   const [replay, setReplay] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [showBaseline, setShowBaseline] = useState(false);
+  const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
@@ -322,7 +413,17 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   const rendered = { ...source, durationMs: source.durationMs / speed };
   const replayNow = () => setReplay(count => count + 1);
 
-  function openLab() { setBaseline({ ...motion }); setOpen(true); }
+  function openLab() { setBaseline({ ...motion }); setStatus(null); setOpen(true); }
+  async function copyValues() {
+    const values = JSON.stringify(changedValues(baseline ?? motion, motion));
+    console.info(`UITUNINGLAB_VALUES ${values}`);
+    try {
+      await navigator.clipboard.writeText(values);
+      setStatus({ text: values === "{}" ? "No changes from baseline" : `Copied ${values}` });
+    } catch {
+      setStatus({ text: `Clipboard unavailable; values logged to the console: ${values}` });
+    }
+  }
   function reset() { if (baseline) setMotion({ ...baseline }); replayNow(); }
   function apply(preset: EntranceMotion) { setShowBaseline(false); setMotion(preset); replayNow(); }
   // Editing the draft shows the draft, so a change is never hidden.
@@ -361,6 +462,8 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
         onClick={() => { setShowBaseline(shown => !shown); replayNow(); }}>Show baseline</button>
       <button type="button" onClick={replayNow}>Replay</button>
       <button type="button" onClick={reset}>Reset</button>
+      <button type="button" onClick={copyValues}>Copy values</button>
+      {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
     </div>}
   </>;
 }

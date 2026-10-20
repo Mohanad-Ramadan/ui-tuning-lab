@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "default",
+  "platform": "web",
+  "container": "TodoListScreen",
+  "scope": [
+    "appearance",
+    "layout"
+  ],
+  "overrides": {
+    "radius": 20,
+    "gap": 12
+  },
+  "notes": "Mastodon timeline"
+}

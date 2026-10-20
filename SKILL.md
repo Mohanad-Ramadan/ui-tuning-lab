@@ -38,17 +38,26 @@ Every lab must satisfy all four:
 4. Capture the baseline from the same configuration object the feature renders.
    Keep draft edits separate; reset copies the baseline back into the draft.
 5. Add at least two meaningful presets plus direct controls. Applying either must
-   update that shared configuration rather than a preview-only duplicate.
-6. Add an explicit Save action only when persistence was requested. Report write
-   errors without losing the draft.
-7. Verify baseline equivalence, variants, inputs, accessibility, dismissal, and
+   update that shared configuration rather than a preview-only duplicate. Add a
+   **Copy values** action that copies and logs, as one
+   `UITUNINGLAB_VALUES {...}` line, only the fields that differ from the baseline.
+6. Add explicit Save and Load saved actions only when persistence was requested.
+   Report write and load errors without losing the draft; loading never changes
+   the baseline.
+7. Land the winner when the user picks one: write the copied values into the
+   feature's real defaults, show a baseline-to-winner table, then remove the lab
+   or keep it, as the user chooses. Follow `references/landing-protocol.md`.
+8. Verify baseline equivalence, variants, inputs, accessibility, dismissal, and
    teardown. Then inspect a release build or bundle for absence.
 
 Name every lab-owned type, file, and storage key with a lab marker
 (`UITuningLab`, `uiTuningLab`, or `ui-tuning-lab`) so the source linter can find
-it. In Swift, wrap each lab file in `#if DEBUG`. On the web, keep lab code in
+it. In Swift, also mark the host's DEBUG-only state and functions (for example
+`showUITuningLab`, `uiTuningLabBaseline`), and wrap each lab file in `#if DEBUG`. On the web, keep lab code in
 `*.ui-tuning-lab.tsx` modules and load them only through a dynamic `import()`
 inside an `if (import.meta.env.DEV) {` block; a static import fails the linter.
+The web host variable (`TuningLabHost` in the examples) stays unmarked because it
+is declared outside the gate.
 Import lab modules by relative path; the linter does not resolve aliases. After
 building a lab, run `source-gates` on a directory that holds both the feature
 files and the lab files; it must PASS. `N/A` means no marked reference was
@@ -56,10 +65,12 @@ found, usually because the naming rule was skipped. A PASS cannot prove that
 every lab symbol was marked, so also keep the rule while writing the code.
 
 An ephemeral lab needs no `lab.json`. Create `.ui-tuning-lab/lab.json` only for
-a reusable or saved profile, then validate it with:
+a reusable lab, and check a saved profile only when persistence was requested
+(`references/config-schema.md`):
 
 ```sh
 scripts/verify.sh config .ui-tuning-lab/lab.json
+scripts/verify.sh profile path/to/saved-profile.json
 ```
 
 Use `scripts/verify.sh source-gates <source-path>` as an advisory lint check. It
@@ -71,15 +82,18 @@ relevant was checked and must not be reported as a pass.
 - Read `references/setup-protocol.md` when project inspection leaves ambiguity.
 - Read `references/surface-matrix.md` for candidate native containers and gates.
 - Read `references/container-tuning.md` only when tuning the host itself.
+- Read `references/landing-protocol.md` when the user picks a winner.
+- Read `references/config-schema.md` before writing `lab.json` or a saved profile.
 - Read `references/verify-protocol.md` before claiming validation.
-- Use `assets/labconfig.template.json` and `profiles/_template.md` only for a
-  reusable profile.
+- Use `assets/labconfig.template.json`, `assets/profile.template.json`, and
+  `profiles/_template.md` only for a reusable lab or saved profile.
 - Use the matching candidate in `examples/` as a starting point, not as evidence
   that the user's app has passed validation.
 
 ## Report
 
 Return the files changed, inferred or chosen container and gate, baseline source,
-save location if any, commands run, and verification evidence. Distinguish static
+save location if any, the landed values table and the declaration changed, whether
+the lab was removed or kept, commands run, and verification evidence. Distinguish static
 lint, hands-on checks, and release-artifact inspection. Never mark an unrun check
 as passed.

@@ -4,7 +4,7 @@
 set -eu
 
 usage() {
-  echo "Usage: $0 config <lab.json> | source-gates <file-or-directory>" >&2
+  echo "Usage: $0 config <lab.json> | profile <profile.json> | source-gates <file-or-directory>" >&2
   exit 2
 }
 
@@ -21,14 +21,30 @@ not_applicable() {
 # Every lab-owned type, module, and storage key carries one of these markers.
 LAB_PATTERN='UITuningLab|uiTuningLab|ui-tuning-lab'
 
-validate_config() {
+# Checks shared by lab configs and saved profiles (references/config-schema.md).
+require_json_v1() {
   file=$1
-  [ -f "$file" ] || fail "config not found: $file"
-  command -v jq >/dev/null 2>&1 || fail "config validation requires jq"
+  kind=$2
+  [ -f "$file" ] || fail "$kind not found: $file"
+  command -v jq >/dev/null 2>&1 || fail "$kind validation requires jq"
   jq -e . "$file" >/dev/null 2>&1 || fail "invalid JSON: $file"
   compact_json=$(tr '\n\r\t' '   ' < "$file")
-  printf '%s\n' "$compact_json" | grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1[[:space:]]*[,}]' || \
+  # jq 1.7+ prints the top-level literal as written; the grep also covers older
+  # jq versions, which print 1.0 as 1.
+  [ "$(jq -c '.schemaVersion' "$file")" = 1 ] &&
+    printf '%s\n' "$compact_json" | grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1[[:space:]]*[,}]' || \
     fail "schemaVersion must use the integer literal 1: $file"
+}
+
+reject_placeholders() {
+  # Whole-word TODO only, so real names such as TodoListScreen stay valid.
+  jq -e '[.. | strings | select(test("REPLACE-ME"; "i") or test("\\bTODO\\b") or test("^<[^>]+>$"))] | length == 0' \
+    "$1" >/dev/null 2>&1 || fail "placeholder value found: $1"
+}
+
+validate_config() {
+  file=$1
+  require_json_v1 "$file" config
   jq -e '
     type == "object" and
     has("schemaVersion") and (.schemaVersion == 1) and
@@ -40,12 +56,29 @@ validate_config() {
       type == "object" and
       has("name") and (.name | type == "string" and length > 0) and
       has("overrides") and (.overrides | type == "object"))) and
-    has("persist") and (.persist == "none" or .persist == "session" or .persist == "namespaced-save") and
+    has("persist") and (.persist == "none" or .persist == "namespaced-save") and
     has("profile") and (.profile | type == "string" and length > 0)
   ' "$file" >/dev/null 2>&1 || fail "missing or invalid required configuration fields: $file"
-  jq -e '[.. | strings | select(test("REPLACE-ME|TODO|<[^>]+>"; "i"))] | length == 0' \
-    "$file" >/dev/null 2>&1 || fail "placeholder value found: $file"
+  reject_placeholders "$file"
   echo "PASS: valid lab configuration: $file"
+}
+
+validate_profile() {
+  file=$1
+  require_json_v1 "$file" profile
+  jq -e '
+    type == "object" and
+    (keys | sort) == (["container", "name", "notes", "overrides", "platform", "schemaVersion", "scope"]) and
+    (.schemaVersion == 1) and
+    (.name | type == "string" and test("^[a-z0-9]+(-[a-z0-9]+)*$")) and
+    (.platform == "ios" or .platform == "macos" or .platform == "web") and
+    (.container | type == "string" and length > 0) and
+    (.scope | type == "array" and length > 0 and all(.[]; type == "string" and length > 0)) and
+    (.overrides | type == "object" and length > 0) and
+    (.notes | type == "string")
+  ' "$file" >/dev/null 2>&1 || fail "missing, extra, or invalid profile fields: $file"
+  reject_placeholders "$file"
+  echo "PASS: valid saved profile: $file"
 }
 
 lint_swift() {
@@ -240,6 +273,7 @@ lint_sources() {
 [ "$#" -eq 2 ] || usage
 case "$1" in
   config) validate_config "$2" ;;
+  profile) validate_profile "$2" ;;
   source-gates) lint_sources "$2" ;;
   *) usage ;;
 esac

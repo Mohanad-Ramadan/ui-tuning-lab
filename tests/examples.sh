@@ -89,7 +89,7 @@ for example in $EXAMPLES; do
   done
 done
 
-require_text examples/swiftui-popover-palette.md 'guard !showLab, baseline == nil else { return }' 'iOS activation preserves its original baseline'
+require_text examples/swiftui-popover-palette.md 'guard !showUITuningLab, uiTuningLabBaseline == nil else { return }' 'iOS activation preserves its original baseline'
 require_text examples/web-floating-panel.md 'role="dialog"' 'web popover exposes dialog semantics'
 require_text examples/web-floating-panel.md 'aria-labelledby="tuning-lab-title"' 'web dialog has a labelled heading'
 require_text examples/web-floating-panel.md 'firstControl.current?.focus()' 'web dialog receives initial focus'
@@ -105,6 +105,60 @@ require_text examples/animation-spring.md 'key={replay}' 'web motion lab can rep
 require_text examples/animation-spring.md 'durationMs: source.durationMs / speed' 'web motion lab slows the preview by stretching duration'
 require_text examples/animation-spring.md 'aria-pressed={showBaseline}' 'web motion lab flips to the baseline'
 require_text examples/animation-spring.md 'prefers-reduced-motion: reduce' 'web motion respects reduced motion'
+
+# Landing: every lab can copy its changed values, per language.
+for example in $EXAMPLES; do
+  dir="$WORK/${example%.md}-default"
+  if ls "$dir"/*.swift >/dev/null 2>&1; then
+    if grep -q 'Button("Copy values")' "$dir"/*.swift && grep -q 'uiTuningLabCopyValues(from: baseline' "$dir"/*.swift \
+        && grep -q 'UITUNINGLAB_VALUES' "$dir/UITuningLabValues.swift"; then
+      ok "$example Swift lab copies and logs changed values"
+    else
+      not_ok "$example Swift lab copies and logs changed values"
+    fi
+  fi
+  if ls "$dir"/*.ui-tuning-lab.tsx >/dev/null 2>&1; then
+    if grep -q 'onClick={copyValues}>Copy values' "$dir"/*.ui-tuning-lab.tsx \
+        && grep -q 'console.info(`UITUNINGLAB_VALUES' "$dir"/*.ui-tuning-lab.tsx \
+        && grep -q 'changedValues(baseline' "$dir"/*.ui-tuning-lab.tsx; then
+      ok "$example web lab copies and logs changed values"
+    else
+      not_ok "$example web lab copies and logs changed values"
+    fi
+  fi
+done
+
+# The shared Swift helper must be the same file in every Swift example.
+reference_helper="$WORK/swiftui-popover-palette-default/UITuningLabValues.swift"
+for example in macos-panel-minimal animation-spring; do
+  if cmp -s "$reference_helper" "$WORK/$example-default/UITuningLabValues.swift"; then
+    ok "$example.md shares the canonical UITuningLabValues.swift"
+  else
+    not_ok "$example.md shares the canonical UITuningLabValues.swift"
+  fi
+done
+
+# Saved profiles: load is validated, and the envelope matches the template.
+template_fields=$(jq -r 'keys[]' "$ROOT/assets/profile.template.json" | sort | tr '\n' ' ')
+for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; do
+  dir="$WORK/$example-persist"
+  if grep -q 'Load saved' "$dir"/* && grep -Eq 'schemaVersion (==|!==) 1' "$dir"/*; then
+    ok "$example.md persist variant loads with a schema check"
+  else
+    not_ok "$example.md persist variant loads with a schema check"
+  fi
+  fields=$(awk '
+    /^struct UITuningLabProfile: Codable \{$/ || /^type UITuningLabProfile = \{$/ { inside = 1; next }
+    inside && (/^\}/ || /^    static/) { exit }
+    inside && match($0, /^    var [A-Za-z]+/) { print substr($0, 9, RLENGTH - 8) }
+    inside && match($0, /^  [A-Za-z]+:/) { print substr($0, 3, RLENGTH - 3) }
+  ' "$dir"/* | sort | tr '\n' ' ')
+  if [ "$fields" = "$template_fields" ]; then
+    ok "$example.md profile fields match assets/profile.template.json"
+  else
+    not_ok "$example.md profile fields match assets/profile.template.json" "got: $fields; want: $template_fields"
+  fi
+done
 
 if grep -rn 'variantLab' "$ROOT/SKILL.md" "$ROOT/examples" "$ROOT/references" "$ROOT/validation" >/dev/null; then
   not_ok 'no legacy variantLab namespace remains'

@@ -13,6 +13,7 @@
 - [ ] Baseline is visually and behaviorally equivalent.
 - [ ] Two meaningful variants update the rendered feature.
 - [ ] Reset exactly restores the captured baseline.
+- [ ] Copy values copies and logs only the changed fields, and landing writes them into the feature defaults.
 - [ ] If persistence was requested, explicit Save succeeds under the documented namespace.
 - [ ] If persistence was requested, Save failure is visible and retains the draft.
 - [ ] Primary pointer/touch, keyboard, focus, and gesture paths work.

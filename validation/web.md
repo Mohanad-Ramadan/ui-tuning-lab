@@ -10,7 +10,8 @@
 ## Required checks
 
 - [ ] Baseline equivalence; compact and relaxed variants; exact reset.
-- [ ] If persistence was requested, explicit `uiTuningLab.*` Save success and failure-with-draft-retention.
+- [ ] Copy values copies and logs only changed fields; landing writes them into the feature defaults; removal leaves `source-gates` at N/A.
+- [ ] If persistence was requested, explicit `uiTuningLab.*` Save and Load saved success, and failure-with-draft-retention.
 - [ ] Desktop/mobile layout, pointer/touch, keyboard, focus, and light-dismiss.
 - [ ] Screen-reader behavior and reduced-motion behavior where applicable.
 - [ ] Conditional unmount removes UI and listeners.

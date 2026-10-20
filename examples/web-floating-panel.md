@@ -5,7 +5,9 @@ The feature and controls share one config state. All lab code lives in
 import inside an `import.meta.env.DEV` block, so production builds drop both the
 branch and the lab chunk. The baseline is captured on open; closing unmounts the
 popover and its listener. The default candidate is ephemeral and has no storage
-writer or Save action.
+writer or Save action. **Copy values** copies the fields that differ from the
+baseline and logs them as one `UITUNINGLAB_VALUES {...}` console line for landing
+(`references/landing-protocol.md`).
 
 <!-- file: CardFeature.tsx -->
 ```tsx
@@ -69,9 +71,16 @@ const presets = {
   relaxed: { radius: 24, gap: 16 },
 } satisfies Record<string, CardConfig>;
 
+// The draft fields that differ from the baseline.
+function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
+  return Object.fromEntries(Object.entries(draft).filter(
+    ([key, value]) => value !== baseline[key as keyof T])) as Partial<T>;
+}
+
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
   const [open, setOpen] = useState(false);
   const [baseline, setBaseline] = useState<CardConfig | null>(null);
+  const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
@@ -96,8 +105,18 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     };
   }, [open]);
 
-  function openLab() { setBaseline({ ...config }); setOpen(true); }
+  function openLab() { setBaseline({ ...config }); setStatus(null); setOpen(true); }
   function reset() { if (baseline) setConfig({ ...baseline }); }
+  async function copyValues() {
+    const values = JSON.stringify(changedValues(baseline ?? config, config));
+    console.info(`UITUNINGLAB_VALUES ${values}`);
+    try {
+      await navigator.clipboard.writeText(values);
+      setStatus({ text: values === "{}" ? "No changes from baseline" : `Copied ${values}` });
+    } catch {
+      setStatus({ text: `Clipboard unavailable; values logged to the console: ${values}` });
+    }
+  }
 
   return <>
     <CardFeature config={config} />
@@ -117,6 +136,8 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         onChange={e => setConfig(c => ({ ...c, gap: Number(e.target.value) }))}/>
       </label>
       <button type="button" onClick={reset}>Reset</button>
+      <button type="button" onClick={copyValues}>Copy values</button>
+      {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
     </div>}
   </>;
 }
@@ -136,7 +157,10 @@ production assets before approval.
 
 Only when the user explicitly requests saved profiles, replace
 `FeatureScreen.ui-tuning-lab.tsx` with this version. The feature files stay
-unchanged, and the writer lives only in the development-only module.
+unchanged, and the writer and loader live only in the development-only module.
+Load saved applies the stored overrides to the draft; the baseline stays as
+captured, so Reset still returns to it. Unreadable or incompatible data is
+reported and left in storage untouched.
 
 <!-- file: FeatureScreen.ui-tuning-lab.tsx variant=persist -->
 ```tsx
@@ -163,10 +187,16 @@ const presets = {
   relaxed: { radius: 24, gap: 16 },
 } satisfies Record<string, CardConfig>;
 
+// The draft fields that differ from the baseline.
+function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
+  return Object.fromEntries(Object.entries(draft).filter(
+    ([key, value]) => value !== baseline[key as keyof T])) as Partial<T>;
+}
+
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
   const [open, setOpen] = useState(false);
   const [baseline, setBaseline] = useState<CardConfig | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
@@ -191,8 +221,18 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     };
   }, [open]);
 
-  function openLab() { setBaseline({ ...config }); setSaveError(null); setOpen(true); }
+  function openLab() { setBaseline({ ...config }); setStatus(null); setOpen(true); }
   function reset() { if (baseline) setConfig({ ...baseline }); }
+  async function copyValues() {
+    const values = JSON.stringify(changedValues(baseline ?? config, config));
+    console.info(`UITUNINGLAB_VALUES ${values}`);
+    try {
+      await navigator.clipboard.writeText(values);
+      setStatus({ text: values === "{}" ? "No changes from baseline" : `Copied ${values}` });
+    } catch {
+      setStatus({ text: `Clipboard unavailable; values logged to the console: ${values}` });
+    }
+  }
   function save() {
     try {
       const profile: UITuningLabProfile = {
@@ -205,9 +245,26 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         notes: "",
       };
       localStorage.setItem("uiTuningLab.default", JSON.stringify(profile));
-      setSaveError(null);
+      setStatus({ text: "Saved" });
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Save failed");
+      setStatus({ text: `Save failed: ${error instanceof Error ? error.message : "unknown error"}`, error: true });
+    }
+  }
+  function loadSaved() {
+    try {
+      const stored = localStorage.getItem("uiTuningLab.default");
+      if (stored === null) throw new Error("nothing has been saved yet");
+      const profile = JSON.parse(stored) as Partial<UITuningLabProfile>;
+      const saved = profile.overrides;
+      if (profile.schemaVersion !== 1 || profile.platform !== "web" ||
+          typeof saved?.radius !== "number" || typeof saved?.gap !== "number") {
+        throw new Error("the saved profile has an incompatible schema or platform");
+      }
+      setConfig({ radius: saved.radius, gap: saved.gap });
+      setStatus({ text: "Loaded saved values" });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unreadable";
+      setStatus({ text: `Saved profile not loaded: ${reason}. Storage was left unchanged.`, error: true });
     }
   }
 
@@ -229,13 +286,15 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         onChange={e => setConfig(c => ({ ...c, gap: Number(e.target.value) }))}/>
       </label>
       <button type="button" onClick={reset}>Reset</button>
+      <button type="button" onClick={copyValues}>Copy values</button>
       <button type="button" onClick={save}>Save</button>
-      {saveError && <p role="alert">{saveError}</p>}
+      <button type="button" onClick={loadSaved}>Load saved</button>
+      {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
     </div>}
   </>;
 }
 ```
 
-The explicit Save writes only `uiTuningLab.default`. Storage failures display an
-alert and retain the draft. Inspect the emitted production bundle to confirm that
+The explicit Save writes only `uiTuningLab.default`. Storage failures are shown
+in the status line and retain the draft. Inspect the emitted production bundle to confirm that
 the lab module and writer were eliminated.

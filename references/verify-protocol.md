@@ -15,6 +15,7 @@ Keep three kinds of evidence distinct:
 ```sh
 sh tests/verify.sh
 scripts/verify.sh config .ui-tuning-lab/lab.json
+scripts/verify.sh profile path/to/saved-profile.json
 scripts/verify.sh source-gates path/to/app/source
 ```
 
@@ -60,10 +61,15 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
   without the lab.
 - At least two presets differ meaningfully and all direct controls update the same
   configuration consumed by the feature.
-- Reset restores the captured baseline exactly. When persistence was requested,
-  an explicit Save writes only the requested namespaced profile and retains the
-  draft on failure. Otherwise confirm that no Save action or storage writer is
-  present and record the Save checks as `N/A: persistence not requested`, with
+- Reset restores the captured baseline exactly.
+- Copy values copies, and logs as one `UITUNINGLAB_VALUES` line, only the fields
+  that differ from the baseline; `{}` when nothing changed. Landing writes those
+  values into the feature defaults (`references/landing-protocol.md`).
+- When persistence was requested, an explicit Save writes only the requested
+  namespaced profile, which passes `verify.sh profile`, and retains the draft on
+  failure. Load saved applies the stored overrides to the draft without changing
+  the baseline, and reports incompatible data without modifying it. Otherwise,
+  confirm that no Save action or storage writer is present and record the Save checks as `N/A: persistence not requested`, with
   evidence of that absence.
 - Touch, pointer, keyboard, focus, selection, gestures, screen-reader navigation,
   large text, reduced motion, resizing, rotation, and dismissal remain usable as

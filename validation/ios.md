@@ -10,7 +10,8 @@
 ## Required checks
 
 - [ ] Baseline equivalence; compact and relaxed variants; exact reset.
-- [ ] If persistence was requested, explicit namespaced Save success and failure-with-draft-retention.
+- [ ] Copy values copies and logs only changed fields; landing writes them into the feature defaults; removal leaves `source-gates` at N/A.
+- [ ] If persistence was requested, explicit namespaced Save and Load saved success, and failure-with-draft-retention.
 - [ ] Rotation and compact/regular presentation adaptation.
 - [ ] Dynamic Type, VoiceOver, Reduce Motion, keyboard/focus, gestures, dismissal.
 - [ ] Closing releases the controls and all lab-owned work.

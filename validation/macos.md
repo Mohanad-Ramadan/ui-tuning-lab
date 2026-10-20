@@ -10,7 +10,8 @@
 ## Required checks
 
 - [ ] Baseline equivalence; compact and spacious variants; exact reset.
-- [ ] If persistence was requested, explicit namespaced Save success and failure-with-draft-retention.
+- [ ] Copy values copies and logs only changed fields; landing writes them into the feature defaults; removal leaves `source-gates` at N/A.
+- [ ] If persistence was requested, explicit namespaced Save and Load saved success, and failure-with-draft-retention.
 - [ ] Menu and shortcut activation, focus return, multiple windows.
 - [ ] Keyboard navigation and VoiceOver.
 - [ ] Closing releases panel content, observers, timers, tasks, and registrations.

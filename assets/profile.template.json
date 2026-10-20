@@ -1,7 +1,7 @@
 {
   "name": "default",
   "platform": "web",
-  "container": "SettingsScreen",
+  "container": "FeatureScreen.popover",
   "scope": ["appearance"],
   "schemaVersion": 1,
   "overrides": {

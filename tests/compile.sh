@@ -90,6 +90,20 @@ if command -v xcrun >/dev/null 2>&1 && xcrun --find swiftc >/dev/null 2>&1; then
 else
   echo "skip - Swift examples: xcrun swiftc not available" > "$WORK/swift.log"
 fi
+# The values helper is shared by every Swift example; run it, not just typecheck it.
+if xcrun --find swiftc >/dev/null 2>&1; then
+  helper="$WORK/values"
+  extract_example "$ROOT/examples/macos-panel-minimal.md" "$helper"
+  # Top-level statements are only allowed in a file named main.swift.
+  cp "$ROOT/tests/compile/swift/values-check.swift" "$helper/main.swift"
+  if output=$(xcrun swiftc -DDEBUG -o "$WORK/values-check" \
+        "$helper/UITuningLabValues.swift" "$helper/main.swift" 2>&1 &&
+      "$WORK/values-check" 2>&1); then
+    echo "ok - UITuningLabValues.swift reports only rounded changed fields" >> "$WORK/swift.log"
+  else
+    printf 'not ok - UITuningLabValues.swift reports only rounded changed fields\n%s\n' "$output" >> "$WORK/swift.log"
+  fi
+fi
 # The loop above runs in a subshell, so count its results from the log.
 cat "$WORK/swift.log"
 passes=$((passes + $(grep -c '^ok' "$WORK/swift.log" || true)))

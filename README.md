@@ -22,6 +22,7 @@ sh tests/verify.sh
 sh tests/examples.sh
 sh tests/compile.sh
 scripts/verify.sh config path/to/lab.json
+scripts/verify.sh profile path/to/saved-profile.json
 scripts/verify.sh source-gates path/to/source
 ```
 
