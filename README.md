@@ -19,9 +19,16 @@ validated `.ui-tuning-lab/lab.json` and explicit namespaced saves.
 
 ```sh
 sh tests/verify.sh
+sh tests/examples.sh
+sh tests/compile.sh
 scripts/verify.sh config path/to/lab.json
 scripts/verify.sh source-gates path/to/source
 ```
+
+`tests/examples.sh` lints every example variant and checks that removing its gate
+fails the linter. `tests/compile.sh` typechecks every example: Swift for iOS and
+macOS in both DEBUG and Release, and TypeScript against the pinned toolchain in
+`tests/compile/web/`. It exits `3` with `SKIP` when a toolchain is missing.
 
 Source lint cannot prove production absence. Approval requires inspection of the
 compiled archive or production bundle using `references/verify-protocol.md` and

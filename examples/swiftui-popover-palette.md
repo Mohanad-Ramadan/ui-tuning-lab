@@ -2,15 +2,39 @@
 
 This is implementation guidance, not a completed validation. The feature and lab
 share one `CardStyle`; the immutable baseline is captured before presentation.
+Every lab type carries the `UITuningLab` prefix and lives in a file wrapped in
+`#if DEBUG`, so `source-gates` can find it and Release builds compile it out.
 
+<!-- file: CardFeature.swift -->
 ```swift
+import SwiftUI
+
 struct CardStyle: Codable, Equatable {
     var cornerRadius: CGFloat
     var spacing: CGFloat
     static let appDefault = Self(cornerRadius: 12, spacing: 8)
-    static let compact = Self(cornerRadius: 4, spacing: 4)
-    static let relaxed = Self(cornerRadius: 24, spacing: 16)
 }
+
+struct CardFeature: View {
+    let style: CardStyle
+
+    var body: some View {
+        VStack(spacing: style.spacing) {
+            ForEach(["First card", "Second card"], id: \.self) { title in
+                Text(title)
+                    .frame(maxWidth: .infinity, minHeight: 64)
+                    .background(.thinMaterial,
+                                in: RoundedRectangle(cornerRadius: style.cornerRadius))
+            }
+        }
+        .padding()
+    }
+}
+```
+
+<!-- file: FeatureScreen.swift -->
+```swift
+import SwiftUI
 
 struct FeatureScreen: View {
     @State private var style = CardStyle.appDefault
@@ -27,7 +51,7 @@ struct FeatureScreen: View {
                     .disabled(showLab)
             }
             .popover(isPresented: $showLab) {
-                LabControls(
+                UITuningLabControls(
                     style: $style,
                     reset: { if let baseline { style = baseline } }
                 )
@@ -48,17 +72,25 @@ struct FeatureScreen: View {
     }
     #endif
 }
+```
+
+<!-- file: UITuningLabControls.swift -->
+```swift
+import SwiftUI
 
 #if DEBUG
-private struct LabControls: View {
+struct UITuningLabControls: View {
     @Binding var style: CardStyle
     let reset: () -> Void
+
+    private static let compact = CardStyle(cornerRadius: 4, spacing: 4)
+    private static let relaxed = CardStyle(cornerRadius: 24, spacing: 16)
 
     var body: some View {
         Form {
             HStack {
-                Button("Compact") { style = .compact }
-                Button("Relaxed") { style = .relaxed }
+                Button("Compact") { style = Self.compact }
+                Button("Relaxed") { style = Self.relaxed }
             }
             Slider(value: $style.cornerRadius, in: 0...32) {
                 Text("Corner radius")
@@ -69,36 +101,73 @@ private struct LabControls: View {
             }
         }
         .frame(minWidth: 280)
+        // A Form row with several buttons fires all of them on iOS unless borderless.
+        .buttonStyle(.borderless)
     }
 }
 #endif
 ```
 
-Dismissal destroys `LabControls`; no timer, observer, or gesture registration is
-created. Validate iPhone compact and iPad regular-width behavior, rotation,
-Dynamic Type, VoiceOver, Reduce Motion, focus, and the archived Release product
-before changing the receipt from pending.
+Dismissal destroys `UITuningLabControls`; no timer, observer, or gesture
+registration is created. Validate iPhone compact and iPad regular-width behavior,
+rotation, Dynamic Type, VoiceOver, Reduce Motion, focus, and the archived Release
+product before changing the receipt from pending.
 
 ## Optional persistence, only when requested
 
 The candidate above is ephemeral. If the user explicitly requests saved profiles,
-add this code in the same file. Both the envelope and writer stay development-only.
+replace `UITuningLabControls.swift` with this version. `FeatureScreen.swift` stays
+unchanged, and both the envelope and writer stay development-only.
 
+<!-- file: UITuningLabControls.swift variant=persist -->
 ```swift
+import SwiftUI
+
 #if DEBUG
-struct LabProfile: Codable {
-    let schemaVersion = 1
-    let name = "default"
-    let platform = "ios"
-    let container = "FeatureScreen.popover"
-    let scope = ["appearance", "layout"]
-    let overrides: CardStyle
-    let notes = ""
+struct UITuningLabProfile: Codable {
+    var schemaVersion = 1
+    var name = "default"
+    var platform = "ios"
+    var container = "FeatureScreen.popover"
+    var scope = ["appearance", "layout"]
+    var overrides: CardStyle
+    var notes = ""
 }
 
-extension FeatureScreen {
-    private func saveProfile() throws {
-        let data = try JSONEncoder().encode(LabProfile(overrides: style))
+struct UITuningLabControls: View {
+    @Binding var style: CardStyle
+    let reset: () -> Void
+    @State private var saveError: String?
+
+    private static let compact = CardStyle(cornerRadius: 4, spacing: 4)
+    private static let relaxed = CardStyle(cornerRadius: 24, spacing: 16)
+
+    var body: some View {
+        Form {
+            HStack {
+                Button("Compact") { style = Self.compact }
+                Button("Relaxed") { style = Self.relaxed }
+            }
+            Slider(value: $style.cornerRadius, in: 0...32) {
+                Text("Corner radius")
+            }
+            Slider(value: $style.spacing, in: 0...24) { Text("Spacing") }
+            HStack {
+                Button("Reset", action: reset)
+                Button("Save") {
+                    do { try save(); saveError = nil }
+                    catch { saveError = error.localizedDescription }
+                }
+            }
+            if let saveError { Text(saveError).foregroundStyle(.red) }
+        }
+        .frame(minWidth: 280)
+        // A Form row with several buttons fires all of them on iOS unless borderless.
+        .buttonStyle(.borderless)
+    }
+
+    private func save() throws {
+        let data = try JSONEncoder().encode(UITuningLabProfile(overrides: style))
         let directory = URL.applicationSupportDirectory
             .appending(path: ".ui-tuning-lab", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory,
@@ -108,26 +177,6 @@ extension FeatureScreen {
     }
 }
 #endif
-```
-
-Then add a comma after the `reset:` closure and pass `save: saveProfile` when
-creating `LabControls`, and
-apply these changes to its existing debug-only definition:
-
-```diff
- private struct LabControls: View {
-     @Binding var style: CardStyle
-     let reset: () -> Void
-+    let save: () throws -> Void
-+    @State private var saveError: String?
-@@
-                 Button("Reset", action: reset)
-+                Button("Save") {
-+                    do { try save(); saveError = nil }
-+                    catch { saveError = error.localizedDescription }
-+                }
-             }
-+            if let saveError { Text(saveError).foregroundStyle(.red) }
 ```
 
 An explicit Save atomically writes `default.json` under Application Support's

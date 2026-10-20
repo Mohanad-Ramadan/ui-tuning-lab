@@ -18,6 +18,9 @@ not_applicable() {
   exit 3
 }
 
+# Every lab-owned type, module, and storage key carries one of these markers.
+LAB_PATTERN='UITuningLab|uiTuningLab|ui-tuning-lab'
+
 validate_config() {
   file=$1
   [ -f "$file" ] || fail "config not found: $file"
@@ -47,7 +50,7 @@ validate_config() {
 
 lint_swift() {
   file=$1
-  awk '
+  awk -v lab="$LAB_PATTERN" '
     function debug_if(line, s) {
       s = tolower(line)
       return (s ~ /^[[:space:]]*#[[:space:]]*ifdef[[:space:]]+debug[[:space:]]*$/ ||
@@ -57,7 +60,20 @@ lint_swift() {
       s = tolower(line)
       return (s ~ /^[[:space:]]*#[[:space:]]*(elseif|elif)[[:space:]]+debug([[:space:]]*&&[[:space:]]*[a-z_][a-z0-9_]*)*[[:space:]]*$/)
     }
-    BEGIN { depth = 0; violations = 0 }
+    function check_reference(    guarded) {
+      if ($0 !~ lab) return
+      guarded = depth > 0 ? safe[depth] : 0
+      if (!guarded) { print FILENAME ":" FNR ":" $0; violations = 1 }
+    }
+    BEGIN { depth = 0; violations = 0; in_string = 0 }
+    # Directive-like lines inside a multi-line string literal are text, not gates.
+    {
+      quotes = gsub(/"""/, "&")
+      if (in_string || quotes % 2) {
+        if (quotes % 2) in_string = !in_string
+        check_reference(); next
+      }
+    }
     /^[[:space:]]*#[[:space:]]*if(def)?[[:space:]]+/ {
       parent = depth > 0 ? safe[depth] : 0
       depth++
@@ -73,17 +89,18 @@ lint_swift() {
       delete safe[depth]; if (depth > 0) depth--
       next
     }
-    /ui-tuning-lab|UITuningLab|LabPanel|\.ui-tuning-lab/ {
-      guarded = depth > 0 ? safe[depth] : 0
-      if (!guarded) { print FILENAME ":" FNR ":" $0; violations = 1 }
+    { check_reference() }
+    END {
+      if (in_string) { print FILENAME ":EOF: unterminated multi-line string"; violations = 1 }
+      if (depth != 0) { print FILENAME ":EOF: unbalanced #if/#endif"; violations = 1 }
+      exit violations
     }
-    END { exit violations }
   ' "$file"
 }
 
 lint_web() {
   file=$1
-  awk '
+  awk -v lab="$LAB_PATTERN" '
     function trim(s) {
       sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s
     }
@@ -96,9 +113,24 @@ lint_web() {
       for (i = 2; i <= n; i += 2) if (a[i] ~ /[{}]/) return 1
       return 0
     }
-    BEGIN { depth = 0; safe_depth = 0; pending_gate = 0; violations = 0; squote = sprintf("%c", 39) }
+    BEGIN { depth = 0; safe_depth = 0; pending_gate = 0; in_template = 0; violations = 0; squote = sprintf("%c", 39) }
     {
       raw = $0; text = trim(raw)
+      # A multi-line template literal is text: its braces are not structure.
+      # A line that opens or closes one may not contain braces at all.
+      scratch = raw; backticks = gsub(/`/, "", scratch)
+      if (backticks % 2) {
+        in_template = !in_template
+        if (raw ~ /[{}]/) {
+          print FILENAME ":" FNR ": ambiguous brace beside a multi-line template literal"
+          violations = 1; safe_depth = 0
+        }
+      } else if (in_template) {
+        # Scope is unknowable here (a stray backtick may have opened this span),
+        # so any lab reference fails closed.
+        if (raw ~ lab) { print FILENAME ":" FNR ": lab reference inside multi-line template literal"; violations = 1 }
+        next
+      }
       if (pending_gate) {
         if (text == "") next
         if (text == "{") {
@@ -118,10 +150,12 @@ lint_web() {
 
       comment_at = index(raw, "//")
       comment_brace = comment_at > 0 && substr(raw, comment_at) ~ /[{}]/
-      ambiguous = (raw ~ /\/\*|\*\// || comment_brace ||
+      # Escaped braces and braces in a regex character class are regex text.
+      regex_brace = (raw ~ /\\[{}]/ || raw ~ /\/\[[^]]*[{}]/ || raw ~ /\/[{}]/)
+      ambiguous = (raw ~ /\/\*|\*\// || comment_brace || regex_brace ||
                    brace_in_quote(raw, "\"") || brace_in_quote(raw, squote) || brace_in_quote(raw, "`"))
       if (ambiguous) {
-        print FILENAME ":" FNR ": ambiguous brace in string or comment"
+        print FILENAME ":" FNR ": ambiguous brace in string, comment, or regex"
         violations = 1; safe_depth = 0
       }
 
@@ -138,7 +172,7 @@ lint_web() {
           if (depth < 0) { print FILENAME ":" FNR ": unmatched }"; violations = 1; depth = 0; safe_depth = 0 }
           if (safe_depth > 0 && depth < safe_depth) safe_depth = 0
         }
-        if (substr(raw, i) ~ /^(ui-tuning-lab|UITuningLab|LabPanel|\.ui-tuning-lab)/ && safe_depth == 0) {
+        if (substr(raw, i) ~ ("^(" lab ")") && safe_depth == 0) {
           print FILENAME ":" FNR ":" raw
           violations = 1
           break
@@ -147,6 +181,8 @@ lint_web() {
     }
     END {
       if (pending_gate) { print FILENAME ":EOF: development guard missing {"; violations = 1 }
+      if (in_template) { print FILENAME ":EOF: unterminated template literal"; violations = 1 }
+      if (depth != 0) { print FILENAME ":EOF: unbalanced braces"; violations = 1 }
       exit violations
     }
   ' "$file"
@@ -165,6 +201,7 @@ lint_sources() {
   failed=0
   supported=0
   references=0
+  modules=0
   old_ifs=$IFS
   IFS='
 '
@@ -172,13 +209,18 @@ lint_sources() {
     case "$file" in
       *.swift)
         supported=$((supported + 1))
-        if grep -qE 'ui-tuning-lab|UITuningLab|LabPanel|\.ui-tuning-lab' "$file"; then
+        if grep -qE "$LAB_PATTERN" "$file"; then
           references=$((references + 1)); lint_swift "$file" || failed=1
         fi
         ;;
+      *.ui-tuning-lab.js|*.ui-tuning-lab.jsx|*.ui-tuning-lab.ts|*.ui-tuning-lab.tsx)
+        # A lab module is development-only as a whole; every import of it is
+        # linted in the importing file instead.
+        supported=$((supported + 1)); modules=$((modules + 1))
+        ;;
       *.js|*.jsx|*.ts|*.tsx)
         supported=$((supported + 1))
-        if grep -qE 'ui-tuning-lab|UITuningLab|LabPanel|\.ui-tuning-lab' "$file"; then
+        if grep -qE "$LAB_PATTERN" "$file"; then
           references=$((references + 1)); lint_web "$file" || failed=1
         fi
         ;;
@@ -186,7 +228,10 @@ lint_sources() {
   done
   IFS=$old_ifs
   [ "$supported" -gt 0 ] || not_applicable "no supported Swift or web source files in $target"
-  [ "$references" -gt 0 ] || not_applicable "supported sources contain no lab references in $target"
+  if [ "$references" -eq 0 ]; then
+    [ "$modules" -eq 0 ] || not_applicable "lab modules found but nothing imports them in $target"
+    not_applicable "supported sources contain no lab references in $target"
+  fi
   [ "$failed" -eq 0 ] || fail "ungated lab references found"
   echo "PASS: supported source gates found around lab references in $target"
   echo "NOTE: source lint is not proof of absence from a compiled release artifact"

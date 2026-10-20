@@ -18,6 +18,20 @@ scripts/verify.sh config .ui-tuning-lab/lab.json
 scripts/verify.sh source-gates path/to/app/source
 ```
 
+The linter treats a line as a lab reference when it contains `UITuningLab`,
+`uiTuningLab`, or `ui-tuning-lab`. Generic names such as `LabPanel` are not
+markers, so lab code that skips the naming rule is invisible to it: the result is
+`N/A` when nothing else is marked, and an unmarked symbol is silently ignored when
+other references are present. Lint a directory containing both the importer and
+the lab module; linting a lone lab module reports `N/A`. Imports through path
+aliases are not resolved, so import lab modules by relative path.
+
+Web files named `*.ui-tuning-lab.{ts,tsx,js,jsx}` are development-only lab
+modules: their contents are not linted, and every import of them is linted in the
+importing file instead. A lab reference inside a multi-line template literal
+always fails, because its scope cannot be determined. A directory containing only lab modules, with nothing
+importing them, is `N/A`, not a pass.
+
 The source linter recognizes exact `#if DEBUG` / `#ifdef DEBUG` in Swift. It also
 accepts positive identifier conjunctions such as `#if DEBUG && INTERNAL_LAB`.
 OR expressions, negations, literals, and release-inclusive conditions fail closed;
@@ -30,8 +44,11 @@ references are guarded.
 
 Web parsing deliberately accepts a narrow block form: the opening `{` must be on
 the guard line or the next nonblank line. Nested blocks are tracked. Ambiguous
-structural braces in strings or comments fail closed rather than extending safe
-scope. Rewrite the guard into the supported form or review it manually; do not
+structural braces in strings, comments, escaped or character-class regex text, or
+on a line that opens or closes a multi-line template literal fail closed rather
+than extending safe scope. Unbalanced braces at end of file also fail. In Swift,
+`#if` lines inside a multi-line string are text, and an unbalanced `#if`/`#endif`
+fails. Rewrite the guard into the supported form or review it manually; do not
 treat an ambiguity failure as evidence of a production leak.
 
 Exit `3` with an `N/A:` message means the target had no supported Swift/web files

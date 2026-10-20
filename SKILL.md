@@ -21,7 +21,7 @@ Every lab must satisfy all four:
 2. **Reversible.** Capture the feature's real configuration before opening.
    Reset restores that exact baseline, including behavior as well as appearance.
 3. **Explicit persistence.** Default to no persistence. Save only on an explicit
-   action and only under `variantLab.*` or `.ui-tuning-lab/`; never reuse a
+   action and only under `uiTuningLab.*` or `.ui-tuning-lab/`; never reuse a
    production preference key.
 4. **Complete teardown.** Closing unmounts or releases the lab and cancels every
    timer, observer, listener, task, and duplicate render tree it owns.
@@ -43,6 +43,17 @@ Every lab must satisfy all four:
    errors without losing the draft.
 7. Verify baseline equivalence, variants, inputs, accessibility, dismissal, and
    teardown. Then inspect a release build or bundle for absence.
+
+Name every lab-owned type, file, and storage key with a lab marker
+(`UITuningLab`, `uiTuningLab`, or `ui-tuning-lab`) so the source linter can find
+it. In Swift, wrap each lab file in `#if DEBUG`. On the web, keep lab code in
+`*.ui-tuning-lab.tsx` modules and load them only through a dynamic `import()`
+inside an `if (import.meta.env.DEV) {` block; a static import fails the linter.
+Import lab modules by relative path; the linter does not resolve aliases. After
+building a lab, run `source-gates` on a directory that holds both the feature
+files and the lab files; it must PASS. `N/A` means no marked reference was
+found, usually because the naming rule was skipped. A PASS cannot prove that
+every lab symbol was marked, so also keep the rule while writing the code.
 
 An ephemeral lab needs no `lab.json`. Create `.ui-tuning-lab/lab.json` only for
 a reusable or saved profile, then validate it with:

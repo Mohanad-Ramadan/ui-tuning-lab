@@ -2,15 +2,29 @@
 
 The coordinator lazily owns a nonmodal panel. It captures the rendered
 configuration on open, applies two presets to that same binding, and releases the
-panel and hosting tree on close. The default candidate has no persistence.
+panel and hosting tree on close. The default candidate has no persistence. Every
+lab type carries the `UITuningLab` prefix and lives in a file wrapped in
+`#if DEBUG`, so `source-gates` can find it and Release builds compile it out.
 
+<!-- file: ExampleApp.swift -->
 ```swift
+import SwiftUI
+
 struct ToolbarStyle: Codable, Equatable {
     var height: Double
     var cornerRadius: Double
     static let appDefault = Self(height: 44, cornerRadius: 10)
-    static let compact = Self(height: 32, cornerRadius: 4)
-    static let spacious = Self(height: 56, cornerRadius: 16)
+}
+
+struct FeatureView: View {
+    let style: ToolbarStyle
+
+    var body: some View {
+        HStack { Text("Toolbar") }
+            .frame(maxWidth: .infinity, minHeight: style.height)
+            .background(.bar, in: RoundedRectangle(cornerRadius: style.cornerRadius))
+            .padding()
+    }
 }
 
 @MainActor
@@ -18,16 +32,44 @@ final class FeatureSceneModel: ObservableObject {
     @Published var style = ToolbarStyle.appDefault
 
     #if DEBUG
-    lazy var lab = LabPanelCoordinator(style: Binding(
+    lazy var lab = UITuningLabCoordinator(style: Binding(
         get: { [weak self] in self?.style ?? .appDefault },
         set: { [weak self] in self?.style = $0 }
     ))
     #endif
 }
 
+struct FeatureWindow: View {
+    @StateObject private var model = FeatureSceneModel()
+
+    var body: some View {
+        FeatureView(style: model.style)
+            #if DEBUG
+            .focusedSceneValue(\.showUITuningLab, { model.lab.show() })
+            .onDisappear { model.lab.close() }
+            #endif
+    }
+}
+
+@main
+struct ExampleApp: App {
+    var body: some Scene {
+        WindowGroup { FeatureWindow() }
+            #if DEBUG
+            .commands { UITuningLabCommands() }
+            #endif
+    }
+}
+```
+
+<!-- file: UITuningLabCoordinator.swift -->
+```swift
+import AppKit
+import SwiftUI
+
 #if DEBUG
 @MainActor
-final class LabPanelCoordinator: NSObject, NSWindowDelegate {
+final class UITuningLabCoordinator: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private var baseline: ToolbarStyle?
     private let style: Binding<ToolbarStyle>
@@ -37,7 +79,7 @@ final class LabPanelCoordinator: NSObject, NSWindowDelegate {
     func show() {
         if let panel { panel.makeKeyAndOrderFront(nil); return }
         baseline = style.wrappedValue
-        let controls = LabPanel(
+        let controls = UITuningLabPanel(
             style: style,
             reset: { [weak self] in
                 guard let self, let baseline = self.baseline else { return }
@@ -66,15 +108,48 @@ final class LabPanelCoordinator: NSObject, NSWindowDelegate {
     }
 }
 
-private struct LabPanel: View {
+struct ShowUITuningLabKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+extension FocusedValues {
+    var showUITuningLab: (() -> Void)? {
+        get { self[ShowUITuningLabKey.self] }
+        set { self[ShowUITuningLabKey.self] = newValue }
+    }
+}
+
+struct UITuningLabCommands: Commands {
+    @FocusedValue(\.showUITuningLab) private var showUITuningLab
+
+    var body: some Commands {
+        CommandMenu("Development") {
+            Button("UI Tuning Lab") { showUITuningLab?() }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .disabled(showUITuningLab == nil)
+        }
+    }
+}
+#endif
+```
+
+<!-- file: UITuningLabPanel.swift -->
+```swift
+import SwiftUI
+
+#if DEBUG
+struct UITuningLabPanel: View {
     @Binding var style: ToolbarStyle
     let reset: () -> Void
+
+    private static let compact = ToolbarStyle(height: 32, cornerRadius: 4)
+    private static let spacious = ToolbarStyle(height: 56, cornerRadius: 16)
 
     var body: some View {
         Form {
             HStack {
-                Button("Compact") { style = .compact }
-                Button("Spacious") { style = .spacious }
+                Button("Compact") { style = Self.compact }
+                Button("Spacious") { style = Self.spacious }
             }
             Slider(value: $style.height, in: 28...64) { Text("Height") }
             Slider(value: $style.cornerRadius, in: 0...24) { Text("Radius") }
@@ -84,52 +159,7 @@ private struct LabPanel: View {
         }.padding()
     }
 }
-
-private struct ShowTuningLabKey: FocusedValueKey {
-    typealias Value = () -> Void
-}
-
-private extension FocusedValues {
-    var showTuningLab: (() -> Void)? {
-        get { self[ShowTuningLabKey.self] }
-        set { self[ShowTuningLabKey.self] = newValue }
-    }
-}
-
-private struct TuningLabCommands: Commands {
-    @FocusedValue(\.showTuningLab) private var showTuningLab
-
-    var body: some Commands {
-        CommandMenu("Development") {
-            Button("UI Tuning Lab") { showTuningLab?() }
-                .keyboardShortcut("l", modifiers: [.command, .shift])
-                .disabled(showTuningLab == nil)
-        }
-    }
-}
 #endif
-
-struct FeatureWindow: View {
-    @StateObject private var model = FeatureSceneModel()
-
-    var body: some View {
-        FeatureView(style: model.style)
-            #if DEBUG
-            .focusedSceneValue(\.showTuningLab, { model.lab.show() })
-            .onDisappear { model.lab.close() }
-            #endif
-    }
-}
-
-@main
-struct ExampleApp: App {
-    var body: some Scene {
-        WindowGroup { FeatureWindow() }
-            #if DEBUG
-            .commands { TuningLabCommands() }
-            #endif
-    }
-}
 ```
 
 Each window's `FeatureSceneModel` owns exactly one coordinator; the focused scene
@@ -140,24 +170,53 @@ allocations, and the archived Release app before approval.
 
 ## Optional persistence, only when requested
 
-If the user explicitly requests saved profiles, add this code in the same file:
+If the user explicitly requests saved profiles, replace `UITuningLabPanel.swift`
+with this version. The app and coordinator files stay unchanged.
 
+<!-- file: UITuningLabPanel.swift variant=persist -->
 ```swift
+import SwiftUI
+
 #if DEBUG
-struct LabProfile: Codable {
-    let schemaVersion = 1
-    let name = "default"
-    let platform = "macos"
-    let container = "NSPanel"
-    let scope = ["appearance", "layout"]
-    let overrides: ToolbarStyle
-    let notes = ""
+struct UITuningLabProfile: Codable {
+    var schemaVersion = 1
+    var name = "default"
+    var platform = "macos"
+    var container = "NSPanel"
+    var scope = ["appearance", "layout"]
+    var overrides: ToolbarStyle
+    var notes = ""
 }
 
-extension LabPanelCoordinator {
-    private func saveProfile() throws {
-        let profile = LabProfile(overrides: style.wrappedValue)
-        let data = try JSONEncoder().encode(profile)
+struct UITuningLabPanel: View {
+    @Binding var style: ToolbarStyle
+    let reset: () -> Void
+    @State private var saveError: String?
+
+    private static let compact = ToolbarStyle(height: 32, cornerRadius: 4)
+    private static let spacious = ToolbarStyle(height: 56, cornerRadius: 16)
+
+    var body: some View {
+        Form {
+            HStack {
+                Button("Compact") { style = Self.compact }
+                Button("Spacious") { style = Self.spacious }
+            }
+            Slider(value: $style.height, in: 28...64) { Text("Height") }
+            Slider(value: $style.cornerRadius, in: 0...24) { Text("Radius") }
+            HStack {
+                Button("Reset", action: reset)
+                Button("Save") {
+                    do { try save(); saveError = nil }
+                    catch { saveError = error.localizedDescription }
+                }
+            }
+            if let saveError { Text(saveError).foregroundStyle(.red) }
+        }.padding()
+    }
+
+    private func save() throws {
+        let data = try JSONEncoder().encode(UITuningLabProfile(overrides: style))
         let directory = URL.applicationSupportDirectory
             .appending(path: ".ui-tuning-lab", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory,
@@ -167,34 +226,6 @@ extension LabPanelCoordinator {
     }
 }
 #endif
-```
-
-In the existing debug-only `LabPanelCoordinator.show()`, add a comma after the
-`reset:` closure and pass this additional argument:
-
-```swift
-save: { [weak self] in
-    guard let self else { return }
-    try self.saveProfile()
-}
-```
-
-Add the Save callback, error state, and button to the existing debug-only controls:
-
-```diff
- private struct LabPanel: View {
-     @Binding var style: ToolbarStyle
-     let reset: () -> Void
-+    let save: () throws -> Void
-+    @State private var error: String?
-@@
-                 Button("Reset", action: reset)
-+                Button("Save") {
-+                    do { try save(); error = nil }
-+                    catch let saveFailure { error = saveFailure.localizedDescription }
-+                }
-             }
-+            if let error { Text(error).foregroundStyle(.red) }
 ```
 
 An explicit Save atomically writes `default.json` under Application Support's

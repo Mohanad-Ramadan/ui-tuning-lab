@@ -1,13 +1,13 @@
 if (import.meta.env.DEV) {
   if (import.meta.env.DEV) {
-    LabPanel();
+    UITuningLabPanel();
   }
-  LabPanel();
+  UITuningLabPanel();
 }
 if (import.meta.env.DEV) {
   if (import.meta.env.DEV)
   {
-    LabPanel();
+    UITuningLabPanel();
   }
-  LabPanel();
+  UITuningLabPanel();
 }

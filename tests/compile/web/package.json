@@ -1,0 +1,10 @@
+{
+  "name": "ui-tuning-lab-example-typecheck",
+  "private": true,
+  "description": "Pinned toolchain for tests/compile.sh; not part of the published skill.",
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "react": "18.3.1",
+    "typescript": "5.6.3"
+  }
+}

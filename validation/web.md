@@ -10,7 +10,7 @@
 ## Required checks
 
 - [ ] Baseline equivalence; compact and relaxed variants; exact reset.
-- [ ] If persistence was requested, explicit `variantLab.*` Save success and failure-with-draft-retention.
+- [ ] If persistence was requested, explicit `uiTuningLab.*` Save success and failure-with-draft-retention.
 - [ ] Desktop/mobile layout, pointer/touch, keyboard, focus, and light-dismiss.
 - [ ] Screen-reader behavior and reduced-motion behavior where applicable.
 - [ ] Conditional unmount removes UI and listeners.

@@ -1,2 +1,2 @@
 if (import.meta.env.DEV) {
-  LabPanel(); } LabPanel();
+  UITuningLabPanel(); } UITuningLabPanel();

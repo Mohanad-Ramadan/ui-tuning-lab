@@ -1,6 +1,6 @@
 if (process.env.NODE_ENV !== 'production') {
-  LabPanel();
+  UITuningLabPanel();
 }
 if (process.env.NODE_ENV != "production") {
-  LabPanel();
+  UITuningLabPanel();
 }
