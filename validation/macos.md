@@ -10,13 +10,17 @@
 ## Required checks
 
 - [ ] Baseline equivalence; compact and spacious variants; exact reset.
-- [ ] Explicit namespaced Save success and failure-with-draft-retention.
+- [ ] If persistence was requested, explicit namespaced Save success and failure-with-draft-retention.
 - [ ] Menu and shortcut activation, focus return, multiple windows.
 - [ ] Keyboard navigation and VoiceOver.
 - [ ] Closing releases panel content, observers, timers, tasks, and registrations.
 - [ ] Archived Release app contains no command, panel, strings, resources, or working activation path.
 
 ## Evidence
+
+For an ephemeral lab, replace the Save checkbox with
+`N/A: persistence not requested` and attach evidence that no Save action or
+storage writer is present. All other applicable checks remain required.
 
 - Static checks: PENDING
 - Hands-on screenshots/video/logs: PENDING

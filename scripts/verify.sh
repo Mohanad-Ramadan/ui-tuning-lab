@@ -89,17 +89,12 @@ lint_web() {
     }
     function dev_condition(s) {
       return (s ~ /^if[[:space:]]*\([[:space:]]*import\.meta\.env\.DEV[[:space:]]*\)$/ ||
-              s ~ /^if[[:space:]]*\([^)]*process\.env\.NODE_ENV[[:space:]]*!==?[[:space:]]*[^[:alnum:][:space:]_]production[^[:alnum:][:space:]_][[:space:]]*\)$/)
+              s ~ ("^if[[:space:]]*\\([[:space:]]*process\\.env\\.NODE_ENV[[:space:]]*!==?[[:space:]]*(\"production\"|" squote "production" squote ")[[:space:]]*\\)$"))
     }
     function brace_in_quote(s, q,    n,a,i) {
       n = split(s, a, q)
       for (i = 2; i <= n; i += 2) if (a[i] ~ /[{}]/) return 1
       return 0
-    }
-    function scrub_quotes(s, q,    n,a,i,out) {
-      n = split(s, a, q); out = a[1]
-      for (i = 3; i <= n; i += 2) out = out a[i]
-      return out
     }
     BEGIN { depth = 0; safe_depth = 0; pending_gate = 0; violations = 0; squote = sprintf("%c", 39) }
     {
@@ -107,7 +102,7 @@ lint_web() {
       if (pending_gate) {
         if (text == "") next
         if (text == "{") {
-          depth++; safe_depth = depth; pending_gate = 0; next
+          depth++; if (safe_depth == 0) safe_depth = depth; pending_gate = 0; next
         }
         print FILENAME ":" FNR ": ambiguous development guard; expected { on the next line"
         violations = 1; pending_gate = 0; safe_depth = 0
@@ -130,24 +125,25 @@ lint_web() {
         violations = 1; safe_depth = 0
       }
 
-      structural = raw
-      sub(/\/\/.*/, "", structural)
-      structural = scrub_quotes(structural, "\"")
-      structural = scrub_quotes(structural, squote)
-      structural = scrub_quotes(structural, "`")
-      branch_else = (structural ~ /}[[:space:]]*else([[:space:]]|{)/)
-      if (branch_else && safe_depth > 0 && depth == safe_depth) safe_depth = 0
-      guarded = safe_depth > 0 || inline_gate
-      if ($0 ~ /ui-tuning-lab|UITuningLab|LabPanel|\.ui-tuning-lab/ && !guarded) {
-        print FILENAME ":" FNR ":" $0
-        violations = 1
+      # Braces inside strings/comments have already been rejected above.
+      # Walk in source order so a reference after } uses its actual scope.
+      for (i = 1; i <= length(raw); i++) {
+        character = substr(raw, i, 1)
+        if (character == "{") {
+          depth++
+          if (inline_gate && safe_depth == 0) safe_depth = depth
+          inline_gate = 0
+        } else if (character == "}") {
+          depth--
+          if (depth < 0) { print FILENAME ":" FNR ": unmatched }"; violations = 1; depth = 0; safe_depth = 0 }
+          if (safe_depth > 0 && depth < safe_depth) safe_depth = 0
+        }
+        if (substr(raw, i) ~ /^(ui-tuning-lab|UITuningLab|LabPanel|\.ui-tuning-lab)/ && safe_depth == 0) {
+          print FILENAME ":" FNR ":" raw
+          violations = 1
+          break
+        }
       }
-      opens = gsub(/\{/, "{", structural)
-      closes = gsub(/\}/, "}", structural)
-      depth += opens - closes
-      if (depth < 0) { print FILENAME ":" FNR ": unmatched }"; violations = 1; depth = 0; safe_depth = 0 }
-      if (inline_gate && opens > closes) safe_depth = depth
-      if (safe_depth > 0 && depth < safe_depth) safe_depth = 0
     }
     END {
       if (pending_gate) { print FILENAME ":EOF: development guard missing {"; violations = 1 }

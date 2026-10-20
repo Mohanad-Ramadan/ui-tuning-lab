@@ -12,16 +12,6 @@ struct CardStyle: Codable, Equatable {
     static let relaxed = Self(cornerRadius: 24, spacing: 16)
 }
 
-struct LabProfile: Codable {
-    let schemaVersion = 1
-    let name = "default"
-    let platform = "ios"
-    let container = "FeatureScreen.popover"
-    let scope = ["appearance", "layout"]
-    let overrides: CardStyle
-    let notes = ""
-}
-
 struct FeatureScreen: View {
     @State private var style = CardStyle.appDefault
     #if DEBUG
@@ -39,8 +29,7 @@ struct FeatureScreen: View {
             .popover(isPresented: $showLab) {
                 LabControls(
                     style: $style,
-                    reset: { if let baseline { style = baseline } },
-                    save: saveProfile
+                    reset: { if let baseline { style = baseline } }
                 )
                 // On compact width, either accept the adaptive sheet or add
                 // .presentationCompactAdaptation(.popover) deliberately.
@@ -57,16 +46,6 @@ struct FeatureScreen: View {
         baseline = style
         showLab = true
     }
-
-    private func saveProfile() throws {
-        let data = try JSONEncoder().encode(LabProfile(overrides: style))
-        let directory = URL.applicationSupportDirectory
-            .appending(path: ".ui-tuning-lab", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory,
-                                                withIntermediateDirectories: true)
-        try data.write(to: directory.appending(path: "default.json"),
-                       options: .atomic)
-    }
     #endif
 }
 
@@ -74,8 +53,6 @@ struct FeatureScreen: View {
 private struct LabControls: View {
     @Binding var style: CardStyle
     let reset: () -> Void
-    let save: () throws -> Void
-    @State private var saveError: String?
 
     var body: some View {
         Form {
@@ -89,12 +66,7 @@ private struct LabControls: View {
             Slider(value: $style.spacing, in: 0...24) { Text("Spacing") }
             HStack {
                 Button("Reset", action: reset)
-                Button("Save") {
-                    do { try save(); saveError = nil }
-                    catch { saveError = error.localizedDescription }
-                }
             }
-            if let saveError { Text(saveError).foregroundStyle(.red) }
         }
         .frame(minWidth: 280)
     }
@@ -106,3 +78,57 @@ Dismissal destroys `LabControls`; no timer, observer, or gesture registration is
 created. Validate iPhone compact and iPad regular-width behavior, rotation,
 Dynamic Type, VoiceOver, Reduce Motion, focus, and the archived Release product
 before changing the receipt from pending.
+
+## Optional persistence, only when requested
+
+The candidate above is ephemeral. If the user explicitly requests saved profiles,
+add this code in the same file. Both the envelope and writer stay development-only.
+
+```swift
+#if DEBUG
+struct LabProfile: Codable {
+    let schemaVersion = 1
+    let name = "default"
+    let platform = "ios"
+    let container = "FeatureScreen.popover"
+    let scope = ["appearance", "layout"]
+    let overrides: CardStyle
+    let notes = ""
+}
+
+extension FeatureScreen {
+    private func saveProfile() throws {
+        let data = try JSONEncoder().encode(LabProfile(overrides: style))
+        let directory = URL.applicationSupportDirectory
+            .appending(path: ".ui-tuning-lab", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        try data.write(to: directory.appending(path: "default.json"),
+                       options: .atomic)
+    }
+}
+#endif
+```
+
+Then add a comma after the `reset:` closure and pass `save: saveProfile` when
+creating `LabControls`, and
+apply these changes to its existing debug-only definition:
+
+```diff
+ private struct LabControls: View {
+     @Binding var style: CardStyle
+     let reset: () -> Void
++    let save: () throws -> Void
++    @State private var saveError: String?
+@@
+                 Button("Reset", action: reset)
++                Button("Save") {
++                    do { try save(); saveError = nil }
++                    catch { saveError = error.localizedDescription }
++                }
+             }
++            if let saveError { Text(saveError).foregroundStyle(.red) }
+```
+
+An explicit Save atomically writes `default.json` under Application Support's
+`.ui-tuning-lab/`; a write failure displays an error and retains the current style.

@@ -24,8 +24,9 @@ scripts/verify.sh source-gates path/to/source
 ```
 
 Source lint cannot prove production absence. Approval requires inspection of the
-compiled archive or production bundle using `references/verify-protocol.md` and a
-completed receipt under `validation/`.
+compiled archive or production bundle using `references/verify-protocol.md` and
+evidence in the target project's task report or a copied receipt. The bundled
+`validation/` receipts are reserved for this skill's platform pilots.
 
 `source-gates` exits `3` with `N/A:` when the path contains no supported Swift or
 web files, or when supported files contain no lab reference. This is deliberately

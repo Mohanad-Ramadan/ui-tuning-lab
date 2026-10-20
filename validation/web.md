@@ -10,13 +10,17 @@
 ## Required checks
 
 - [ ] Baseline equivalence; compact and relaxed variants; exact reset.
-- [ ] Explicit `variantLab.*` Save success and failure-with-draft-retention.
+- [ ] If persistence was requested, explicit `variantLab.*` Save success and failure-with-draft-retention.
 - [ ] Desktop/mobile layout, pointer/touch, keyboard, focus, and light-dismiss.
 - [ ] Screen-reader behavior and reduced-motion behavior where applicable.
 - [ ] Conditional unmount removes UI and listeners.
 - [ ] Production assets/source maps contain no lab code and query, storage, keyboard, and menu activation paths fail.
 
 ## Evidence
+
+For an ephemeral lab, replace the Save checkbox with
+`N/A: persistence not requested` and attach evidence that no Save action or
+storage writer is present. All other applicable checks remain required.
 
 - Static checks: PENDING
 - Hands-on screenshots/video/logs: PENDING

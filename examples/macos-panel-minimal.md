@@ -1,8 +1,8 @@
 # Candidate — macOS panel
 
 The coordinator lazily owns a nonmodal panel. It captures the rendered
-configuration on open, applies two presets to that same binding, saves only from
-the Save button, and releases the panel and hosting tree on close.
+configuration on open, applies two presets to that same binding, and releases the
+panel and hosting tree on close. The default candidate has no persistence.
 
 ```swift
 struct ToolbarStyle: Codable, Equatable {
@@ -11,16 +11,6 @@ struct ToolbarStyle: Codable, Equatable {
     static let appDefault = Self(height: 44, cornerRadius: 10)
     static let compact = Self(height: 32, cornerRadius: 4)
     static let spacious = Self(height: 56, cornerRadius: 16)
-}
-
-struct LabProfile: Codable {
-    let schemaVersion = 1
-    let name = "default"
-    let platform = "macos"
-    let container = "NSPanel"
-    let scope = ["appearance", "layout"]
-    let overrides: ToolbarStyle
-    let notes = ""
 }
 
 @MainActor
@@ -52,10 +42,6 @@ final class LabPanelCoordinator: NSObject, NSWindowDelegate {
             reset: { [weak self] in
                 guard let self, let baseline = self.baseline else { return }
                 self.style.wrappedValue = baseline
-            },
-            save: { [weak self] in
-                guard let self else { return }
-                try self.saveProfile()
             }
         )
         let panel = NSPanel(contentRect: .init(x: 0, y: 0, width: 300, height: 250),
@@ -78,24 +64,11 @@ final class LabPanelCoordinator: NSObject, NSWindowDelegate {
         panel = nil
         baseline = nil
     }
-
-    private func saveProfile() throws {
-        let profile = LabProfile(overrides: style.wrappedValue)
-        let data = try JSONEncoder().encode(profile)
-        let directory = URL.applicationSupportDirectory
-            .appending(path: ".ui-tuning-lab", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory,
-                                                withIntermediateDirectories: true)
-        try data.write(to: directory.appending(path: "default.json"),
-                       options: .atomic)
-    }
 }
 
 private struct LabPanel: View {
     @Binding var style: ToolbarStyle
     let reset: () -> Void
-    let save: () throws -> Void
-    @State private var error: String?
 
     var body: some View {
         Form {
@@ -107,12 +80,7 @@ private struct LabPanel: View {
             Slider(value: $style.cornerRadius, in: 0...24) { Text("Radius") }
             HStack {
                 Button("Reset", action: reset)
-                Button("Save") {
-                    do { try save(); error = nil }
-                    catch let saveFailure { error = saveFailure.localizedDescription }
-                }
             }
-            if let error { Text(error).foregroundStyle(.red) }
         }.padding()
     }
 }
@@ -169,3 +137,65 @@ routes the menu and `Command-Shift-L` shortcut to that coordinator. Window
 dismissal closes the panel, which releases its hosting tree and baseline. Test
 focus return, multiple windows, keyboard navigation, VoiceOver, closed-state
 allocations, and the archived Release app before approval.
+
+## Optional persistence, only when requested
+
+If the user explicitly requests saved profiles, add this code in the same file:
+
+```swift
+#if DEBUG
+struct LabProfile: Codable {
+    let schemaVersion = 1
+    let name = "default"
+    let platform = "macos"
+    let container = "NSPanel"
+    let scope = ["appearance", "layout"]
+    let overrides: ToolbarStyle
+    let notes = ""
+}
+
+extension LabPanelCoordinator {
+    private func saveProfile() throws {
+        let profile = LabProfile(overrides: style.wrappedValue)
+        let data = try JSONEncoder().encode(profile)
+        let directory = URL.applicationSupportDirectory
+            .appending(path: ".ui-tuning-lab", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        try data.write(to: directory.appending(path: "default.json"),
+                       options: .atomic)
+    }
+}
+#endif
+```
+
+In the existing debug-only `LabPanelCoordinator.show()`, add a comma after the
+`reset:` closure and pass this additional argument:
+
+```swift
+save: { [weak self] in
+    guard let self else { return }
+    try self.saveProfile()
+}
+```
+
+Add the Save callback, error state, and button to the existing debug-only controls:
+
+```diff
+ private struct LabPanel: View {
+     @Binding var style: ToolbarStyle
+     let reset: () -> Void
++    let save: () throws -> Void
++    @State private var error: String?
+@@
+                 Button("Reset", action: reset)
++                Button("Save") {
++                    do { try save(); error = nil }
++                    catch let saveFailure { error = saveFailure.localizedDescription }
++                }
+             }
++            if let error { Text(error).foregroundStyle(.red) }
+```
+
+An explicit Save atomically writes `default.json` under Application Support's
+`.ui-tuning-lab/`; failures are visible and leave the edited style intact.

@@ -13,14 +13,18 @@
 - [ ] Baseline is visually and behaviorally equivalent.
 - [ ] Two meaningful variants update the rendered feature.
 - [ ] Reset exactly restores the captured baseline.
-- [ ] Explicit Save succeeds under the documented namespace.
-- [ ] Save failure is visible and retains the draft.
+- [ ] If persistence was requested, explicit Save succeeds under the documented namespace.
+- [ ] If persistence was requested, Save failure is visible and retains the draft.
 - [ ] Primary pointer/touch, keyboard, focus, and gesture paths work.
 - [ ] Applicable accessibility and reduced-motion paths work.
 - [ ] Dismissal releases all lab-owned UI and work.
 - [ ] Release artifact contains no activatable lab.
 
 ## Evidence
+
+For an ephemeral lab, replace both Save checkboxes with
+`N/A: persistence not requested` and attach evidence that no Save action or
+storage writer is present. Do not mark an unrun applicable check as N/A.
 
 - Static-check commands/output:
 - Hands-on screenshots/video/logs:
@@ -32,4 +36,5 @@
 
 ## Result
 
-PENDING — any unchecked, failed, or untested item blocks approval.
+PENDING — any unchecked, failed, or untested applicable item blocks approval.
+Documented N/A Save checks do not block an ephemeral lab.

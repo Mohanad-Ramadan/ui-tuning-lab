@@ -43,8 +43,11 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
   without the lab.
 - At least two presets differ meaningfully and all direct controls update the same
   configuration consumed by the feature.
-- Reset restores the captured baseline exactly; an explicit Save writes only the
-  requested namespaced profile and retains the draft on failure.
+- Reset restores the captured baseline exactly. When persistence was requested,
+  an explicit Save writes only the requested namespaced profile and retains the
+  draft on failure. Otherwise confirm that no Save action or storage writer is
+  present and record the Save checks as `N/A: persistence not requested`, with
+  evidence of that absence.
 - Touch, pointer, keyboard, focus, selection, gestures, screen-reader navigation,
   large text, reduced motion, resizing, rotation, and dismissal remain usable as
   applicable.
@@ -60,4 +63,11 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
   keyboard, and developer-menu activation paths.
 
 Record the exact commands, artifact identity, observations, and evidence links in
-the matching file under `validation/`. Failed or unrun checks remain blocking.
+the target project's task report or a receipt copied from
+`validation/receipt-template.md` into that project. Do not update the installed
+skill's receipts during ordinary app work; the bundled platform receipts are
+reserved for pilots validating this skill itself.
+
+Failed or unrun applicable checks remain blocking. Save checks may be marked
+`N/A: persistence not requested` only with evidence that the lab has no Save
+action or storage writer. All other required checks still need evidence.
