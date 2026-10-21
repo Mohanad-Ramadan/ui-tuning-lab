@@ -1,7 +1,8 @@
 # Candidate — SwiftUI iOS/iPadOS palette
 
 This is implementation guidance, not a completed validation. The feature and lab
-share one `CardStyle`; the immutable baseline is captured before presentation.
+share one `CardStyle`. The baseline is the declared default, `CardStyle.appDefault`,
+so it stays the same however many times the lab is opened and closed.
 Every lab type carries the `UITuningLab` prefix and lives in a file wrapped in
 `#if DEBUG`, so `source-gates` can find it and Release builds compile it out.
 **Copy values** puts the fields that differ from the baseline on the pasteboard
@@ -43,7 +44,6 @@ struct FeatureScreen: View {
     @State private var style = CardStyle.appDefault
     #if DEBUG
     @State private var showUITuningLab = false
-    @State private var uiTuningLabBaseline: CardStyle?
     #endif
 
     var body: some View {
@@ -54,20 +54,20 @@ struct FeatureScreen: View {
                     .disabled(showUITuningLab)
             }
             .popover(isPresented: $showUITuningLab) {
-                UITuningLabControls(style: $style, baseline: uiTuningLabBaseline ?? style)
-                // On compact width, either accept the adaptive sheet or add
-                // .presentationCompactAdaptation(.popover) deliberately.
-            }
-            .onChange(of: showUITuningLab) { _, open in
-                if !open { uiTuningLabBaseline = nil }
+                // The declared default, never the value on screen at open: a draft
+                // kept from an earlier session must still count as a change.
+                UITuningLabControls(style: $style, baseline: .appDefault)
+                    // On iPhone the popover becomes a short sheet the feature
+                    // stays usable behind (references/ios-hosting.md).
+                    .presentationCompactAdaptation(.sheet)
+                    .presentationDetents([.height(320)])
+                    .presentationBackgroundInteraction(.enabled(upThrough: .height(320)))
             }
             #endif
     }
 
     #if DEBUG
     private func openUITuningLab() {
-        guard !showUITuningLab, uiTuningLabBaseline == nil else { return }
-        uiTuningLabBaseline = style
         showUITuningLab = true
     }
     #endif
@@ -82,6 +82,7 @@ import SwiftUI
 struct UITuningLabControls: View {
     @Binding var style: CardStyle
     let baseline: CardStyle
+    @Environment(\.dismiss) private var dismiss
     @State private var status: String?
     @State private var stashedDraft: CardStyle?  // set while the baseline is shown
 
@@ -90,6 +91,7 @@ struct UITuningLabControls: View {
 
     var body: some View {
         Form {
+            Button("Close") { dismiss() }
             Toggle("Show baseline", isOn: showingBaseline)
             Group {
                 HStack {
@@ -121,7 +123,7 @@ struct UITuningLabControls: View {
         .onDisappear { if let stashedDraft { style = stashedDraft } }
     }
 
-    /// Shows the captured baseline in the real feature; turning it off restores the draft.
+    /// Shows the baseline in the real feature; turning it off restores the draft.
     private var showingBaseline: Binding<Bool> {
         Binding(
             get: { stashedDraft != nil },
@@ -225,7 +227,7 @@ product before changing the receipt from pending.
 The candidate above is ephemeral. If the user explicitly requests saved profiles,
 replace `UITuningLabControls.swift` with this version. `FeatureScreen.swift` stays
 unchanged, and the envelope, writer, and loader stay development-only. Load saved
-applies the stored overrides to the draft; the baseline stays as captured, so
+applies the stored overrides to the draft; the baseline stays the declared default, so
 Reset still returns to it. An unreadable or incompatible file is reported and
 left untouched.
 
@@ -257,6 +259,7 @@ struct UITuningLabProfileMismatch: LocalizedError {
 struct UITuningLabControls: View {
     @Binding var style: CardStyle
     let baseline: CardStyle
+    @Environment(\.dismiss) private var dismiss
     @State private var status: String?
     @State private var stashedDraft: CardStyle?  // set while the baseline is shown
 
@@ -265,6 +268,7 @@ struct UITuningLabControls: View {
 
     var body: some View {
         Form {
+            Button("Close") { dismiss() }
             Toggle("Show baseline", isOn: showingBaseline)
             Group {
                 HStack {
@@ -308,7 +312,7 @@ struct UITuningLabControls: View {
         .onDisappear { if let stashedDraft { style = stashedDraft } }
     }
 
-    /// Shows the captured baseline in the real feature; turning it off restores the draft.
+    /// Shows the baseline in the real feature; turning it off restores the draft.
     private var showingBaseline: Binding<Bool> {
         Binding(
             get: { stashedDraft != nil },

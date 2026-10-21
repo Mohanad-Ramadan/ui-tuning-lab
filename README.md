@@ -15,7 +15,7 @@ Start with `SKILL.md`; it routes to everything else.
 ## Guarantees
 
 - Development, DEBUG, internal, or tester builds only.
-- Exact baseline capture and reset.
+- Reset always returns to the declared default, however often the lab reopens.
 - Persistence off by default; explicit namespaced Save when requested.
 - Closing releases all lab-owned UI, timers, observers, listeners, and tasks.
 

@@ -23,14 +23,15 @@ a list of fields is fine; keep each one labelled.
 
 - **Presets**: at least two meaningful presets that differ clearly from the
   baseline and from each other.
-- **Show baseline**: a flip that renders the captured baseline in the real
+- **Show baseline**: a flip that renders the baseline in the real
   feature and restores the draft when turned off. While the baseline is shown,
   an edit must never land on it silently: either disable the controls (the
   palette examples, which also disable Reset and Copy values) or switch back to
   the draft on the first edit (the motion example). Copy values always reports
   the draft. Restore the draft if the lab closes while the baseline is shown.
 - **Reset**: copies the baseline back into the draft.
-- **Copy values**: see `references/landing-protocol.md`.
+- **Copy values**: see `references/landing-protocol.md`. Its status line shows
+  what was copied at that moment; after further edits, copy again before landing.
 
 ## Required for motion
 
@@ -38,7 +39,19 @@ a list of fields is fine; keep each one labelled.
 - **Speed**: 1×, 0.5×, 0.25×, 0.1×, applied by stretching the rendered duration.
   Never change global animation speed (`UIView` layer speed, DevTools throttling).
 - **Reduced motion**: show what the feature does with the user's setting, and say
-  so in the lab. Never override the setting.
+  so in the lab. Never override the setting. If the feature has no reduced-motion
+  path at all, do not add one inside the lab (the lab must not change how the
+  feature behaves). Say so in the panel and list it in the report as a finding
+  for the user.
+- **One-shot and delayed animations**: an entrance that runs once, often after a
+  fixed delay such as a splash screen, replays by re-creating the view (bump its
+  `id`) with a short lab-only delay instead of the production one. Speed
+  stretches every timing the motion is made of, including stagger, and the
+  start delay too when it is part of what is being tuned. Leave a delay out of
+  the controls unless the user asked to tune it, and say so.
+- **Other places using the same value**: when another view hard-codes a value
+  the lab now tunes (for example a matched transition that starts from the old
+  card size), list it in the report. It will not follow the draft and may jump.
 
 Speed, Show baseline, and Replay are preview settings: they never enter the draft,
 Copy values, or a saved profile.

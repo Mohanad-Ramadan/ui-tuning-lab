@@ -62,7 +62,8 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
   without the lab.
 - At least two presets differ meaningfully and all direct controls update the same
   configuration consumed by the feature.
-- Reset restores the captured baseline exactly.
+- Reset restores the baseline (the declared default) exactly, including after the
+  lab has been closed and reopened with a draft still applied.
 - Copy values copies, and logs as one `UITUNINGLAB_VALUES` line, only the fields
   that differ from the baseline; `{}` when nothing changed. Landing writes those
   values into the feature defaults (`references/landing-protocol.md`).

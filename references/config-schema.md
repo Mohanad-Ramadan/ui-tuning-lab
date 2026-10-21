@@ -21,7 +21,7 @@ Template: `assets/labconfig.template.json`.
 | `labTarget` | string | `feature`, or `container` when tuning the host itself |
 | `scope` | string array | non-empty; the requested dimensions (`animation`, `layout`, `appearance`, `logic`) |
 | `container` | string | the host surface the lab uses |
-| `baseline` | object | non-empty; the captured configuration |
+| `baseline` | object | non-empty; the feature's declared default |
 | `variants` | array | each `{ "name": string, "overrides": object }` |
 | `persist` | string | `none` or `namespaced-save` |
 | `profile` | string | the saved-profile name Save writes |
@@ -47,7 +47,7 @@ ignore unknown fields and do not range-check values, so validate a hand-edited
 file with `verify.sh profile` before loading it. On any mismatch the lab shows an
 error, keeps the current draft, and leaves the stored profile untouched
 (`references/edge-cases.md`). Loading applies `overrides` to the draft only; the
-captured baseline does not change, so Reset still returns to it.
+baseline does not change, so Reset still returns to it.
 
 Validate a web profile by copying the stored value to a file first. Validate an
 Apple profile from the app container, for example

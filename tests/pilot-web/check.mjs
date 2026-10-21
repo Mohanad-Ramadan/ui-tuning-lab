@@ -128,16 +128,32 @@ async function devChecks(engineName, engine, viewportName) {
       await page.evaluate(() => document.activeElement?.textContent?.trim() === "Tune"));
     record(scope, "closing keeps the tuned draft", !same(before, await cardStyles(page)));
 
-    // Closing while the baseline is shown must bring the draft back. Each open
-    // captures a new baseline (what the feature renders now), so edit first.
+    // Reopen with the draft still applied. The baseline is the declared default,
+    // so the draft must still count as a change.
     await page.getByRole("button", { name: "Tune" }).click();
     await dialog.waitFor();
-    const baselineAtOpen = await cardStyles(page);
+    // `before` is the declared default: it was read before any tuning, and the
+    // app starts at its defaults. The copied fields must be exactly the ones the
+    // kept draft changed.
+    const kept = await cardStyles(page);
+    const expectedDraft = Object.fromEntries(Object.keys(kept)
+      .filter(key => kept[key] !== before[key]).map(key => [key, parseFloat(kept[key])]));
+    logs.length = 0;
+    await page.getByRole("button", { name: "Copy values" }).click();
+    await page.waitForTimeout(300);
+    const reopenLine = logs.find(text => text.startsWith("UITUNINGLAB_VALUES "));
+    let reopened = null;
+    try { reopened = reopenLine && JSON.parse(reopenLine.slice("UITUNINGLAB_VALUES ".length)); } catch { /* reported below */ }
+    const sorted = value => JSON.stringify(Object.fromEntries(Object.entries(value ?? {}).sort()));
+    record(scope, "after reopening, Copy values reports exactly the kept draft",
+      Object.keys(expectedDraft).length > 0 && sorted(reopened) === sorted(expectedDraft),
+      `${reopenLine ?? "no UITUNINGLAB_VALUES line"}; expected ${sorted(expectedDraft)}`);
     await setRange(page, /Radius/, 6);
     const draftAgain = await cardStyles(page);
+    // Closing while the baseline is shown must bring the draft back.
     await page.getByRole("button", { name: "Show baseline" }).click();
-    record(scope, "the baseline is showing before Close",
-      same(baselineAtOpen, await cardStyles(page)) && !same(baselineAtOpen, draftAgain));
+    record(scope, "after reopening, Show baseline shows the declared default",
+      same(before, await cardStyles(page)) && !same(before, draftAgain));
     await page.getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(200);
     record(scope, "closing while the baseline is shown restores the draft", same(draftAgain, await cardStyles(page)));

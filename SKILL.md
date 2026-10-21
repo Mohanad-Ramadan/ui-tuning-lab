@@ -34,8 +34,9 @@ A good lab feels like this:
 3. **Build the lab.** Start from the matching file in `examples/`. Wrap only the
    feature, lifting a constant config into state if needed, and keep the panel
    beside the feature and open while it is used (`references/setup-protocol.md`,
-   "Wire the host"). Capture the baseline from the object the feature renders;
-   keep the draft separate. Pick
+   "Wire the host"). The baseline is the feature's declared default (what
+   ships), never the value on screen when the lab opens: a draft kept from an
+   earlier open must still count as a change. Keep the draft separate. Pick
    controls from `references/control-mapping.md`: at least two presets, direct
    controls, Show baseline, Reset, and Copy values, plus Replay and Speed for
    motion. Add Save and Load saved only when persistence was requested
@@ -73,7 +74,7 @@ module (presets, a diff function) need no marker: the file itself is gated.
 | Guarantee | How it is checked |
 |---|---|
 | **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files, and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
-| **Reversible.** Reset restores the captured baseline exactly, behavior included. | Hands-on: open, change everything, Reset, and compare with the lab closed. |
+| **Reversible.** Reset restores the baseline (the declared default) exactly, behavior included. | Hands-on: open, change everything, close, reopen, Reset, and compare with the unmodified app. |
 | **Explicit persistence.** Nothing is written unless the user asked; saves go only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | No storage writer in an ephemeral lab; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
 | **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
 
@@ -90,6 +91,8 @@ a save would overwrite a production key.
 
 - `references/setup-protocol.md`: inspection, reusing existing tools, when to ask.
 - `references/surface-matrix.md`: native containers and gates per platform.
+- `references/ios-hosting.md`: iOS panels, triggers, Xcode targets, and UIKit or
+  hybrid apps.
 - `references/control-mapping.md`: which control for which value; required controls.
 - `references/landing-protocol.md`: reading values, writing defaults, removal.
 - `references/config-schema.md`: `lab.json` and saved profiles.

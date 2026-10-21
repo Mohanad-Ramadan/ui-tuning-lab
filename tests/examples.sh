@@ -89,7 +89,19 @@ for example in $EXAMPLES; do
   done
 done
 
-require_text examples/swiftui-popover-palette.md 'guard !showUITuningLab, uiTuningLabBaseline == nil else { return }' 'iOS activation preserves its original baseline'
+require_text examples/swiftui-popover-palette.md 'UITuningLabControls(style: $style, baseline: .appDefault)' 'iOS baseline is the declared default'
+require_text examples/macos-panel-minimal.md 'baseline: .appDefault)' 'macOS baseline is the declared default'
+require_text examples/web-floating-panel.md 'const baseline: CardConfig = appDefault;' 'web baseline is the declared default'
+require_text examples/animation-spring.md 'const baseline: EntranceMotion = appDefault;' 'web motion baseline is the declared default'
+require_text examples/animation-spring.md 'uiTuningLab.rendered(draft: motion, baseline: .appDefault)' 'SwiftUI motion baseline is the declared default'
+require_text examples/swiftui-popover-palette.md '.presentationBackgroundInteraction(.enabled(upThrough: .height(320)))' 'iOS sheet leaves the feature usable'
+require_text examples/swiftui-popover-palette.md 'Button("Close") { dismiss() }' 'iOS lab has a Close button'
+# A baseline taken from the screen at open becomes the draft after a reopen.
+if grep -nE 'setBaseline\(|uiTuningLabBaseline|baseline = (style|config|motion)|baseline: *(model\.)?(style|config|motion)\b|baseline \?\? ' "$ROOT"/examples/*.md >/dev/null; then
+  not_ok 'no example captures the baseline from the screen at open'
+else
+  ok 'no example captures the baseline from the screen at open'
+fi
 require_text examples/web-floating-panel.md 'role="dialog"' 'web popover exposes dialog semantics'
 require_text examples/web-floating-panel.md 'aria-labelledby="ui-tuning-lab-title"' 'web dialog has a labelled heading'
 require_text examples/web-floating-panel.md '{...popoverManual}' 'web lab stays open while the feature is used'

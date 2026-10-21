@@ -7,7 +7,7 @@ one ("keep this", "ship these values", "that's the one").
 ## 1. Get the values
 
 Every lab has a **Copy values** action. It copies a JSON object containing only
-the draft fields that differ from the captured baseline, and logs the same object
+the draft fields that differ from the baseline, and logs the same object
 on one line:
 
 ```text
@@ -37,7 +37,7 @@ the values and never land.
 
 ## 2. Write them into the defaults
 
-1. Find the declaration the baseline was captured from, such as
+1. Find the declaration the baseline comes from, such as
    `CardStyle.appDefault` or `appDefault` in `CardFeature.tsx`.
 2. Change only the fields in the JSON. Keep the file's units, literal style, and
    formatting, for example `20` rather than `20.0` where the file uses integers.
@@ -78,8 +78,8 @@ expects to tune again soon:
   The release-artifact checks in `references/verify-protocol.md` are for a lab
   that is still present. After removal they are optional: a passing source
   check plus a build is enough, because no lab code remains to leak.
-- **Keep.** Leave the lab gated as it is. Its baseline now captures the new
-  defaults on the next open.
+- **Keep.** Leave the lab gated as it is. Its baseline is the declared default,
+  so it now holds the landed values.
 
 ## 4. Confirm
 

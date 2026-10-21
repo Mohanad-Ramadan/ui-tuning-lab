@@ -1,7 +1,7 @@
 # Candidate — entrance animation with spring controls
 
 Animation tuning needs more than sliders: the motion must be replayed on demand,
-slowed down to be judged, and flipped against the captured baseline. This example
+slowed down to be judged, and flipped against the baseline. This example
 tunes a card's entrance spring on SwiftUI and the web. The lab only scales the
 values it renders; it never changes global animation speed or the user's
 reduced-motion setting.
@@ -10,8 +10,8 @@ Every lab in this example provides:
 
 - **Replay**: re-creates the card (a bumped `id` / `key`) so its entrance runs again.
 - **Speed**: 1×, 0.5×, 0.25×, or 0.1×, applied by stretching the rendered duration.
-- **Show baseline**: flips the rendered motion between the captured baseline and the
-  draft, replaying each time.
+- **Show baseline**: flips the rendered motion between the baseline (the declared
+  default) and the draft, replaying each time.
 - **Reduced motion**: the feature keeps its own reduced animation, and the lab says
   when that is what you are seeing.
 - **Copy values**: copies the draft fields that differ from the baseline and logs
@@ -61,13 +61,12 @@ struct EntranceScreen: View {
     @State private var motion = EntranceMotion.appDefault
     #if DEBUG
     @State private var showUITuningLab = false
-    @State private var uiTuningLabBaseline: EntranceMotion?
     @State private var uiTuningLab = UITuningLabMotionState()
     #endif
 
     var body: some View {
         #if DEBUG
-        EntranceCard(motion: uiTuningLab.rendered(draft: motion, baseline: uiTuningLabBaseline))
+        EntranceCard(motion: uiTuningLab.rendered(draft: motion, baseline: .appDefault))
             .id(uiTuningLab.replayToken)
             .frame(maxHeight: .infinity, alignment: .top)
             .toolbar {
@@ -78,7 +77,8 @@ struct EntranceScreen: View {
                 UITuningLabMotionControls(
                     motion: $motion,
                     lab: $uiTuningLab,
-                    baseline: uiTuningLabBaseline ?? motion
+                    // The declared default, never the value on screen at open.
+                    baseline: .appDefault
                 )
                 // Compact width adapts to a sheet; keep the card visible above it.
                 .presentationDetents([.medium])
@@ -86,7 +86,7 @@ struct EntranceScreen: View {
             }
             .onChange(of: showUITuningLab) { _, open in
                 // Keep the replay token so closing does not re-create the card.
-                if !open { uiTuningLabBaseline = nil; uiTuningLab.speed = 1; uiTuningLab.showBaseline = false }
+                if !open { uiTuningLab.speed = 1; uiTuningLab.showBaseline = false }
             }
         #else
         EntranceCard(motion: motion)
@@ -96,8 +96,6 @@ struct EntranceScreen: View {
 
     #if DEBUG
     private func openUITuningLab() {
-        guard !showUITuningLab, uiTuningLabBaseline == nil else { return }
-        uiTuningLabBaseline = motion
         showUITuningLab = true
     }
     #endif
@@ -114,8 +112,8 @@ struct UITuningLabMotionState {
     var speed = 1.0           // 1 = real time; smaller values slow the preview
     var showBaseline = false
 
-    func rendered(draft: EntranceMotion, baseline: EntranceMotion?) -> EntranceMotion {
-        var motion = showBaseline ? (baseline ?? draft) : draft
+    func rendered(draft: EntranceMotion, baseline: EntranceMotion) -> EntranceMotion {
+        var motion = showBaseline ? baseline : draft
         motion.duration /= speed
         return motion
     }
@@ -362,7 +360,7 @@ export function EntranceScreen() {
 <!-- file: EntranceScreen.ui-tuning-lab.tsx -->
 ```tsx
 import { useEffect, useRef, useState } from "react";
-import { EntranceCard } from "./EntranceCard";
+import { appDefault, EntranceCard } from "./EntranceCard";
 import type { EntranceMotion } from "./EntranceCard";
 import type { TuningLabHostProps } from "./EntranceScreen";
 
@@ -383,6 +381,9 @@ const presets = {
   playful: { durationMs: 900, bounce: 0.45, offsetPx: 64 },
 } satisfies Record<string, EntranceMotion>;
 const speeds = [1, 0.5, 0.25, 0.1];
+// The baseline is the declared default, never the value on screen when the lab
+// opens: a draft kept from an earlier session must still count as a change.
+const baseline: EntranceMotion = appDefault;
 
 // The draft fields that differ from the baseline.
 function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
@@ -392,7 +393,6 @@ function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
 
 export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHostProps) {
   const [open, setOpen] = useState(false);
-  const [baseline, setBaseline] = useState<EntranceMotion | null>(null);
   const [replay, setReplay] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [showBaseline, setShowBaseline] = useState(false);
@@ -406,7 +406,6 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   // when the browser has no Popover API.
   function finishClose() {
     setOpen(false);
-    setBaseline(null);
     setSpeed(1);
     setShowBaseline(false);
   }
@@ -443,13 +442,13 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
-  const source = showBaseline && baseline ? baseline : motion;
+  const source = showBaseline ? baseline : motion;
   const rendered = { ...source, durationMs: source.durationMs / speed };
   const replayNow = () => setReplay(count => count + 1);
 
-  function openLab() { setBaseline({ ...motion }); setStatus(null); setOpen(true); }
+  function openLab() { setStatus(null); setOpen(true); }
   async function copyValues() {
-    const values = JSON.stringify(changedValues(baseline ?? motion, motion));
+    const values = JSON.stringify(changedValues(baseline, motion));
     console.info(`UITUNINGLAB_VALUES ${values}`);
     try {
       await navigator.clipboard.writeText(values);
@@ -458,7 +457,7 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
       setStatus(`Clipboard unavailable; values logged to the console: ${values}`);
     }
   }
-  function reset() { if (baseline) setMotion({ ...baseline }); replayNow(); }
+  function reset() { setMotion({ ...baseline }); replayNow(); }
   function apply(preset: EntranceMotion) { setShowBaseline(false); setMotion({ ...preset }); replayNow(); }
   // Editing the draft shows the draft, so a change is never hidden.
   function edit(patch: Partial<EntranceMotion>) {

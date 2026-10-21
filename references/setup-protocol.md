@@ -10,7 +10,18 @@ tests. Record these working choices:
 - gate: the project's development, DEBUG, internal, or tester mechanism;
 - persistence: none unless the user asks to save or reuse profiles;
 - profiles: one working draft unless named profiles were requested;
-- baseline: a copy of the configuration currently rendered by the feature.
+- baseline: the feature's declared default, the value it ships with (for example
+  `CardStyle.appDefault` or `cardDefaults`). Never take it from the screen when the
+  lab opens: the draft survives closing, so a reopened lab would treat the draft as
+  the original, Reset would do nothing, and Copy values would miss earlier changes.
+  When the shipped value is computed at runtime (from a theme, a server, or a
+  device trait), the declared default is not what the user sees, and using it
+  would make Reset change the feature and Copy values report edits nobody made.
+  Then capture the rendered value on the first open, before any lab edit, and keep
+  it in a DEBUG-only store that outlives the panel (keeping one value is allowed;
+  the teardown guarantee is about work and UI). Capture it again if its source
+  changes while the draft still equals it, for example on a theme switch, and key
+  the store to that source. Copy values reports against this captured baseline.
 
 ## Reuse an existing control surface
 
@@ -24,7 +35,7 @@ Before building a panel, look for one the project already has:
 | React Native `DevSettings.addMenuItem` or Flipper plugins | the existing developer menu |
 
 Reuse changes only the control surface. The four guarantees, the naming rule, a
-captured baseline, Copy values, and landing still apply, and a third-party panel
+baseline, Copy values, and landing still apply, and a third-party panel
 must be imported only from the gated lab module so it drops out of production.
 If the existing tool cannot capture a baseline or unmount cleanly, build the
 native panel instead and say why.

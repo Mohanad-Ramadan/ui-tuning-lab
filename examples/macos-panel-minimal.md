@@ -1,10 +1,11 @@
 # Candidate — macOS panel
 
-The coordinator lazily owns a nonmodal panel. It captures the rendered
-configuration on open, applies two presets to that same binding, and releases the
-panel and hosting tree on close. **Copy values** puts the fields that differ from
-the baseline on the pasteboard and logs them as one `UITUNINGLAB_VALUES {...}`
-line for landing (`references/landing-protocol.md`). The default candidate has no persistence. Every
+The coordinator lazily owns a nonmodal panel. Its baseline is the declared
+default, `ToolbarStyle.appDefault`; presets and sliders edit the scene model's
+style, and closing releases the panel and hosting tree. **Copy values** puts the
+fields that differ from the baseline on the pasteboard and logs them as one
+`UITUNINGLAB_VALUES {...}` line for landing (`references/landing-protocol.md`).
+The default candidate has no persistence. Every
 lab type carries the `UITuningLab` prefix and lives in a file wrapped in
 `#if DEBUG`, so `source-gates` can find it and Release builds compile it out.
 
@@ -86,8 +87,9 @@ final class UITuningLabCoordinator: NSObject, NSWindowDelegate {
     func show() {
         if let panel { panel.makeKeyAndOrderFront(nil); return }
         // The panel observes the model and the lab state, so every change
-        // redraws it; it keeps the captured baseline for Reset and Copy values.
-        let controls = UITuningLabPanel(model: model, lab: lab, baseline: model.style)
+        // redraws it. The baseline is the declared default, never the value on
+        // screen at open: a draft kept from an earlier session must still count.
+        let controls = UITuningLabPanel(model: model, lab: lab, baseline: .appDefault)
         let panel = UITuningLabNSPanel(contentRect: .init(x: 0, y: 0, width: 300, height: 250),
                             styleMask: [.titled, .closable, .utilityWindow],
                             backing: .buffered, defer: false)
@@ -186,7 +188,7 @@ struct UITuningLabPanel: View {
         }.padding()
     }
 
-    /// Shows the captured baseline in the real feature; turning it off restores the draft.
+    /// Shows the baseline in the real feature; turning it off restores the draft.
     private var showingBaseline: Binding<Bool> {
         Binding(
             get: { lab.stashedDraft != nil },
@@ -282,7 +284,7 @@ private func uiTuningLabNormalized(_ field: Any) -> Any {
 
 Each window's `FeatureSceneModel` owns exactly one coordinator; the focused scene
 routes the menu and `Command-Shift-L` shortcut to that coordinator. Window
-dismissal closes the panel, which releases its hosting tree and captured baseline. Test
+dismissal closes the panel, which releases its hosting tree. Test
 focus return, multiple windows, keyboard navigation, VoiceOver, closed-state
 allocations, and the archived Release app before approval.
 
@@ -290,7 +292,7 @@ allocations, and the archived Release app before approval.
 
 If the user explicitly requests saved profiles, replace `UITuningLabPanel.swift`
 with this version. The app and coordinator files stay unchanged. Load saved
-applies the stored overrides to the draft; the baseline stays as captured, so
+applies the stored overrides to the draft; the baseline stays the declared default, so
 Reset still returns to it. An unreadable or incompatible file is reported and
 left untouched.
 
@@ -364,7 +366,7 @@ struct UITuningLabPanel: View {
         }.padding()
     }
 
-    /// Shows the captured baseline in the real feature; turning it off restores the draft.
+    /// Shows the baseline in the real feature; turning it off restores the draft.
     private var showingBaseline: Binding<Bool> {
         Binding(
             get: { lab.stashedDraft != nil },

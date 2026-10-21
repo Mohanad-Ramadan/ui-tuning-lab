@@ -3,8 +3,8 @@
 The feature and controls share one config state. All lab code lives in
 `FeatureScreen.ui-tuning-lab.tsx`; the feature reaches it only through a dynamic
 import inside an `import.meta.env.DEV` block, so production builds drop both the
-branch and the lab chunk. The baseline is captured on open; closing unmounts the
-popover and its listener. The default candidate is ephemeral and has no storage
+branch and the lab chunk. The baseline is the declared default, `appDefault`;
+closing unmounts the popover and its listener. The default candidate is ephemeral and has no storage
 writer or Save action. **Copy values** copies the fields that differ from the
 baseline and logs them as one `UITUNINGLAB_VALUES {...}` console line for landing
 (`references/landing-protocol.md`).
@@ -59,7 +59,7 @@ export function FeatureScreen() {
 <!-- file: FeatureScreen.ui-tuning-lab.tsx -->
 ```tsx
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CardFeature } from "./CardFeature";
+import { appDefault, CardFeature } from "./CardFeature";
 import type { CardConfig } from "./CardFeature";
 import type { TuningLabHostProps } from "./FeatureScreen";
 
@@ -79,6 +79,9 @@ const presets = {
   compact: { radius: 4, gap: 4 },
   relaxed: { radius: 24, gap: 16 },
 } satisfies Record<string, CardConfig>;
+// The baseline is the declared default, never the value on screen when the lab
+// opens: a draft kept from an earlier session must still count as a change.
+const baseline: CardConfig = appDefault;
 
 // The draft fields that differ from the baseline.
 function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
@@ -88,7 +91,6 @@ function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
 
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
   const [open, setOpen] = useState(false);
-  const [baseline, setBaseline] = useState<CardConfig | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -109,7 +111,6 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     stashedDraft.current = null;
     setShowingBaseline(false);
     setOpen(false);
-    setBaseline(null);
   }
   function closeLab() {
     const node = panel.current;
@@ -144,21 +145,21 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
-  function openLab() { setBaseline({ ...config }); setStatus(null); setOpen(true); }
-  function reset() { if (baseline) setConfig({ ...baseline }); }
+  function openLab() { setStatus(null); setOpen(true); }
+  function reset() { setConfig({ ...baseline }); }
   function toggleBaseline() {
     if (stashedDraft.current) {
       setConfig(stashedDraft.current);
       stashedDraft.current = null;
       setShowingBaseline(false);
-    } else if (baseline) {
+    } else {
       stashedDraft.current = config;
       setConfig({ ...baseline });
       setShowingBaseline(true);
     }
   }
   async function copyValues() {
-    const values = JSON.stringify(changedValues(baseline ?? config, config));
+    const values = JSON.stringify(changedValues(baseline, config));
     console.info(`UITUNINGLAB_VALUES ${values}`);
     try {
       await navigator.clipboard.writeText(values);
@@ -219,14 +220,14 @@ production assets before approval.
 Only when the user explicitly requests saved profiles, replace
 `FeatureScreen.ui-tuning-lab.tsx` with this version. The feature files stay
 unchanged, and the writer and loader live only in the development-only module.
-Load saved applies the stored overrides to the draft; the baseline stays as
-captured, so Reset still returns to it. Unreadable or incompatible data is
+Load saved applies the stored overrides to the draft; the baseline stays the
+declared default, so Reset still returns to it. Unreadable or incompatible data is
 reported and left in storage untouched.
 
 <!-- file: FeatureScreen.ui-tuning-lab.tsx variant=persist -->
 ```tsx
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CardFeature } from "./CardFeature";
+import { appDefault, CardFeature } from "./CardFeature";
 import type { CardConfig } from "./CardFeature";
 import type { TuningLabHostProps } from "./FeatureScreen";
 
@@ -256,6 +257,9 @@ const presets = {
   compact: { radius: 4, gap: 4 },
   relaxed: { radius: 24, gap: 16 },
 } satisfies Record<string, CardConfig>;
+// The baseline is the declared default, never the value on screen when the lab
+// opens: a draft kept from an earlier session must still count as a change.
+const baseline: CardConfig = appDefault;
 
 // The draft fields that differ from the baseline.
 function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
@@ -265,7 +269,6 @@ function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
 
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
   const [open, setOpen] = useState(false);
-  const [baseline, setBaseline] = useState<CardConfig | null>(null);
   const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -286,7 +289,6 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     stashedDraft.current = null;
     setShowingBaseline(false);
     setOpen(false);
-    setBaseline(null);
   }
   function closeLab() {
     const node = panel.current;
@@ -321,21 +323,21 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
-  function openLab() { setBaseline({ ...config }); setStatus(null); setOpen(true); }
-  function reset() { if (baseline) setConfig({ ...baseline }); }
+  function openLab() { setStatus(null); setOpen(true); }
+  function reset() { setConfig({ ...baseline }); }
   function toggleBaseline() {
     if (stashedDraft.current) {
       setConfig(stashedDraft.current);
       stashedDraft.current = null;
       setShowingBaseline(false);
-    } else if (baseline) {
+    } else {
       stashedDraft.current = config;
       setConfig({ ...baseline });
       setShowingBaseline(true);
     }
   }
   async function copyValues() {
-    const values = JSON.stringify(changedValues(baseline ?? config, config));
+    const values = JSON.stringify(changedValues(baseline, config));
     console.info(`UITUNINGLAB_VALUES ${values}`);
     try {
       await navigator.clipboard.writeText(values);
