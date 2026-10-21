@@ -1,6 +1,6 @@
 ok - [chromium/desktop] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
 ok - [chromium/desktop] Close is visible without scrolling the page
-ok - [chromium/desktop] panel fits inside the viewport: {"x":930,"y":538.1875,"width":334,"height":189.8125}
+ok - [chromium/desktop] panel fits inside the viewport: {"x":1019.5,"y":520.1875,"width":244.5,"height":207.8125}
 ok - [chromium/desktop] focus moves into the panel
 ok - [chromium/desktop] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
 ok - [chromium/desktop] radius slider edits the feature
@@ -18,7 +18,7 @@ ok - [chromium/desktop] closing while the baseline is shown restores the draft
 ok - [chromium/desktop] keyboard reaches every control
 ok - [chromium/mobile] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
 ok - [chromium/mobile] Close is visible without scrolling the page
-ok - [chromium/mobile] panel fits inside the viewport: {"x":25,"y":550.1875,"width":334,"height":189.8125}
+ok - [chromium/mobile] panel fits inside the viewport: {"x":114.5,"y":532.1875,"width":244.5,"height":207.8125}
 ok - [chromium/mobile] focus moves into the panel
 ok - [chromium/mobile] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
 ok - [chromium/mobile] radius slider edits the feature
@@ -36,7 +36,7 @@ ok - [chromium/mobile] closing while the baseline is shown restores the draft
 ok - [chromium/mobile] keyboard reaches every control
 ok - [chromium/landscape] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
 ok - [chromium/landscape] Close is visible without scrolling the page
-ok - [chromium/landscape] panel fits inside the viewport: {"x":462,"y":113.1875,"width":334,"height":189.8125}
+ok - [chromium/landscape] panel fits inside the viewport: {"x":551.5,"y":95.1875,"width":244.5,"height":207.8125}
 ok - [chromium/landscape] focus moves into the panel
 ok - [chromium/landscape] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
 ok - [chromium/landscape] radius slider edits the feature
@@ -59,7 +59,7 @@ not ok - [firefox/landscape] browser launched: Error: browserType.launch: Failed
 not ok - [firefox/production] browser launched: Error: browserType.launch: Failed to launch the browser process.
 ok - [webkit/desktop] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
 ok - [webkit/desktop] Close is visible without scrolling the page
-ok - [webkit/desktop] panel fits inside the viewport: {"x":930,"y":558.15625,"width":334,"height":169.84375}
+ok - [webkit/desktop] panel fits inside the viewport: {"x":1019.5,"y":522.15625,"width":244.5,"height":205.84375}
 ok - [webkit/desktop] focus moves into the panel
 ok - [webkit/desktop] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
 ok - [webkit/desktop] radius slider edits the feature
@@ -77,7 +77,7 @@ ok - [webkit/desktop] closing while the baseline is shown restores the draft
 ok - [webkit/desktop] keyboard reaches every control
 ok - [webkit/mobile] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
 ok - [webkit/mobile] Close is visible without scrolling the page
-ok - [webkit/mobile] panel fits inside the viewport: {"x":25,"y":570.15625,"width":334,"height":169.84375}
+ok - [webkit/mobile] panel fits inside the viewport: {"x":114.5,"y":534.15625,"width":244.5,"height":205.84375}
 ok - [webkit/mobile] focus moves into the panel
 ok - [webkit/mobile] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
 ok - [webkit/mobile] radius slider edits the feature
@@ -95,7 +95,7 @@ ok - [webkit/mobile] closing while the baseline is shown restores the draft
 ok - [webkit/mobile] keyboard reaches every control
 ok - [webkit/landscape] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
 ok - [webkit/landscape] Close is visible without scrolling the page
-ok - [webkit/landscape] panel fits inside the viewport: {"x":462,"y":133.15625,"width":334,"height":169.84375}
+ok - [webkit/landscape] panel fits inside the viewport: {"x":551.5,"y":97.15625,"width":244.5,"height":205.84375}
 ok - [webkit/landscape] focus moves into the panel
 ok - [webkit/landscape] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
 ok - [webkit/landscape] radius slider edits the feature

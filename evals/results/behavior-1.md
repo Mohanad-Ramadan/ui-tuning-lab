@@ -1,6 +1,7 @@
-# Behavior evals, run 1 (2026-10-21)
+# Evals, run 1 (2026-10-21)
 
-Skill commit `3d23b79`, package fingerprint `1b1a444351352f93`. Each run used a
+E1 and E2 ran at `3d23b79` (fingerprint `1b1a444351352f93`) and again at
+`b06291f` (fingerprint `c421465931259a76`) with the same results. Each run used a
 fresh agent that could read only the packaged skill and the pilot app.
 
 ## E1 ephemeral-web-lab: 6/6 pass
@@ -29,16 +30,33 @@ fresh agent that could read only the packaged skill and the pilot app.
 
 There is no iOS pilot app in this repository yet.
 
-## Trigger eval: not run
+## Trigger eval: 10/10 triggered, 0/12 false triggers (`results/trigger-3.json`)
 
-The first attempt is in `results/invalid/`: every query failed because the local
-`claude` CLI was not logged in ("OAuth session expired"), so the 0% trigger rate
-says nothing about the description. Rerun after `claude` is logged in:
+Run with `evals/run_trigger.py` at `b06291f`: Claude Code 2.1.304, model
+`claude-opus-5-5`, 1 run per query, at most 4 turns, from an empty scratch
+project with the packaged skill installed as a project skill and the shell,
+edit, and web tools disabled. All 10 should-trigger queries invoked the skill as
+their first tool call; none of the 12 near-misses invoked it. Two near-misses
+called a different skill (performance profiling, artifacts), which is correct.
+
+Two earlier runs are in `results/invalid/` and say nothing about the description:
+
+- `trigger-1`: the `claude` CLI was not logged in, so every call failed.
+- `trigger-2`: the CLI on `PATH` (2.1.275) rejects `claude-opus-5-5` ("version
+  2.1.280 or newer is required").
+
+`run_trigger.py` replaces skill-creator's `run_eval` here for two reasons.
+`run_eval` counts only the first tool call, and global instructions that say to
+explore first make the model look around before invoking any skill. It also runs
+`claude -p` from the home directory, where it read the user's real projects
+during a probe. Rerun with:
 
 ```sh
-cd <skill-creator-dir> && python3 -m scripts.run_eval --eval-set <repo>/evals/trigger-eval.json \
-  --skill-path <repo> --model claude-opus-5-5 --runs-per-query 3
+python3 evals/run_trigger.py --claude "<claude 2.1.280+>" --model claude-opus-5-5 --runs 3
 ```
+
+Caveat: one run per query, to stay within the account's usage limits. Three
+runs per query would measure flakiness.
 
 ## Agent feedback from these runs: resolved after `3d23b79`
 

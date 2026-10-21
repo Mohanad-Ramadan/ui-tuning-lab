@@ -6,7 +6,7 @@
     - button "Compact"
     - button "Relaxed"
     - text: Radius
-    - slider "Radius": "20"
+    - slider "Radius": "24"
     - text: Gap
     - slider "Gap": "16"
     - text: Padding

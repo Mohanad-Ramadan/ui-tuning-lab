@@ -1,0 +1,385 @@
+{
+  "summary": {
+    "true_positive": 10,
+    "positives": 10,
+    "false_positive": 0,
+    "negatives": 12,
+    "runs_with_errors": 0,
+    "model": "claude-opus-5-5",
+    "runs_per_query": 1,
+    "max_turns": 4
+  },
+  "results": [
+    {
+      "query": "the card corners in our React settings page feel off. can you add some sliders so I can drag the radius and padding around in the running app and pick what looks best?",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": true,
+          "tools": [
+            "Skill",
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "I want to tune the spring on the sheet that slides up in our SwiftUI onboarding flow. Give me live controls for duration and bounce so I can replay it until it feels right",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": true,
+          "tools": [
+            "Skill",
+            "Glob",
+            "Read",
+            "Glob",
+            "Glob",
+            "Glob"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "Can you set up a temporary debug panel in our macOS app so the designer can tweak the toolbar height and corner radius live, then we keep whatever she picks?",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": true,
+          "tools": [
+            "Skill",
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "not sure what spacing works for this list on iPad, let me try a few options side by side against what we have now",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": true,
+          "tools": [
+            "Skill",
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "add a dev-only tweak panel next to the pricing card (vite + react) with a couple of presets and a way to flip back to the current design",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": true,
+          "tools": [
+            "Skill",
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "the modal entrance animation is too bouncy but I can't tell by how much from code. make it adjustable while the app runs, with slow-mo, so I can dial it in",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": true,
+          "tools": [
+            "Skill",
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "I'd like to compare three variants of the empty state layout on the real screen before committing to one. Something I can toggle between in the dev build",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": true,
+          "tools": [
+            "Skill",
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "hook up leva to our hero section so I can play with the gradient angle and blur in dev, then write the numbers back into the theme once I'm happy",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": true,
+          "tools": [
+            "Skill",
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "We keep arguing about the button press scale and timing. Build a little in-app control surface (debug only) so we can try values on device",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": true,
+          "tools": [
+            "Skill",
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "give me knobs for the font size and line height of the article view in our iOS app so I can tune them by eye in the simulator",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": true,
+          "tools": [
+            "Skill",
+            "Glob",
+            "Read",
+            "Glob",
+            "Glob"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "change the card corner radius in CardFeature.tsx from 12 to 16",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [
+            "Glob",
+            "Grep",
+            "Glob"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "the spring animation on our sheet stutters on older iPhones, profile it and find why frames are dropping",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [
+            "Skill",
+            "Glob",
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "add a user-facing settings screen where customers can pick compact or comfortable density, saved to their account",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "set up Storybook for our component library with stories for Button, Card, and Modal",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "write snapshot tests for the pricing card in its three visual variants",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [
+            "Glob",
+            "Read",
+            "Grep"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "build an A/B test that shows half our production users the new checkout layout and tracks conversion",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "our design tokens are scattered across files. consolidate spacing and radius into one tokens file",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "review this SwiftUI view for accessibility problems: missing labels, Dynamic Type, contrast",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [
+            "Glob",
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "add a feature flag so we can turn the new onboarding animation on and off remotely in production",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "explain the difference between spring(response:dampingFraction:) and spring(duration:bounce:) in SwiftUI",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "add a debug menu to our iOS app with toggles for the feature flags we use in QA builds",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [
+            "Glob",
+            "Read"
+          ],
+          "error": null
+        }
+      ]
+    },
+    {
+      "query": "build a settings screen where users can drag a slider to choose their preferred text size, saved to their profile",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "pass": true,
+      "runs": [
+        {
+          "triggered": false,
+          "tools": [
+            "Glob",
+            "Read",
+            "Artifact",
+            "Skill"
+          ],
+          "error": null
+        }
+      ]
+    }
+  ]
+}

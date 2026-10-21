@@ -1,7 +1,7 @@
 # Web Validation Receipt
 
 - Status: **PENDING**: automated pilot passed on Chromium and WebKit; Firefox, real Safari, real mobile devices, and a screen reader are not yet tested
-- Commit: `3d23b79` (skill), package fingerprint `1b1a444351352f93` from `tools/package.sh`. Later commits change documentation and example status messages; this receipt covers `3d23b79` only, and a PASS must be recorded against the release commit.
+- Commit: `b06291f` (skill), package fingerprint `c421465931259a76` from `tools/package.sh`. An earlier run against `3d23b79` gave the same results; this receipt covers `b06291f` only.
 - Build/bundle identifier: `pilots/web-vite`, Vite 5.4.11, React 18.3.1, `dist/assets/index-C6CsTkpE.js` (lab in place), `index-E4v3X97q.js` (after landing)
 - Browsers/devices: Playwright 1.63.0 Chromium and WebKit 26.6, headless, at 1280×800, 375×812, and 812×375. Firefox: not run (see Limitations). No physical devices.
 - Tester: Claude (agent), with lab built and landed by separate agents that had only the packaged skill

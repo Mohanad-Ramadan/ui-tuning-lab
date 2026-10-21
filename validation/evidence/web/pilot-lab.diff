@@ -1,5 +1,5 @@
 diff --git a/pilots/web-vite/src/HomeScreen.tsx b/pilots/web-vite/src/HomeScreen.tsx
-index 97808e5..78e236f 100644
+index 97808e5..21c3ad5 100644
 --- a/pilots/web-vite/src/HomeScreen.tsx
 +++ b/pilots/web-vite/src/HomeScreen.tsx
 @@ -1,11 +1,31 @@
@@ -22,7 +22,7 @@ index 97808e5..78e236f 100644
 +}
  
  export function HomeScreen() {
-+  const [config, setConfig] = useState<CardConfig>(cardDefaults);
++  const [config, setConfig] = useState(cardDefaults);
    return (
      <main>
        <h1>Home</h1>
@@ -37,10 +37,10 @@ index 97808e5..78e236f 100644
  }
 diff --git a/pilots/web-vite/src/HomeScreen.ui-tuning-lab.tsx b/pilots/web-vite/src/HomeScreen.ui-tuning-lab.tsx
 new file mode 100644
-index 0000000..758264f
+index 0000000..541c9bf
 --- /dev/null
 +++ b/pilots/web-vite/src/HomeScreen.ui-tuning-lab.tsx
-@@ -0,0 +1,147 @@
+@@ -0,0 +1,151 @@
 +import { useEffect, useLayoutEffect, useRef, useState } from "react";
 +import { CardList } from "./CardList";
 +import type { CardConfig } from "./cards";
@@ -60,8 +60,16 @@ index 0000000..758264f
 +
 +const presets = {
 +  compact: { radius: 4, gap: 4, padding: 8 },
-+  relaxed: { radius: 20, gap: 16, padding: 24 },
++  relaxed: { radius: 24, gap: 16, padding: 24 },
 +} satisfies Record<string, CardConfig>;
++
++// One labelled slider per field; ranges run from 0 to two or three times the
++// app default (radius 12, gap 8, padding 16).
++const fields = [
++  { key: "radius", label: "Radius", max: 32 },
++  { key: "gap", label: "Gap", max: 24 },
++  { key: "padding", label: "Padding", max: 48 },
++] as const satisfies ReadonlyArray<{ key: keyof CardConfig; label: string; max: number }>;
 +
 +// The draft fields that differ from the baseline.
 +function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
@@ -69,10 +77,10 @@ index 0000000..758264f
 +    ([key, value]) => value !== baseline[key as keyof T])) as Partial<T>;
 +}
 +
-+export default function UITuningLabHomeScreen({ config, setConfig }: TuningLabHostProps) {
++export default function UITuningLabHomeCards({ config, setConfig }: TuningLabHostProps) {
 +  const [open, setOpen] = useState(false);
 +  const [baseline, setBaseline] = useState<CardConfig | null>(null);
-+  const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
++  const [status, setStatus] = useState<string | null>(null);
 +  const panel = useRef<HTMLDivElement>(null);
 +  const trigger = useRef<HTMLButtonElement>(null);
 +  const firstControl = useRef<HTMLButtonElement>(null);
@@ -145,9 +153,9 @@ index 0000000..758264f
 +    console.info(`UITUNINGLAB_VALUES ${values}`);
 +    try {
 +      await navigator.clipboard.writeText(values);
-+      setStatus({ text: values === "{}" ? "No changes from baseline" : `Copied ${values}` });
++      setStatus(values === "{}" ? "No changes from baseline" : `Copied ${values}`);
 +    } catch {
-+      setStatus({ text: `Clipboard unavailable; values logged to the console: ${values}` });
++      setStatus(`Clipboard unavailable; values logged to the console: ${values}`);
 +    }
 +  }
 +
@@ -166,25 +174,21 @@ index 0000000..758264f
 +        <button ref={firstControl} type="button"
 +          onClick={() => setConfig({ ...presets.compact })}>Compact</button>
 +        <button type="button" onClick={() => setConfig({ ...presets.relaxed })}>Relaxed</button>
-+        <label>Radius <input type="range" min="0" max="24" step="1"
-+          value={config.radius}
-+          onChange={e => setConfig(c => ({ ...c, radius: Number(e.target.value) }))}/>
-+          <output aria-hidden="true">{config.radius}px</output>
-+        </label>
-+        <label>Gap <input type="range" min="0" max="16" step="1"
-+          value={config.gap}
-+          onChange={e => setConfig(c => ({ ...c, gap: Number(e.target.value) }))}/>
-+          <output aria-hidden="true">{config.gap}px</output>
-+        </label>
-+        <label>Padding <input type="range" min="0" max="32" step="1"
-+          value={config.padding}
-+          onChange={e => setConfig(c => ({ ...c, padding: Number(e.target.value) }))}/>
-+          <output aria-hidden="true">{config.padding}px</output>
-+        </label>
++        {fields.map(field => (
++          <label key={field.key} style={{ display: "block" }}>{field.label}{" "}
++            <input type="range" min="0" max={field.max} step="1"
++              value={config[field.key]}
++              onChange={e => {
++                const value = Number(e.target.value);
++                setConfig(c => ({ ...c, [field.key]: value }));
++              }}/>
++            <output aria-hidden="true">{config[field.key]}px</output>
++          </label>
++        ))}
 +        <button type="button" onClick={reset}>Reset</button>
 +        <button type="button" onClick={copyValues}>Copy values</button>
 +      </fieldset>
-+      {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
++      {status && <p role="status">{status}</p>}
 +    </div>}
 +  </>;
 +}
