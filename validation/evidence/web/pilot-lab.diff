@@ -37,12 +37,13 @@ index 97808e5..21c3ad5 100644
  }
 diff --git a/pilots/web-vite/src/HomeScreen.ui-tuning-lab.tsx b/pilots/web-vite/src/HomeScreen.ui-tuning-lab.tsx
 new file mode 100644
-index 0000000..541c9bf
+index 0000000..d2b9d55
 --- /dev/null
 +++ b/pilots/web-vite/src/HomeScreen.ui-tuning-lab.tsx
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,149 @@
 +import { useEffect, useLayoutEffect, useRef, useState } from "react";
 +import { CardList } from "./CardList";
++import { cardDefaults } from "./cards";
 +import type { CardConfig } from "./cards";
 +import type { TuningLabHostProps } from "./HomeScreen";
 +
@@ -60,16 +61,11 @@ index 0000000..541c9bf
 +
 +const presets = {
 +  compact: { radius: 4, gap: 4, padding: 8 },
-+  relaxed: { radius: 24, gap: 16, padding: 24 },
++  relaxed: { radius: 24, gap: 16, padding: 28 },
 +} satisfies Record<string, CardConfig>;
-+
-+// One labelled slider per field; ranges run from 0 to two or three times the
-+// app default (radius 12, gap 8, padding 16).
-+const fields = [
-+  { key: "radius", label: "Radius", max: 32 },
-+  { key: "gap", label: "Gap", max: 24 },
-+  { key: "padding", label: "Padding", max: 48 },
-+] as const satisfies ReadonlyArray<{ key: keyof CardConfig; label: string; max: number }>;
++// The baseline is the declared default, never the value on screen when the lab
++// opens: a draft kept from an earlier session must still count as a change.
++const baseline: CardConfig = cardDefaults;
 +
 +// The draft fields that differ from the baseline.
 +function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
@@ -77,9 +73,8 @@ index 0000000..541c9bf
 +    ([key, value]) => value !== baseline[key as keyof T])) as Partial<T>;
 +}
 +
-+export default function UITuningLabHomeCards({ config, setConfig }: TuningLabHostProps) {
++export default function UITuningLabHome({ config, setConfig }: TuningLabHostProps) {
 +  const [open, setOpen] = useState(false);
-+  const [baseline, setBaseline] = useState<CardConfig | null>(null);
 +  const [status, setStatus] = useState<string | null>(null);
 +  const panel = useRef<HTMLDivElement>(null);
 +  const trigger = useRef<HTMLButtonElement>(null);
@@ -100,7 +95,6 @@ index 0000000..541c9bf
 +    stashedDraft.current = null;
 +    setShowingBaseline(false);
 +    setOpen(false);
-+    setBaseline(null);
 +  }
 +  function closeLab() {
 +    const node = panel.current;
@@ -135,21 +129,21 @@ index 0000000..541c9bf
 +    // finishClose and closeLab read only refs and stable state setters.
 +  }, [open]);
 +
-+  function openLab() { setBaseline({ ...config }); setStatus(null); setOpen(true); }
-+  function reset() { if (baseline) setConfig({ ...baseline }); }
++  function openLab() { setStatus(null); setOpen(true); }
++  function reset() { setConfig({ ...baseline }); }
 +  function toggleBaseline() {
 +    if (stashedDraft.current) {
 +      setConfig(stashedDraft.current);
 +      stashedDraft.current = null;
 +      setShowingBaseline(false);
-+    } else if (baseline) {
++    } else {
 +      stashedDraft.current = config;
 +      setConfig({ ...baseline });
 +      setShowingBaseline(true);
 +    }
 +  }
 +  async function copyValues() {
-+    const values = JSON.stringify(changedValues(baseline ?? config, config));
++    const values = JSON.stringify(changedValues(baseline, config));
 +    console.info(`UITUNINGLAB_VALUES ${values}`);
 +    try {
 +      await navigator.clipboard.writeText(values);
@@ -174,17 +168,21 @@ index 0000000..541c9bf
 +        <button ref={firstControl} type="button"
 +          onClick={() => setConfig({ ...presets.compact })}>Compact</button>
 +        <button type="button" onClick={() => setConfig({ ...presets.relaxed })}>Relaxed</button>
-+        {fields.map(field => (
-+          <label key={field.key} style={{ display: "block" }}>{field.label}{" "}
-+            <input type="range" min="0" max={field.max} step="1"
-+              value={config[field.key]}
-+              onChange={e => {
-+                const value = Number(e.target.value);
-+                setConfig(c => ({ ...c, [field.key]: value }));
-+              }}/>
-+            <output aria-hidden="true">{config[field.key]}px</output>
-+          </label>
-+        ))}
++        <label>Radius <input type="range" min="0" max="32"
++          value={config.radius}
++          onChange={e => setConfig(c => ({ ...c, radius: Number(e.target.value) }))}/>
++          <output aria-hidden="true">{config.radius}px</output>
++        </label>
++        <label>Gap <input type="range" min="0" max="24"
++          value={config.gap}
++          onChange={e => setConfig(c => ({ ...c, gap: Number(e.target.value) }))}/>
++          <output aria-hidden="true">{config.gap}px</output>
++        </label>
++        <label>Padding <input type="range" min="0" max="48"
++          value={config.padding}
++          onChange={e => setConfig(c => ({ ...c, padding: Number(e.target.value) }))}/>
++          <output aria-hidden="true">{config.padding}px</output>
++        </label>
 +        <button type="button" onClick={reset}>Reset</button>
 +        <button type="button" onClick={copyValues}>Copy values</button>
 +      </fieldset>

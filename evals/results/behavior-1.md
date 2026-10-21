@@ -1,8 +1,10 @@
 # Evals, run 1 (2026-10-21)
 
-E1 and E2 ran at `3d23b79` (fingerprint `1b1a444351352f93`) and again at
-`b06291f` (fingerprint `c421465931259a76`) with the same results. Each run used a
-fresh agent that could read only the packaged skill and the pilot app.
+E1 and E2 ran at `3d23b79` and `b06291f`, then again at `ed31122` (fingerprint
+`696f02b7321ca66a`, after the baseline fix) with Claude Sonnet 5.5 agents, with
+the same results each time. Each run used a fresh agent that could read only the
+packaged skill and the pilot app. At `ed31122` the pilot lab's baseline is the
+declared default: `const baseline: CardConfig = cardDefaults;`.
 
 ## E1 ephemeral-web-lab: 6/6 pass
 

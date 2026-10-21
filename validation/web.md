@@ -1,15 +1,15 @@
 # Web Validation Receipt
 
 - Status: **PENDING**: automated pilot passed on Chromium and WebKit; Firefox, real Safari, real mobile devices, and a screen reader are not yet tested
-- Commit: `b06291f` (skill), package fingerprint `c421465931259a76` from `tools/package.sh`. An earlier run against `3d23b79` gave the same results; this receipt covers `b06291f` only. Later commits change the examples (the baseline is now the declared default), so rerun the pilot at the release commit.
+- Commit: `ed31122` (skill), package fingerprint `696f02b7321ca66a` from `tools/package.sh`. Earlier runs against `3d23b79` and `b06291f` gave the same results before the baseline fix; this receipt covers `ed31122` only.
 - Build/bundle identifier: `pilots/web-vite`, Vite 5.4.11, React 18.3.1, `dist/assets/index-C6CsTkpE.js` (lab in place), `index-E4v3X97q.js` (after landing)
 - Browsers/devices: Playwright 1.63.0 Chromium and WebKit 26.6, headless, at 1280×800, 375×812, and 812×375. Firefox: not run (see Limitations). No physical devices.
-- Tester: Claude (agent), with lab built and landed by separate agents that had only the packaged skill
+- Tester: Claude (agent). The lab was built and landed by separate Claude Sonnet 5.5 agents that had only the packaged skill.
 - Date: 2026-10-21
 
 ## Required checks
 
-- [x] Baseline equivalence; compact and relaxed variants; exact reset. `cross-engine.txt`: "opening leaves the feature at its baseline", "preset changes the real feature", "Reset restores the baseline exactly".
+- [x] Baseline equivalence; compact and relaxed variants; exact reset. `cross-engine.txt`: "opening leaves the feature at its baseline", "preset changes the real feature", "Reset restores the baseline exactly", and after a close and reopen with the draft kept, "Copy values reports exactly the kept draft" and "Show baseline shows the declared default".
 - [x] Copy values copies and logs only changed fields; landing writes them into the feature defaults; removal leaves `source-gates` at N/A. `cross-engine.txt` ("Copy values logs only the changed fields" asserts exactly `{"radius":20}`), `landing.diff`, `landing-checks.txt`.
 - N/A: persistence not requested. The pilot lab has no Save or Load saved action; `pilot-lab.diff` contains no `localStorage`, `sessionStorage`, or `indexedDB` call.
 - [ ] Desktop/mobile layout, pointer/touch, keyboard, focus, and Close/Escape dismissal; clicking the feature keeps the lab open. **Partly done:** passing in Chromium and WebKit at three viewports (panel fits, Close visible, focus in and back to Tune, keyboard reaches every control, Escape with focus on the page, real click on the feature). Touch on a physical phone and Firefox are not run.
@@ -22,7 +22,7 @@
 All files are in `validation/evidence/web/`.
 
 - Static checks: the pilot agent's `source-gates` PASS (exit 0), `npm run build` exit 0, and an empty grep of `dist`; recorded in the final pilot report and reproducible from `pilot-lab.diff` with `scripts/verify.sh`.
-- Hands-on: `cross-engine.txt` (110 passed; the 4 failures are Firefox launches), `teardown-chromium.txt`, `accessibility-tree.txt`, `lab-{chromium,webkit}-{desktop,mobile}.png`.
+- Hands-on: `cross-engine.txt` (116 passed; the 4 failures are Firefox launches), `teardown-chromium.txt`, `accessibility-tree.txt`, `lab-{chromium,webkit}-{desktop,mobile}.png`.
 - Landing: `landing.diff` (only `cardDefaults` changed: radius 12→20, gap 8→12, padding untouched) and `landing-checks.txt` (`N/A: supported sources contain no lab references`; grep empty). The build after landing passed and the bundle carries `radius:20,gap:12,padding:16`.
 - Commands: `sh tools/package.sh`, `node tests/pilot-web/check.mjs http://localhost:5199 http://localhost:5299` against `vite` and `vite preview`, plus the teardown script recorded in `teardown-chromium.txt`.
 

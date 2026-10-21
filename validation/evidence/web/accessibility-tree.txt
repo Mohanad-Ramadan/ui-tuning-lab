@@ -10,6 +10,6 @@
     - text: Gap
     - slider "Gap": "16"
     - text: Padding
-    - slider "Padding": "24"
+    - slider "Padding": "28"
     - button "Reset"
     - button "Copy values"
