@@ -5,7 +5,7 @@ transient surface when it satisfies teardown and accessibility requirements.
 
 | Platform | Status | Candidate container | Candidate gate |
 |---|---|---|---|
-| Web | candidate | conditionally mounted `popover="auto"` in a `*.ui-tuning-lab.tsx` module; accessible dialog fallback | dynamic `import()` inside `if (import.meta.env.DEV) {` or a production-env build guard, plus dead-code elimination |
+| Web | candidate | conditionally mounted `popover="manual"` pinned to a corner, with Close and Escape, in a `*.ui-tuning-lab.tsx` module; accessible dialog fallback | dynamic `import()` inside `if (import.meta.env.DEV) {` or a production-env build guard, plus dead-code elimination |
 | iOS/iPadOS | candidate | SwiftUI popover on regular width; adaptive sheet or deliberate popover on compact width | `#if DEBUG` or established internal-build flag |
 | macOS | candidate | lazily created `NSPanel` with `NSHostingView`; release content and observers on close | `#if DEBUG` menu/command |
 | Android | unvalidated adaptation | conditional `ModalBottomSheet` removed from composition | `BuildConfig.DEBUG` |

@@ -83,31 +83,58 @@ struct UITuningLabControls: View {
     @Binding var style: CardStyle
     let baseline: CardStyle
     @State private var status: String?
+    @State private var stashedDraft: CardStyle?  // set while the baseline is shown
 
     private static let compact = CardStyle(cornerRadius: 4, spacing: 4)
     private static let relaxed = CardStyle(cornerRadius: 24, spacing: 16)
 
     var body: some View {
         Form {
-            HStack {
-                Button("Compact") { style = Self.compact }
-                Button("Relaxed") { style = Self.relaxed }
-            }
-            Slider(value: $style.cornerRadius, in: 0...32, step: 1) {
-                Text("Corner radius")
-            }
-            Slider(value: $style.spacing, in: 0...24, step: 1) { Text("Spacing") }
-            HStack {
-                Button("Reset") { style = baseline }
-                Button("Copy values") {
-                    status = uiTuningLabCopyValues(from: baseline, to: style)
+            Toggle("Show baseline", isOn: showingBaseline)
+            Group {
+                HStack {
+                    Button("Compact") { style = Self.compact }
+                    Button("Relaxed") { style = Self.relaxed }
+                }
+                LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
+                    .accessibilityHidden(true)  // the slider reports its own value
+                Slider(value: $style.cornerRadius, in: 0...32, step: 1) {
+                    Text("Corner radius")
+                }
+                LabeledContent("Spacing", value: "\(Int(style.spacing)) pt")
+                    .accessibilityHidden(true)  // the slider reports its own value
+                Slider(value: $style.spacing, in: 0...24, step: 1) { Text("Spacing") }
+                HStack {
+                    Button("Reset") { style = baseline }
+                    Button("Copy values") {
+                        status = uiTuningLabCopyValues(from: baseline, to: style)
+                    }
                 }
             }
+            .disabled(stashedDraft != nil)
             if let status { Text(status).font(.footnote) }
         }
         .frame(minWidth: 280)
         // A Form row with several buttons fires all of them on iOS unless borderless.
         .buttonStyle(.borderless)
+        // Never leave the feature showing the baseline once the lab is gone.
+        .onDisappear { if let stashedDraft { style = stashedDraft } }
+    }
+
+    /// Shows the captured baseline in the real feature; turning it off restores the draft.
+    private var showingBaseline: Binding<Bool> {
+        Binding(
+            get: { stashedDraft != nil },
+            set: { show in
+                if show {
+                    stashedDraft = style
+                    style = baseline
+                } else if let draft = stashedDraft {
+                    style = draft
+                    stashedDraft = nil
+                }
+            }
+        )
     }
 }
 #endif
@@ -231,43 +258,70 @@ struct UITuningLabControls: View {
     @Binding var style: CardStyle
     let baseline: CardStyle
     @State private var status: String?
+    @State private var stashedDraft: CardStyle?  // set while the baseline is shown
 
     private static let compact = CardStyle(cornerRadius: 4, spacing: 4)
     private static let relaxed = CardStyle(cornerRadius: 24, spacing: 16)
 
     var body: some View {
         Form {
-            HStack {
-                Button("Compact") { style = Self.compact }
-                Button("Relaxed") { style = Self.relaxed }
-            }
-            Slider(value: $style.cornerRadius, in: 0...32, step: 1) {
-                Text("Corner radius")
-            }
-            Slider(value: $style.spacing, in: 0...24, step: 1) { Text("Spacing") }
-            HStack {
-                Button("Reset") { style = baseline }
-                Button("Copy values") {
-                    status = uiTuningLabCopyValues(from: baseline, to: style)
+            Toggle("Show baseline", isOn: showingBaseline)
+            Group {
+                HStack {
+                    Button("Compact") { style = Self.compact }
+                    Button("Relaxed") { style = Self.relaxed }
                 }
-            }
-            HStack {
-                Button("Save") {
-                    do { try save(); status = "Saved" }
-                    catch { status = "Save failed: \(error.localizedDescription)" }
+                LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
+                    .accessibilityHidden(true)  // the slider reports its own value
+                Slider(value: $style.cornerRadius, in: 0...32, step: 1) {
+                    Text("Corner radius")
                 }
-                Button("Load saved") {
-                    do { try loadSaved(); status = "Loaded saved values" }
-                    catch {
-                        status = "Saved profile not loaded: \(error.localizedDescription). The file was left unchanged."
+                LabeledContent("Spacing", value: "\(Int(style.spacing)) pt")
+                    .accessibilityHidden(true)  // the slider reports its own value
+                Slider(value: $style.spacing, in: 0...24, step: 1) { Text("Spacing") }
+                HStack {
+                    Button("Reset") { style = baseline }
+                    Button("Copy values") {
+                        status = uiTuningLabCopyValues(from: baseline, to: style)
+                    }
+                }
+                HStack {
+                    Button("Save") {
+                        do { try save(); status = "Saved" }
+                        catch { status = "Save failed: \(error.localizedDescription)" }
+                    }
+                    Button("Load saved") {
+                        do { try loadSaved(); status = "Loaded saved values" }
+                        catch {
+                            status = "Saved profile not loaded: \(error.localizedDescription). The file was left unchanged."
+                        }
                     }
                 }
             }
+            .disabled(stashedDraft != nil)
             if let status { Text(status).font(.footnote) }
         }
         .frame(minWidth: 280)
         // A Form row with several buttons fires all of them on iOS unless borderless.
         .buttonStyle(.borderless)
+        // Never leave the feature showing the baseline once the lab is gone.
+        .onDisappear { if let stashedDraft { style = stashedDraft } }
+    }
+
+    /// Shows the captured baseline in the real feature; turning it off restores the draft.
+    private var showingBaseline: Binding<Bool> {
+        Binding(
+            get: { stashedDraft != nil },
+            set: { show in
+                if show {
+                    stashedDraft = style
+                    style = baseline
+                } else if let draft = stashedDraft {
+                    style = draft
+                    stashedDraft = nil
+                }
+            }
+        )
     }
 
     private func save() throws {

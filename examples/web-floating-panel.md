@@ -58,13 +58,22 @@ export function FeatureScreen() {
 
 <!-- file: FeatureScreen.ui-tuning-lab.tsx -->
 ```tsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CardFeature } from "./CardFeature";
 import type { CardConfig } from "./CardFeature";
 import type { TuningLabHostProps } from "./FeatureScreen";
 
-// React 18 types omit `popover`; the spread compiles on React 18 and 19 alike.
-const popoverAuto = { popover: "auto" };
+// A manual popover stays open while the user clicks and scrolls the feature;
+// Close and Escape dismiss it. React 18 types omit `popover`, so it is spread.
+const popoverManual = { popover: "manual" };
+// Pinned beside the feature rather than centered over it; the fixed trigger
+// never shifts the feature's layout.
+const panelStyle = {
+  insetBlockStart: "auto", insetInlineStart: "auto", insetBlockEnd: 72, insetInlineEnd: 16,
+  margin: 0, maxWidth: "min(320px, calc(100vw - 32px))", maxHeight: "calc(100dvh - 88px)",
+  overflow: "auto", colorScheme: "light dark", font: "inherit",
+} as const;
+const triggerStyle = { position: "fixed", insetBlockEnd: 16, insetInlineEnd: 16 } as const;
 
 const presets = {
   compact: { radius: 4, gap: 4 },
@@ -84,6 +93,29 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
+  // Holds the draft while the baseline is shown in the real feature.
+  const stashedDraft = useRef<CardConfig | null>(null);
+  const [showingBaseline, setShowingBaseline] = useState(false);
+
+  // Read the host's setter through a ref so an unstable setter never re-runs the
+  // open effect, which would re-show the panel and steal focus.
+  const setConfigRef = useRef(setConfig);
+  useLayoutEffect(() => { setConfigRef.current = setConfig; });
+
+  // The one close path. It runs from the popover's toggle event, or directly
+  // when the browser has no Popover API.
+  function finishClose() {
+    if (stashedDraft.current) setConfigRef.current(stashedDraft.current);
+    stashedDraft.current = null;
+    setShowingBaseline(false);
+    setOpen(false);
+    setBaseline(null);
+  }
+  function closeLab() {
+    const node = panel.current;
+    if (node?.hidePopover && node.matches(":popover-open")) node.hidePopover();
+    else finishClose();
+  }
 
   useEffect(() => {
     const node = panel.current;
@@ -91,22 +123,40 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     node.showPopover?.();
     const focusFrame = requestAnimationFrame(() => firstControl.current?.focus());
     const onToggle = (event: Event) => {
-      if ((event as ToggleEvent).newState === "closed") {
-        setOpen(false);
-        setBaseline(null);
-      }
+      if ((event as ToggleEvent).newState === "closed") finishClose();
+    };
+    // Escape works wherever focus is, including on the feature. A select, or an
+    // app dialog that already handled the key, keeps its own Escape.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.target instanceof HTMLSelectElement) return;
+      closeLab();
     };
     node.addEventListener("toggle", onToggle);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       cancelAnimationFrame(focusFrame);
       node.removeEventListener("toggle", onToggle);
-      if (node.matches(":popover-open")) node.hidePopover?.();
+      document.removeEventListener("keydown", onKeyDown);
+      if (node.hidePopover && node.matches(":popover-open")) node.hidePopover();
       trigger.current?.focus();
     };
+    // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
   function openLab() { setBaseline({ ...config }); setStatus(null); setOpen(true); }
   function reset() { if (baseline) setConfig({ ...baseline }); }
+  function toggleBaseline() {
+    if (stashedDraft.current) {
+      setConfig(stashedDraft.current);
+      stashedDraft.current = null;
+      setShowingBaseline(false);
+    } else if (baseline) {
+      stashedDraft.current = config;
+      setConfig({ ...baseline });
+      setShowingBaseline(true);
+    }
+  }
   async function copyValues() {
     const values = JSON.stringify(changedValues(baseline ?? config, config));
     console.info(`UITUNINGLAB_VALUES ${values}`);
@@ -120,23 +170,32 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
 
   return <>
     <CardFeature config={config} />
-    <button ref={trigger} type="button" onClick={openLab} disabled={open}>Tune</button>
-    {open && <div ref={panel} {...popoverAuto} role="dialog"
-      aria-labelledby="tuning-lab-title">
-      <h2 id="tuning-lab-title">UI tuning lab</h2>
-      <button ref={firstControl} type="button"
-        onClick={() => setConfig(presets.compact)}>Compact</button>
-      <button type="button" onClick={() => setConfig(presets.relaxed)}>Relaxed</button>
-      <label>Radius <input type="range" min="0" max="32"
-        value={config.radius}
-        onChange={e => setConfig(c => ({ ...c, radius: Number(e.target.value) }))}/>
-      </label>
-      <label>Gap <input type="range" min="0" max="24"
-        value={config.gap}
-        onChange={e => setConfig(c => ({ ...c, gap: Number(e.target.value) }))}/>
-      </label>
-      <button type="button" onClick={reset}>Reset</button>
-      <button type="button" onClick={copyValues}>Copy values</button>
+    <button ref={trigger} type="button" onClick={openLab} disabled={open}
+      style={triggerStyle}>Tune</button>
+    {open && <div ref={panel} {...popoverManual} style={panelStyle} role="dialog"
+      aria-labelledby="ui-tuning-lab-title">
+      <h2 id="ui-tuning-lab-title">UI tuning lab</h2>
+      <button type="button" onClick={closeLab}>Close</button>
+      <button type="button" aria-pressed={showingBaseline}
+        onClick={toggleBaseline}>Show baseline</button>
+      <fieldset disabled={showingBaseline} aria-label="Draft controls"
+        style={{ border: 0, margin: 0, padding: 0 }}>
+        <button ref={firstControl} type="button"
+          onClick={() => setConfig({ ...presets.compact })}>Compact</button>
+        <button type="button" onClick={() => setConfig({ ...presets.relaxed })}>Relaxed</button>
+        <label>Radius <input type="range" min="0" max="32"
+          value={config.radius}
+          onChange={e => setConfig(c => ({ ...c, radius: Number(e.target.value) }))}/>
+          <output aria-hidden="true">{config.radius}px</output>
+        </label>
+        <label>Gap <input type="range" min="0" max="24"
+          value={config.gap}
+          onChange={e => setConfig(c => ({ ...c, gap: Number(e.target.value) }))}/>
+          <output aria-hidden="true">{config.gap}px</output>
+        </label>
+        <button type="button" onClick={reset}>Reset</button>
+        <button type="button" onClick={copyValues}>Copy values</button>
+      </fieldset>
       {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
     </div>}
   </>;
@@ -147,10 +206,12 @@ Keep lab code only in `*.ui-tuning-lab.tsx` modules and import them only as show
 in `FeatureScreen.tsx`; a top-level static import fails `source-gates`. If
 Popover API support is outside the app's browser baseline, use an accessible
 dialog or conditionally mounted `<details>` while preserving focus and teardown.
-Native popover light-dismiss and Escape close the panel; the `toggle` event
-unmounts it and cleanup restores focus to Tune. Buttons and the labelled ranges
+The manual popover stays open while the user clicks, scrolls, and inspects the
+feature; Close and Escape dismiss it, the `toggle` event unmounts it, and cleanup
+restores focus to Tune. The panel is pinned to the corner and the trigger is
+fixed, so neither moves the feature. Buttons and the labelled ranges
 remain in normal keyboard order. Test Chromium, Safari, and Firefox on desktop and
-mobile layouts, keyboard, screen readers, light-dismiss, unmounting, and emitted
+mobile layouts, keyboard, screen readers, Close and Escape, unmounting, and emitted
 production assets before approval.
 
 ## Optional persistence, only when requested
@@ -164,13 +225,22 @@ reported and left in storage untouched.
 
 <!-- file: FeatureScreen.ui-tuning-lab.tsx variant=persist -->
 ```tsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CardFeature } from "./CardFeature";
 import type { CardConfig } from "./CardFeature";
 import type { TuningLabHostProps } from "./FeatureScreen";
 
-// React 18 types omit `popover`; the spread compiles on React 18 and 19 alike.
-const popoverAuto = { popover: "auto" };
+// A manual popover stays open while the user clicks and scrolls the feature;
+// Close and Escape dismiss it. React 18 types omit `popover`, so it is spread.
+const popoverManual = { popover: "manual" };
+// Pinned beside the feature rather than centered over it; the fixed trigger
+// never shifts the feature's layout.
+const panelStyle = {
+  insetBlockStart: "auto", insetInlineStart: "auto", insetBlockEnd: 72, insetInlineEnd: 16,
+  margin: 0, maxWidth: "min(320px, calc(100vw - 32px))", maxHeight: "calc(100dvh - 88px)",
+  overflow: "auto", colorScheme: "light dark", font: "inherit",
+} as const;
+const triggerStyle = { position: "fixed", insetBlockEnd: 16, insetInlineEnd: 16 } as const;
 
 type UITuningLabProfile = {
   schemaVersion: 1;
@@ -200,6 +270,29 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
+  // Holds the draft while the baseline is shown in the real feature.
+  const stashedDraft = useRef<CardConfig | null>(null);
+  const [showingBaseline, setShowingBaseline] = useState(false);
+
+  // Read the host's setter through a ref so an unstable setter never re-runs the
+  // open effect, which would re-show the panel and steal focus.
+  const setConfigRef = useRef(setConfig);
+  useLayoutEffect(() => { setConfigRef.current = setConfig; });
+
+  // The one close path. It runs from the popover's toggle event, or directly
+  // when the browser has no Popover API.
+  function finishClose() {
+    if (stashedDraft.current) setConfigRef.current(stashedDraft.current);
+    stashedDraft.current = null;
+    setShowingBaseline(false);
+    setOpen(false);
+    setBaseline(null);
+  }
+  function closeLab() {
+    const node = panel.current;
+    if (node?.hidePopover && node.matches(":popover-open")) node.hidePopover();
+    else finishClose();
+  }
 
   useEffect(() => {
     const node = panel.current;
@@ -207,22 +300,40 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     node.showPopover?.();
     const focusFrame = requestAnimationFrame(() => firstControl.current?.focus());
     const onToggle = (event: Event) => {
-      if ((event as ToggleEvent).newState === "closed") {
-        setOpen(false);
-        setBaseline(null);
-      }
+      if ((event as ToggleEvent).newState === "closed") finishClose();
+    };
+    // Escape works wherever focus is, including on the feature. A select, or an
+    // app dialog that already handled the key, keeps its own Escape.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.target instanceof HTMLSelectElement) return;
+      closeLab();
     };
     node.addEventListener("toggle", onToggle);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       cancelAnimationFrame(focusFrame);
       node.removeEventListener("toggle", onToggle);
-      if (node.matches(":popover-open")) node.hidePopover?.();
+      document.removeEventListener("keydown", onKeyDown);
+      if (node.hidePopover && node.matches(":popover-open")) node.hidePopover();
       trigger.current?.focus();
     };
+    // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
   function openLab() { setBaseline({ ...config }); setStatus(null); setOpen(true); }
   function reset() { if (baseline) setConfig({ ...baseline }); }
+  function toggleBaseline() {
+    if (stashedDraft.current) {
+      setConfig(stashedDraft.current);
+      stashedDraft.current = null;
+      setShowingBaseline(false);
+    } else if (baseline) {
+      stashedDraft.current = config;
+      setConfig({ ...baseline });
+      setShowingBaseline(true);
+    }
+  }
   async function copyValues() {
     const values = JSON.stringify(changedValues(baseline ?? config, config));
     console.info(`UITUNINGLAB_VALUES ${values}`);
@@ -270,25 +381,34 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
 
   return <>
     <CardFeature config={config} />
-    <button ref={trigger} type="button" onClick={openLab} disabled={open}>Tune</button>
-    {open && <div ref={panel} {...popoverAuto} role="dialog"
-      aria-labelledby="tuning-lab-title">
-      <h2 id="tuning-lab-title">UI tuning lab</h2>
-      <button ref={firstControl} type="button"
-        onClick={() => setConfig(presets.compact)}>Compact</button>
-      <button type="button" onClick={() => setConfig(presets.relaxed)}>Relaxed</button>
-      <label>Radius <input type="range" min="0" max="32"
-        value={config.radius}
-        onChange={e => setConfig(c => ({ ...c, radius: Number(e.target.value) }))}/>
-      </label>
-      <label>Gap <input type="range" min="0" max="24"
-        value={config.gap}
-        onChange={e => setConfig(c => ({ ...c, gap: Number(e.target.value) }))}/>
-      </label>
-      <button type="button" onClick={reset}>Reset</button>
-      <button type="button" onClick={copyValues}>Copy values</button>
-      <button type="button" onClick={save}>Save</button>
-      <button type="button" onClick={loadSaved}>Load saved</button>
+    <button ref={trigger} type="button" onClick={openLab} disabled={open}
+      style={triggerStyle}>Tune</button>
+    {open && <div ref={panel} {...popoverManual} style={panelStyle} role="dialog"
+      aria-labelledby="ui-tuning-lab-title">
+      <h2 id="ui-tuning-lab-title">UI tuning lab</h2>
+      <button type="button" onClick={closeLab}>Close</button>
+      <button type="button" aria-pressed={showingBaseline}
+        onClick={toggleBaseline}>Show baseline</button>
+      <fieldset disabled={showingBaseline} aria-label="Draft controls"
+        style={{ border: 0, margin: 0, padding: 0 }}>
+        <button ref={firstControl} type="button"
+          onClick={() => setConfig({ ...presets.compact })}>Compact</button>
+        <button type="button" onClick={() => setConfig({ ...presets.relaxed })}>Relaxed</button>
+        <label>Radius <input type="range" min="0" max="32"
+          value={config.radius}
+          onChange={e => setConfig(c => ({ ...c, radius: Number(e.target.value) }))}/>
+          <output aria-hidden="true">{config.radius}px</output>
+        </label>
+        <label>Gap <input type="range" min="0" max="24"
+          value={config.gap}
+          onChange={e => setConfig(c => ({ ...c, gap: Number(e.target.value) }))}/>
+          <output aria-hidden="true">{config.gap}px</output>
+        </label>
+        <button type="button" onClick={reset}>Reset</button>
+        <button type="button" onClick={copyValues}>Copy values</button>
+        <button type="button" onClick={save}>Save</button>
+        <button type="button" onClick={loadSaved}>Load saved</button>
+      </fieldset>
       {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
     </div>}
   </>;

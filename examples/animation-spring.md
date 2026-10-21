@@ -140,12 +140,18 @@ struct UITuningLabMotionControls: View {
                 Button("Snappy") { apply(Self.snappy) }
                 Button("Playful") { apply(Self.playful) }
             }
+            LabeledContent("Duration", value: String(format: "%.2f s", motion.duration))
+                .accessibilityHidden(true)  // the slider reports its own value
             Slider(value: $motion.duration, in: 0.15...1.5) {
                 Text("Duration")
             } onEditingChanged: { replayWhenReleased($0) }
+            LabeledContent("Bounce", value: String(format: "%.2f", motion.bounce))
+                .accessibilityHidden(true)  // the slider reports its own value
             Slider(value: $motion.bounce, in: 0...0.6) {
                 Text("Bounce")
             } onEditingChanged: { replayWhenReleased($0) }
+            LabeledContent("Offset", value: "\(Int(motion.offset)) pt")
+                .accessibilityHidden(true)  // the slider reports its own value
             Slider(value: $motion.offset, in: 0...120) {
                 Text("Offset")
             } onEditingChanged: { replayWhenReleased($0) }
@@ -360,8 +366,17 @@ import { EntranceCard } from "./EntranceCard";
 import type { EntranceMotion } from "./EntranceCard";
 import type { TuningLabHostProps } from "./EntranceScreen";
 
-// React 18 types omit `popover`; the spread compiles on React 18 and 19 alike.
-const popoverAuto = { popover: "auto" };
+// A manual popover stays open while the user clicks and scrolls the feature;
+// Close and Escape dismiss it. React 18 types omit `popover`, so it is spread.
+const popoverManual = { popover: "manual" };
+// Pinned beside the feature rather than centered over it; the fixed trigger
+// never shifts the feature's layout.
+const panelStyle = {
+  insetBlockStart: "auto", insetInlineStart: "auto", insetBlockEnd: 72, insetInlineEnd: 16,
+  margin: 0, maxWidth: "min(320px, calc(100vw - 32px))", maxHeight: "calc(100dvh - 88px)",
+  overflow: "auto", colorScheme: "light dark", font: "inherit",
+} as const;
+const triggerStyle = { position: "fixed", insetBlockEnd: 16, insetInlineEnd: 16 } as const;
 
 const presets = {
   snappy: { durationMs: 350, bounce: 0, offsetPx: 24 },
@@ -387,26 +402,45 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   const firstControl = useRef<HTMLButtonElement>(null);
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // The one close path. It runs from the popover's toggle event, or directly
+  // when the browser has no Popover API.
+  function finishClose() {
+    setOpen(false);
+    setBaseline(null);
+    setSpeed(1);
+    setShowBaseline(false);
+  }
+  function closeLab() {
+    const node = panel.current;
+    if (node?.hidePopover && node.matches(":popover-open")) node.hidePopover();
+    else finishClose();
+  }
+
   useEffect(() => {
     const node = panel.current;
     if (!open || !node) return;
     node.showPopover?.();
     const focusFrame = requestAnimationFrame(() => firstControl.current?.focus());
     const onToggle = (event: Event) => {
-      if ((event as ToggleEvent).newState === "closed") {
-        setOpen(false);
-        setBaseline(null);
-        setSpeed(1);
-        setShowBaseline(false);
-      }
+      if ((event as ToggleEvent).newState === "closed") finishClose();
+    };
+    // Escape works wherever focus is, including on the feature. A select, or an
+    // app dialog that already handled the key, keeps its own Escape.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.target instanceof HTMLSelectElement) return;
+      closeLab();
     };
     node.addEventListener("toggle", onToggle);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       cancelAnimationFrame(focusFrame);
       node.removeEventListener("toggle", onToggle);
-      if (node.matches(":popover-open")) node.hidePopover?.();
+      document.removeEventListener("keydown", onKeyDown);
+      if (node.hidePopover && node.matches(":popover-open")) node.hidePopover();
       trigger.current?.focus();
     };
+    // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
   const source = showBaseline && baseline ? baseline : motion;
@@ -425,7 +459,7 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     }
   }
   function reset() { if (baseline) setMotion({ ...baseline }); replayNow(); }
-  function apply(preset: EntranceMotion) { setShowBaseline(false); setMotion(preset); replayNow(); }
+  function apply(preset: EntranceMotion) { setShowBaseline(false); setMotion({ ...preset }); replayNow(); }
   // Editing the draft shows the draft, so a change is never hidden.
   function edit(patch: Partial<EntranceMotion>) {
     setShowBaseline(false);
@@ -434,10 +468,12 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
 
   return <>
     <EntranceCard key={replay} motion={rendered} />
-    <button ref={trigger} type="button" onClick={openLab} disabled={open}>Tune</button>
-    {open && <div ref={panel} {...popoverAuto} role="dialog"
-      aria-labelledby="tuning-lab-title">
-      <h2 id="tuning-lab-title">UI tuning lab</h2>
+    <button ref={trigger} type="button" onClick={openLab} disabled={open}
+      style={triggerStyle}>Tune</button>
+    {open && <div ref={panel} {...popoverManual} style={panelStyle} role="dialog"
+      aria-labelledby="ui-tuning-lab-title">
+      <h2 id="ui-tuning-lab-title">UI tuning lab</h2>
+      <button type="button" onClick={closeLab}>Close</button>
       {reducedMotion && <p>Reduced motion is on, so the card shows its reduced animation.</p>}
       <button ref={firstControl} type="button"
         onClick={() => apply(presets.snappy)}>Snappy</button>
@@ -445,14 +481,17 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
       <label>Duration <input type="range" min="150" max="1500" step="10"
         value={motion.durationMs}
         onChange={e => edit({ durationMs: Number(e.target.value) })}/>
+        <output aria-hidden="true">{motion.durationMs}ms</output>
       </label>
       <label>Bounce <input type="range" min="0" max="0.6" step="0.05"
         value={motion.bounce}
         onChange={e => edit({ bounce: Number(e.target.value) })}/>
+        <output aria-hidden="true">{motion.bounce}</output>
       </label>
       <label>Offset <input type="range" min="0" max="120"
         value={motion.offsetPx}
         onChange={e => edit({ offsetPx: Number(e.target.value) })}/>
+        <output aria-hidden="true">{motion.offsetPx}px</output>
       </label>
       <label>Speed <select value={speed}
         onChange={e => { setSpeed(Number(e.target.value)); replayNow(); }}>

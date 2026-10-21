@@ -12,11 +12,12 @@ Keep three kinds of evidence distinct:
 
 ## Static checks
 
+`<skill-dir>` is this skill's installed directory.
+
 ```sh
-sh tests/verify.sh
-scripts/verify.sh config .ui-tuning-lab/lab.json
-scripts/verify.sh profile path/to/saved-profile.json
-scripts/verify.sh source-gates path/to/app/source
+sh <skill-dir>/scripts/verify.sh config .ui-tuning-lab/lab.json
+sh <skill-dir>/scripts/verify.sh profile path/to/saved-profile.json
+sh <skill-dir>/scripts/verify.sh source-gates path/to/app/source
 ```
 
 The linter treats a line as a lab reference when it contains `UITuningLab`,
@@ -81,9 +82,12 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
 - iOS/macOS: archive the Release scheme, inspect the built product for lab symbols,
   strings, commands, menu items, and resources, then launch that archived product
   and try every development activation path.
-- Web: produce the production bundle, search emitted assets and source maps (when
-  shipped) for lab code/strings, then serve the bundle and try query, storage,
-  keyboard, and developer-menu activation paths.
+- Web: produce the production bundle, then search every emitted asset and source
+  map (when shipped) for the lab markers and for lab-only strings such as the
+  trigger and preset labels. Do not rely on a missing lab chunk: bundlers often
+  emit a single file, so the absence of a separate chunk proves nothing. Then
+  serve the bundle and try query, storage, keyboard, and developer-menu
+  activation paths.
 
 Record the exact commands, artifact identity, observations, and evidence links in
 the target project's task report or a receipt copied from

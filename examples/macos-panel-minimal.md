@@ -34,10 +34,7 @@ final class FeatureSceneModel: ObservableObject {
     @Published var style = ToolbarStyle.appDefault
 
     #if DEBUG
-    lazy var uiTuningLab = UITuningLabCoordinator(style: Binding(
-        get: { [weak self] in self?.style ?? .appDefault },
-        set: { [weak self] in self?.style = $0 }
-    ))
+    lazy var uiTuningLab = UITuningLabCoordinator(model: self)
     #endif
 }
 
@@ -70,25 +67,40 @@ import AppKit
 import SwiftUI
 
 #if DEBUG
+/// Lab-only state the panel observes; the coordinator owns it so closing the
+/// panel can always restore the draft.
+@MainActor
+final class UITuningLabState: ObservableObject {
+    @Published var stashedDraft: ToolbarStyle?  // set while the baseline is shown
+}
+
 @MainActor
 final class UITuningLabCoordinator: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
-    private let style: Binding<ToolbarStyle>
+    private let lab = UITuningLabState()
+    // The model owns this coordinator, so it always outlives it.
+    private unowned let model: FeatureSceneModel
 
-    init(style: Binding<ToolbarStyle>) { self.style = style }
+    init(model: FeatureSceneModel) { self.model = model }
 
     func show() {
         if let panel { panel.makeKeyAndOrderFront(nil); return }
-        // The panel keeps this captured value for Reset and Copy values.
-        let controls = UITuningLabPanel(style: style, baseline: style.wrappedValue)
-        let panel = NSPanel(contentRect: .init(x: 0, y: 0, width: 300, height: 250),
+        // The panel observes the model and the lab state, so every change
+        // redraws it; it keeps the captured baseline for Reset and Copy values.
+        let controls = UITuningLabPanel(model: model, lab: lab, baseline: model.style)
+        let panel = UITuningLabNSPanel(contentRect: .init(x: 0, y: 0, width: 300, height: 250),
                             styleMask: [.titled, .closable, .utilityWindow],
                             backing: .buffered, defer: false)
         panel.isFloatingPanel = true
         panel.animationBehavior = .none
         panel.delegate = self
         panel.contentView = NSHostingView(rootView: controls)
-        panel.center()
+        // Beside the feature window, never over it.
+        if let window = NSApp.keyWindow {
+            panel.setFrameTopLeftPoint(NSPoint(x: window.frame.maxX + 12, y: window.frame.maxY))
+        } else {
+            panel.center()
+        }
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
     }
@@ -96,10 +108,17 @@ final class UITuningLabCoordinator: NSObject, NSWindowDelegate {
     func close() { panel?.close() }
 
     func windowWillClose(_ notification: Notification) {
+        if let draft = lab.stashedDraft { model.style = draft }
+        lab.stashedDraft = nil
         panel?.delegate = nil
         panel?.contentView = nil
         panel = nil
     }
+}
+
+/// A utility panel that also closes on Escape.
+final class UITuningLabNSPanel: NSPanel {
+    override func cancelOperation(_ sender: Any?) { close() }
 }
 
 struct ShowUITuningLabKey: FocusedValueKey {
@@ -133,7 +152,8 @@ import SwiftUI
 
 #if DEBUG
 struct UITuningLabPanel: View {
-    @Binding var style: ToolbarStyle
+    @ObservedObject var model: FeatureSceneModel
+    @ObservedObject var lab: UITuningLabState
     let baseline: ToolbarStyle
     @State private var status: String?
 
@@ -142,20 +162,44 @@ struct UITuningLabPanel: View {
 
     var body: some View {
         Form {
-            HStack {
-                Button("Compact") { style = Self.compact }
-                Button("Spacious") { style = Self.spacious }
-            }
-            Slider(value: $style.height, in: 28...64, step: 1) { Text("Height") }
-            Slider(value: $style.cornerRadius, in: 0...24, step: 1) { Text("Radius") }
-            HStack {
-                Button("Reset") { style = baseline }
-                Button("Copy values") {
-                    status = uiTuningLabCopyValues(from: baseline, to: style)
+            Toggle("Show baseline", isOn: showingBaseline)
+            Group {
+                HStack {
+                    Button("Compact") { model.style = Self.compact }
+                    Button("Spacious") { model.style = Self.spacious }
+                }
+                LabeledContent("Height", value: "\(Int(model.style.height)) pt")
+                    .accessibilityHidden(true)  // the slider reports its own value
+                Slider(value: $model.style.height, in: 28...64, step: 1) { Text("Height") }
+                LabeledContent("Radius", value: "\(Int(model.style.cornerRadius)) pt")
+                    .accessibilityHidden(true)  // the slider reports its own value
+                Slider(value: $model.style.cornerRadius, in: 0...24, step: 1) { Text("Radius") }
+                HStack {
+                    Button("Reset") { model.style = baseline }
+                    Button("Copy values") {
+                        status = uiTuningLabCopyValues(from: baseline, to: model.style)
+                    }
                 }
             }
+            .disabled(lab.stashedDraft != nil)
             if let status { Text(status).font(.footnote) }
         }.padding()
+    }
+
+    /// Shows the captured baseline in the real feature; turning it off restores the draft.
+    private var showingBaseline: Binding<Bool> {
+        Binding(
+            get: { lab.stashedDraft != nil },
+            set: { show in
+                if show {
+                    lab.stashedDraft = model.style
+                    model.style = baseline
+                } else if let draft = lab.stashedDraft {
+                    model.style = draft
+                    lab.stashedDraft = nil
+                }
+            }
+        )
     }
 }
 #endif
@@ -276,7 +320,8 @@ struct UITuningLabProfileMismatch: LocalizedError {
 }
 
 struct UITuningLabPanel: View {
-    @Binding var style: ToolbarStyle
+    @ObservedObject var model: FeatureSceneModel
+    @ObservedObject var lab: UITuningLabState
     let baseline: ToolbarStyle
     @State private var status: String?
 
@@ -285,34 +330,58 @@ struct UITuningLabPanel: View {
 
     var body: some View {
         Form {
-            HStack {
-                Button("Compact") { style = Self.compact }
-                Button("Spacious") { style = Self.spacious }
-            }
-            Slider(value: $style.height, in: 28...64, step: 1) { Text("Height") }
-            Slider(value: $style.cornerRadius, in: 0...24, step: 1) { Text("Radius") }
-            HStack {
-                Button("Reset") { style = baseline }
-                Button("Copy values") {
-                    status = uiTuningLabCopyValues(from: baseline, to: style)
+            Toggle("Show baseline", isOn: showingBaseline)
+            Group {
+                HStack {
+                    Button("Compact") { model.style = Self.compact }
+                    Button("Spacious") { model.style = Self.spacious }
                 }
-                Button("Save") {
-                    do { try save(); status = "Saved" }
-                    catch { status = "Save failed: \(error.localizedDescription)" }
-                }
-                Button("Load saved") {
-                    do { try loadSaved(); status = "Loaded saved values" }
-                    catch {
-                        status = "Saved profile not loaded: \(error.localizedDescription). The file was left unchanged."
+                LabeledContent("Height", value: "\(Int(model.style.height)) pt")
+                    .accessibilityHidden(true)  // the slider reports its own value
+                Slider(value: $model.style.height, in: 28...64, step: 1) { Text("Height") }
+                LabeledContent("Radius", value: "\(Int(model.style.cornerRadius)) pt")
+                    .accessibilityHidden(true)  // the slider reports its own value
+                Slider(value: $model.style.cornerRadius, in: 0...24, step: 1) { Text("Radius") }
+                HStack {
+                    Button("Reset") { model.style = baseline }
+                    Button("Copy values") {
+                        status = uiTuningLabCopyValues(from: baseline, to: model.style)
+                    }
+                    Button("Save") {
+                        do { try save(); status = "Saved" }
+                        catch { status = "Save failed: \(error.localizedDescription)" }
+                    }
+                    Button("Load saved") {
+                        do { try loadSaved(); status = "Loaded saved values" }
+                        catch {
+                            status = "Saved profile not loaded: \(error.localizedDescription). The file was left unchanged."
+                        }
                     }
                 }
             }
+            .disabled(lab.stashedDraft != nil)
             if let status { Text(status).font(.footnote) }
         }.padding()
     }
 
+    /// Shows the captured baseline in the real feature; turning it off restores the draft.
+    private var showingBaseline: Binding<Bool> {
+        Binding(
+            get: { lab.stashedDraft != nil },
+            set: { show in
+                if show {
+                    lab.stashedDraft = model.style
+                    model.style = baseline
+                } else if let draft = lab.stashedDraft {
+                    model.style = draft
+                    lab.stashedDraft = nil
+                }
+            }
+        )
+    }
+
     private func save() throws {
-        let data = try JSONEncoder().encode(UITuningLabProfile(overrides: style))
+        let data = try JSONEncoder().encode(UITuningLabProfile(overrides: model.style))
         try FileManager.default.createDirectory(
             at: UITuningLabProfile.fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true)
@@ -325,7 +394,7 @@ struct UITuningLabPanel: View {
         guard profile.schemaVersion == 1, profile.platform == "macos" else {
             throw UITuningLabProfileMismatch()
         }
-        style = profile.overrides
+        model.style = profile.overrides
     }
 }
 #endif

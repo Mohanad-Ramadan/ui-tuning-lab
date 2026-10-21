@@ -91,12 +91,31 @@ done
 
 require_text examples/swiftui-popover-palette.md 'guard !showUITuningLab, uiTuningLabBaseline == nil else { return }' 'iOS activation preserves its original baseline'
 require_text examples/web-floating-panel.md 'role="dialog"' 'web popover exposes dialog semantics'
-require_text examples/web-floating-panel.md 'aria-labelledby="tuning-lab-title"' 'web dialog has a labelled heading'
+require_text examples/web-floating-panel.md 'aria-labelledby="ui-tuning-lab-title"' 'web dialog has a labelled heading'
+require_text examples/web-floating-panel.md '{...popoverManual}' 'web lab stays open while the feature is used'
+require_text examples/web-floating-panel.md 'document.addEventListener("keydown", onKeyDown);' 'web lab closes on Escape wherever focus is'
+require_text examples/web-floating-panel.md 'useLayoutEffect(() => { setConfigRef.current = setConfig; });' 'web lab tolerates an unstable host setter'
+require_text examples/macos-panel-minimal.md '@ObservedObject var model: FeatureSceneModel' 'macOS panel observes the model so it redraws'
+if grep -q 'get: { \[weak self\] in self?\.' "$ROOT/examples/macos-panel-minimal.md"; then
+  not_ok 'macOS panel does not use a closure Binding to plain properties'
+else
+  ok 'macOS panel does not use a closure Binding to plain properties'
+fi
+require_text examples/web-floating-panel.md 'maxHeight: "calc(100dvh - 88px)"' 'web panel stays inside the viewport'
+require_text examples/web-floating-panel.md '<output aria-hidden="true">{config.radius}px</output>' 'web sliders show their value'
 require_text examples/web-floating-panel.md 'firstControl.current?.focus()' 'web dialog receives initial focus'
 require_text examples/web-floating-panel.md 'trigger.current?.focus()' 'web dismissal restores trigger focus'
 require_text examples/web-floating-panel.md 'cancelAnimationFrame(focusFrame)' 'web cleanup cancels pending initial-focus work'
 require_text examples/web-floating-panel.md 'value={config.gap}' 'web lab controls every config field'
 require_text examples/web-floating-panel.md 'uiTuningLab.default' 'web save uses the uiTuningLab namespace'
+for example in swiftui-popover-palette macos-panel-minimal; do
+  require_text "examples/$example.md" 'Toggle("Show baseline", isOn: showingBaseline)' "$example.md lab flips to the baseline"
+done
+require_text examples/swiftui-popover-palette.md '.onDisappear { if let stashedDraft { style = stashedDraft } }' 'iOS closing restores the stashed draft'
+require_text examples/macos-panel-minimal.md 'if let draft = lab.stashedDraft { model.style = draft }' 'macOS closing restores the stashed draft'
+require_text examples/macos-panel-minimal.md 'override func cancelOperation(_ sender: Any?) { close() }' 'macOS panel closes on Escape'
+require_text examples/web-floating-panel.md 'onClick={toggleBaseline}>Show baseline' 'web lab flips to the baseline'
+require_text examples/web-floating-panel.md 'if (stashedDraft.current) setConfigRef.current(stashedDraft.current);' 'web closing restores the stashed draft'
 require_text examples/animation-spring.md 'lab.replayToken += 1' 'SwiftUI motion lab can replay'
 require_text examples/animation-spring.md 'motion.duration /= speed' 'SwiftUI motion lab slows the preview by stretching duration'
 require_text examples/animation-spring.md 'Toggle("Show baseline"' 'SwiftUI motion lab flips to the baseline'

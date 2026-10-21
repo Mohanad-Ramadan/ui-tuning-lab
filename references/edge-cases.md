@@ -15,6 +15,8 @@ Common checks:
 - Ignore lab chrome when measuring the feature.
 - Make hot reload registration idempotent.
 - On save failure, show the error and retain the draft.
-- On corrupt or incompatible saved data, keep the file untouched, fall back to
-  baseline, and report the incompatibility.
-- Confirm before reset only when reset would discard an unsaved draft.
+- On corrupt or incompatible saved data, keep the file untouched, keep the
+  current draft, and report the incompatibility.
+- Reset needs no confirmation: the baseline is always one click away, and Copy
+  values preserves a draft worth keeping. Confirm only before Load saved replaces
+  a draft that differs from the baseline, if the user asked for that.

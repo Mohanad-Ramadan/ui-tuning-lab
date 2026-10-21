@@ -1,99 +1,111 @@
 ---
 name: ui-tuning-lab
-description: "Trigger: live lab, visual variants, try options live. Use before tuning animation, layout, appearance, or visible logic on the real screen when live comparison is useful."
-license: "Proprietary — TODO: choose license"
+description: "Add a temporary, development-only control panel beside a real screen so you can tweak animation, spacing, colors, layout, or UI states live in a development build, compare variants against the original, and write the winning values back into code. Use when the user wants to tune, tweak, or try variants of something visible by eye, add sliders or knobs to adjust it while the app runs, or dial in an animation or layout by feel. Web (React), iOS, and macOS (SwiftUI)."
+license: MIT
 metadata:
-  author: "you"
-  version: "1.0"
+  author: "Mohanad Ramadan"
+  version: "1.0.0"
 ---
 
 # UI Tuning Lab
 
-Build a temporary in-app control surface beside the real feature so variants
-can be compared, combined, reset, and deliberately saved.
+Put a small control panel next to the real feature, running in the real app, so
+the user can drag sliders, try presets, flip back to the original, and replay
+motion until it feels right. When they pick a winner, write those values into
+the feature's defaults and take the panel away. Nothing about the lab ships.
 
-## Guarantees
+A good lab feels like this:
 
-Every lab must satisfy all four:
-
-1. **Internal only.** Compile or mount the lab only in DEBUG, development, or
-   tester builds. Source lint is advisory; inspect the final release artifact.
-2. **Reversible.** Capture the feature's real configuration before opening.
-   Reset restores that exact baseline, including behavior as well as appearance.
-3. **Explicit persistence.** Default to no persistence. Save only on an explicit
-   action and only under `uiTuningLab.*` or `.ui-tuning-lab/`; never reuse a
-   production preference key.
-4. **Complete teardown.** Closing unmounts or releases the lab and cancels every
-   timer, observer, listener, task, and duplicate render tree it owns.
+- Opening it changes nothing on screen: the feature renders exactly as before.
+- Every control edits the same configuration the feature renders, live.
+- **Show baseline** flips the real feature back to the original and returns to
+  the draft; **Replay** and **Speed** make motion judgeable.
+- **Copy values** hands over only what changed, and the agent lands it in code.
 
 ## Workflow
 
-1. Inspect the project first: platform, build system, target feature, existing
-   configuration model, natural development gate, native presentation surface,
-   persistence conventions, and test commands.
-2. Infer safe defaults: feature target, scopes named by the request, the
-   platform-native container, persistence off, and one unnamed working draft.
-3. Ask at most one focused question only when an unresolved choice materially
-   changes the implementation. Otherwise state the inferred choices and proceed.
-4. Capture the baseline from the same configuration object the feature renders.
-   Keep draft edits separate; reset copies the baseline back into the draft.
-5. Add at least two meaningful presets plus direct controls. Applying either must
-   update that shared configuration rather than a preview-only duplicate. Add a
-   **Copy values** action that copies and logs, as one
-   `UITUNINGLAB_VALUES {...}` line, only the fields that differ from the baseline.
-6. Add explicit Save and Load saved actions only when persistence was requested.
-   Report write and load errors without losing the draft; loading never changes
-   the baseline.
-7. Land the winner when the user picks one: write the copied values into the
-   feature's real defaults, show a baseline-to-winner table, then remove the lab
-   or keep it, as the user chooses. Follow `references/landing-protocol.md`.
-8. Verify baseline equivalence, variants, inputs, accessibility, dismissal, and
-   teardown. Then inspect a release build or bundle for absence.
+1. **Inspect.** Find the platform, build system, the feature's configuration
+   model, the development gate, the native transient surface, and test commands.
+   Reuse an existing debug menu or panel library when the project has one
+   (`references/setup-protocol.md`).
+2. **Decide quietly.** Infer target, scope, container, and gate; persistence is
+   off unless the user asked to save. Ask at most one focused question, only when
+   the answer changes the implementation.
+3. **Build the lab.** Start from the matching file in `examples/`. Wrap only the
+   feature, lifting a constant config into state if needed, and keep the panel
+   beside the feature and open while it is used (`references/setup-protocol.md`,
+   "Wire the host"). Capture the baseline from the object the feature renders;
+   keep the draft separate. Pick
+   controls from `references/control-mapping.md`: at least two presets, direct
+   controls, Show baseline, Reset, and Copy values, plus Replay and Speed for
+   motion. Add Save and Load saved only when persistence was requested
+   (`references/config-schema.md`).
+4. **Tune with the user.** Open the lab in the running app and iterate. If the
+   user is not available, stop here and report the lab as built, with every
+   hands-on check listed as not run. You can still run the release-artifact
+   checks yourself: build, search the output, serve it, and try activation
+   paths.
+5. **Land the winner.** Read the `UITUNINGLAB_VALUES` line, write the values into
+   the feature's defaults, show a baseline-to-winner table, then remove the lab
+   (default) or keep it (`references/landing-protocol.md`).
+6. **Verify.** Run the checks below and report what passed, what failed, and what
+   was not run.
 
-Name every lab-owned type, file, and storage key with a lab marker
-(`UITuningLab`, `uiTuningLab`, or `ui-tuning-lab`) so the source linter can find
-it. In Swift, also mark the host's DEBUG-only state and functions (for example
-`showUITuningLab`, `uiTuningLabBaseline`), and wrap each lab file in `#if DEBUG`. On the web, keep lab code in
-`*.ui-tuning-lab.tsx` modules and load them only through a dynamic `import()`
-inside an `if (import.meta.env.DEV) {` block; a static import fails the linter.
-The web host variable (`TuningLabHost` in the examples) stays unmarked because it
-is declared outside the gate.
-Import lab modules by relative path; the linter does not resolve aliases. After
-building a lab, run `source-gates` on a directory that holds both the feature
-files and the lab files; it must PASS. `N/A` means no marked reference was
-found, usually because the naming rule was skipped. A PASS cannot prove that
-every lab symbol was marked, so also keep the rule while writing the code.
+## Naming rule
 
-An ephemeral lab needs no `lab.json`. Create `.ui-tuning-lab/lab.json` only for
-a reusable lab, and check a saved profile only when persistence was requested
-(`references/config-schema.md`):
+The source linter finds lab code by marker, so every lab file, every lab symbol
+that host code references, and every storage key contains `UITuningLab`,
+`uiTuningLab`, or `ui-tuning-lab`. Private helpers inside a lab file or lab
+module (presets, a diff function) need no marker: the file itself is gated.
 
-```sh
-scripts/verify.sh config .ui-tuning-lab/lab.json
-scripts/verify.sh profile path/to/saved-profile.json
-```
+- **Swift:** wrap each lab file in `#if DEBUG`, and mark the host's DEBUG-only
+  state too (`showUITuningLab`, `uiTuningLabBaseline`).
+- **Web:** keep lab code in `*.ui-tuning-lab.tsx` modules. Load them only with a
+  dynamic `import()` by relative path inside `if (import.meta.env.DEV) {` (Vite)
+  or `if (process.env.NODE_ENV !== "production") {` (webpack, Next.js). A static
+  import fails the linter. The host variable (`TuningLabHost`) stays
+  unmarked because it is declared outside the gate.
 
-Use `scripts/verify.sh source-gates <source-path>` as an advisory lint check. It
-does not prove absence from a release artifact. An `N/A` result means nothing
-relevant was checked and must not be reported as a pass.
+## Safety checklist
 
-## Route to Details
+`<skill-dir>` is this skill's installed directory.
 
-- Read `references/setup-protocol.md` when project inspection leaves ambiguity.
-- Read `references/surface-matrix.md` for candidate native containers and gates.
-- Read `references/container-tuning.md` only when tuning the host itself.
-- Read `references/landing-protocol.md` when the user picks a winner.
-- Read `references/config-schema.md` before writing `lab.json` or a saved profile.
-- Read `references/verify-protocol.md` before claiming validation.
-- Use `assets/labconfig.template.json`, `assets/profile.template.json`, and
-  `profiles/_template.md` only for a reusable lab or saved profile.
-- Use the matching candidate in `examples/` as a starting point, not as evidence
-  that the user's app has passed validation.
+| Guarantee | How it is checked |
+|---|---|
+| **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files, and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
+| **Reversible.** Reset restores the captured baseline exactly, behavior included. | Hands-on: open, change everything, Reset, and compare with the lab closed. |
+| **Explicit persistence.** Nothing is written unless the user asked; saves go only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | No storage writer in an ephemeral lab; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
+| **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
+
+`source-gates` is advisory lint: a PASS cannot prove release absence or that every
+symbol was marked. `N/A` is never a pass; while building a lab it usually means the
+naming rule was skipped. Validate a reusable lab definition with
+`sh <skill-dir>/scripts/verify.sh config .ui-tuning-lab/lab.json`.
+
+Stop and report instead of proceeding when the development gate cannot be
+established, the baseline cannot be captured without changing production data, or
+a save would overwrite a production key.
+
+## Route to details
+
+- `references/setup-protocol.md`: inspection, reusing existing tools, when to ask.
+- `references/surface-matrix.md`: native containers and gates per platform.
+- `references/control-mapping.md`: which control for which value; required controls.
+- `references/landing-protocol.md`: reading values, writing defaults, removal.
+- `references/config-schema.md`: `lab.json` and saved profiles.
+- `references/verify-protocol.md`: static, hands-on, and release-artifact checks.
+- `references/edge-cases.md`: rotation, focus, hot reload, corrupt saved data.
+- `references/container-tuning.md`: only when tuning the host container itself.
+- `examples/`: starting points, not evidence that the user's app passed
+  validation. Each platform stays a candidate until its receipt in `validation/`
+  passes.
 
 ## Report
 
-Return the files changed, inferred or chosen container and gate, baseline source,
-save location if any, the landed values table and the declaration changed, whether
-the lab was removed or kept, commands run, and verification evidence. Distinguish static
-lint, hands-on checks, and release-artifact inspection. Never mark an unrun check
-as passed.
+Return the files changed; the chosen container, gate, and baseline source; any
+production-side change (such as a constant lifted into state); any save
+location; and the commands run with their results. After landing, add the values
+table, the declaration changed, and whether the lab was removed or kept; before
+landing, say the lab is in place and awaiting a winner. Keep static
+lint, hands-on checks, and release-artifact inspection separate, and never mark an
+unrun check as passed.

@@ -12,7 +12,7 @@
 - [ ] Baseline equivalence; compact and relaxed variants; exact reset.
 - [ ] Copy values copies and logs only changed fields; landing writes them into the feature defaults; removal leaves `source-gates` at N/A.
 - [ ] If persistence was requested, explicit `uiTuningLab.*` Save and Load saved success, and failure-with-draft-retention.
-- [ ] Desktop/mobile layout, pointer/touch, keyboard, focus, and light-dismiss.
+- [ ] Desktop/mobile layout, pointer/touch, keyboard, focus, and Close/Escape dismissal; clicking the feature keeps the lab open.
 - [ ] Screen-reader behavior and reduced-motion behavior where applicable.
 - [ ] Conditional unmount removes UI and listeners.
 - [ ] Production assets/source maps contain no lab code and query, storage, keyboard, and menu activation paths fail.

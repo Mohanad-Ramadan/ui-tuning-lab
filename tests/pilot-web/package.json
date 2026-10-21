@@ -1,0 +1,9 @@
+{
+  "name": "ui-tuning-lab-pilot-browsers",
+  "private": true,
+  "type": "module",
+  "description": "Cross-engine checks for the web pilot (Chromium, Firefox, WebKit). Not part of the published skill.",
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
