@@ -1,0 +1,116 @@
+ok - [chromium/desktop] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
+ok - [chromium/desktop] Close is visible without scrolling the page
+ok - [chromium/desktop] panel fits inside the viewport: {"x":930,"y":538.1875,"width":334,"height":189.8125}
+ok - [chromium/desktop] focus moves into the panel
+ok - [chromium/desktop] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
+ok - [chromium/desktop] radius slider edits the feature
+ok - [chromium/desktop] clicking the feature keeps the lab open
+ok - [chromium/desktop] Show baseline renders the baseline
+ok - [chromium/desktop] editing is disabled while the baseline is shown
+ok - [chromium/desktop] turning Show baseline off restores the draft
+ok - [chromium/desktop] Copy values logs only the changed fields: UITUNINGLAB_VALUES {"radius":20}
+ok - [chromium/desktop] Reset restores the baseline exactly
+ok - [chromium/desktop] Escape closes and unmounts the panel
+ok - [chromium/desktop] focus returns to Tune after Escape
+ok - [chromium/desktop] closing keeps the tuned draft
+ok - [chromium/desktop] the baseline is showing before Close
+ok - [chromium/desktop] closing while the baseline is shown restores the draft
+ok - [chromium/desktop] keyboard reaches every control
+ok - [chromium/mobile] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
+ok - [chromium/mobile] Close is visible without scrolling the page
+ok - [chromium/mobile] panel fits inside the viewport: {"x":25,"y":550.1875,"width":334,"height":189.8125}
+ok - [chromium/mobile] focus moves into the panel
+ok - [chromium/mobile] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
+ok - [chromium/mobile] radius slider edits the feature
+ok - [chromium/mobile] clicking the feature keeps the lab open
+ok - [chromium/mobile] Show baseline renders the baseline
+ok - [chromium/mobile] editing is disabled while the baseline is shown
+ok - [chromium/mobile] turning Show baseline off restores the draft
+ok - [chromium/mobile] Copy values logs only the changed fields: UITUNINGLAB_VALUES {"radius":20}
+ok - [chromium/mobile] Reset restores the baseline exactly
+ok - [chromium/mobile] Escape closes and unmounts the panel
+ok - [chromium/mobile] focus returns to Tune after Escape
+ok - [chromium/mobile] closing keeps the tuned draft
+ok - [chromium/mobile] the baseline is showing before Close
+ok - [chromium/mobile] closing while the baseline is shown restores the draft
+ok - [chromium/mobile] keyboard reaches every control
+ok - [chromium/landscape] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
+ok - [chromium/landscape] Close is visible without scrolling the page
+ok - [chromium/landscape] panel fits inside the viewport: {"x":462,"y":113.1875,"width":334,"height":189.8125}
+ok - [chromium/landscape] focus moves into the panel
+ok - [chromium/landscape] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
+ok - [chromium/landscape] radius slider edits the feature
+ok - [chromium/landscape] clicking the feature keeps the lab open
+ok - [chromium/landscape] Show baseline renders the baseline
+ok - [chromium/landscape] editing is disabled while the baseline is shown
+ok - [chromium/landscape] turning Show baseline off restores the draft
+ok - [chromium/landscape] Copy values logs only the changed fields: UITUNINGLAB_VALUES {"radius":20}
+ok - [chromium/landscape] Reset restores the baseline exactly
+ok - [chromium/landscape] Escape closes and unmounts the panel
+ok - [chromium/landscape] focus returns to Tune after Escape
+ok - [chromium/landscape] closing keeps the tuned draft
+ok - [chromium/landscape] the baseline is showing before Close
+ok - [chromium/landscape] closing while the baseline is shown restores the draft
+ok - [chromium/landscape] keyboard reaches every control
+ok - [chromium/production] query, storage, and keyboard activation open nothing: tune=0 dialogs=0
+not ok - [firefox/desktop] browser launched: Error: browserType.launch: Failed to launch the browser process.
+not ok - [firefox/mobile] browser launched: Error: browserType.launch: Failed to launch the browser process.
+not ok - [firefox/landscape] browser launched: Error: browserType.launch: Failed to launch the browser process.
+not ok - [firefox/production] browser launched: Error: browserType.launch: Failed to launch the browser process.
+ok - [webkit/desktop] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
+ok - [webkit/desktop] Close is visible without scrolling the page
+ok - [webkit/desktop] panel fits inside the viewport: {"x":930,"y":558.15625,"width":334,"height":169.84375}
+ok - [webkit/desktop] focus moves into the panel
+ok - [webkit/desktop] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
+ok - [webkit/desktop] radius slider edits the feature
+ok - [webkit/desktop] clicking the feature keeps the lab open
+ok - [webkit/desktop] Show baseline renders the baseline
+ok - [webkit/desktop] editing is disabled while the baseline is shown
+ok - [webkit/desktop] turning Show baseline off restores the draft
+ok - [webkit/desktop] Copy values logs only the changed fields: UITUNINGLAB_VALUES {"radius":20}
+ok - [webkit/desktop] Reset restores the baseline exactly
+ok - [webkit/desktop] Escape closes and unmounts the panel
+ok - [webkit/desktop] focus returns to Tune after Escape
+ok - [webkit/desktop] closing keeps the tuned draft
+ok - [webkit/desktop] the baseline is showing before Close
+ok - [webkit/desktop] closing while the baseline is shown restores the draft
+ok - [webkit/desktop] keyboard reaches every control
+ok - [webkit/mobile] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
+ok - [webkit/mobile] Close is visible without scrolling the page
+ok - [webkit/mobile] panel fits inside the viewport: {"x":25,"y":570.15625,"width":334,"height":169.84375}
+ok - [webkit/mobile] focus moves into the panel
+ok - [webkit/mobile] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
+ok - [webkit/mobile] radius slider edits the feature
+ok - [webkit/mobile] clicking the feature keeps the lab open
+ok - [webkit/mobile] Show baseline renders the baseline
+ok - [webkit/mobile] editing is disabled while the baseline is shown
+ok - [webkit/mobile] turning Show baseline off restores the draft
+ok - [webkit/mobile] Copy values logs only the changed fields: UITUNINGLAB_VALUES {"radius":20}
+ok - [webkit/mobile] Reset restores the baseline exactly
+ok - [webkit/mobile] Escape closes and unmounts the panel
+ok - [webkit/mobile] focus returns to Tune after Escape
+ok - [webkit/mobile] closing keeps the tuned draft
+ok - [webkit/mobile] the baseline is showing before Close
+ok - [webkit/mobile] closing while the baseline is shown restores the draft
+ok - [webkit/mobile] keyboard reaches every control
+ok - [webkit/landscape] opening leaves the feature at its baseline: {"radius":"12px","padding":"16px","gap":"8px"}
+ok - [webkit/landscape] Close is visible without scrolling the page
+ok - [webkit/landscape] panel fits inside the viewport: {"x":462,"y":133.15625,"width":334,"height":169.84375}
+ok - [webkit/landscape] focus moves into the panel
+ok - [webkit/landscape] preset changes the real feature: {"radius":"4px","padding":"8px","gap":"4px"}
+ok - [webkit/landscape] radius slider edits the feature
+ok - [webkit/landscape] clicking the feature keeps the lab open
+ok - [webkit/landscape] Show baseline renders the baseline
+ok - [webkit/landscape] editing is disabled while the baseline is shown
+ok - [webkit/landscape] turning Show baseline off restores the draft
+ok - [webkit/landscape] Copy values logs only the changed fields: UITUNINGLAB_VALUES {"radius":20}
+ok - [webkit/landscape] Reset restores the baseline exactly
+ok - [webkit/landscape] Escape closes and unmounts the panel
+ok - [webkit/landscape] focus returns to Tune after Escape
+ok - [webkit/landscape] closing keeps the tuned draft
+ok - [webkit/landscape] the baseline is showing before Close
+ok - [webkit/landscape] closing while the baseline is shown restores the draft
+ok - [webkit/landscape] keyboard reaches every control
+ok - [webkit/production] query, storage, and keyboard activation open nothing: tune=0 dialogs=0
+
+110 passed; 4 failed

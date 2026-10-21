@@ -1,0 +1,13 @@
+diff --git a/pilots/web-vite/src/cards.ts b/pilots/web-vite/src/cards.ts
+index 190db16..4ecd7d7 100644
+--- a/pilots/web-vite/src/cards.ts
++++ b/pilots/web-vite/src/cards.ts
+@@ -4,7 +4,7 @@ export type CardConfig = {
+   padding: number; // px inside each card
+ };
+ 
+-export const cardDefaults: CardConfig = { radius: 12, gap: 8, padding: 16 };
++export const cardDefaults: CardConfig = { radius: 20, gap: 12, padding: 16 };
+ 
+ export const cards = [
+   { title: "Inbox", body: "3 unread messages" },

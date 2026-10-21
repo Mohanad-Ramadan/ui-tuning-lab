@@ -1,0 +1,5 @@
+$ sh scripts/verify.sh source-gates pilots/web-vite/src
+N/A: supported sources contain no lab references in pilots/web-vite/src
+exit=3
+$ grep -rnE 'TuningLab|tuning-lab|\bTune\b' pilots/web-vite/src
+exit=1

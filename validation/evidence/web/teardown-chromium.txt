@@ -1,0 +1,2 @@
+ok - listener sets on window/document/body unchanged after 3 open/close cycles
+lab nodes after close: 0

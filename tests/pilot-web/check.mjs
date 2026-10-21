@@ -128,12 +128,16 @@ async function devChecks(engineName, engine, viewportName) {
       await page.evaluate(() => document.activeElement?.textContent?.trim() === "Tune"));
     record(scope, "closing keeps the tuned draft", !same(before, await cardStyles(page)));
 
-    // Closing while the baseline is shown must bring the draft back.
+    // Closing while the baseline is shown must bring the draft back. Each open
+    // captures a new baseline (what the feature renders now), so edit first.
     await page.getByRole("button", { name: "Tune" }).click();
     await dialog.waitFor();
+    const baselineAtOpen = await cardStyles(page);
+    await setRange(page, /Radius/, 6);
     const draftAgain = await cardStyles(page);
     await page.getByRole("button", { name: "Show baseline" }).click();
-    record(scope, "the baseline is showing before Close", same(before, await cardStyles(page)) && !same(before, draftAgain));
+    record(scope, "the baseline is showing before Close",
+      same(baselineAtOpen, await cardStyles(page)) && !same(baselineAtOpen, draftAgain));
     await page.getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(200);
     record(scope, "closing while the baseline is shown restores the draft", same(draftAgain, await cardStyles(page)));
