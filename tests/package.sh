@@ -18,11 +18,12 @@ for forbidden in tests tools pilots evals .omc .git validation/evidence; do
   if [ -e "$PACKAGE/$forbidden" ]; then not_ok "package excludes $forbidden"; else ok "package excludes $forbidden"; fi
 done
 
-# Paths named in shipped Markdown must resolve inside the package.
+# Paths named in shipped Markdown must resolve inside the package. Receipts may
+# cite validation evidence, which stays in the repository by design.
 missing=$(sed 's|<skill-dir>/||g' "$PACKAGE"/SKILL.md "$PACKAGE"/README.md "$PACKAGE"/references/*.md \
     "$PACKAGE"/examples/*.md "$PACKAGE"/profiles/*.md "$PACKAGE"/validation/*.md |
   grep -oE '`(references|examples|assets|profiles|scripts|validation)/[A-Za-z0-9_./-]+' |
-  tr -d '`' | sort -u | while read -r path; do
+  tr -d '`' | grep -v '^validation/evidence/' | sort -u | while read -r path; do
     [ -e "$PACKAGE/$path" ] || echo "$path"
   done)
 if [ -z "$missing" ]; then ok "every referenced path exists in the package"; else not_ok "referenced paths missing from the package: $missing"; fi
