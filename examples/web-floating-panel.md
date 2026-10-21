@@ -89,7 +89,7 @@ function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
   const [open, setOpen] = useState(false);
   const [baseline, setBaseline] = useState<CardConfig | null>(null);
-  const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
@@ -162,9 +162,9 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     console.info(`UITUNINGLAB_VALUES ${values}`);
     try {
       await navigator.clipboard.writeText(values);
-      setStatus({ text: values === "{}" ? "No changes from baseline" : `Copied ${values}` });
+      setStatus(values === "{}" ? "No changes from baseline" : `Copied ${values}`);
     } catch {
-      setStatus({ text: `Clipboard unavailable; values logged to the console: ${values}` });
+      setStatus(`Clipboard unavailable; values logged to the console: ${values}`);
     }
   }
 
@@ -196,7 +196,7 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         <button type="button" onClick={reset}>Reset</button>
         <button type="button" onClick={copyValues}>Copy values</button>
       </fieldset>
-      {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
+      {status && <p role="status">{status}</p>}
     </div>}
   </>;
 }

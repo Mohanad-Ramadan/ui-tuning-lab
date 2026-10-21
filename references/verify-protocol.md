@@ -86,8 +86,18 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
   map (when shipped) for the lab markers and for lab-only strings such as the
   trigger and preset labels. Do not rely on a missing lab chunk: bundlers often
   emit a single file, so the absence of a separate chunk proves nothing. Then
-  serve the bundle and try query, storage, keyboard, and developer-menu
-  activation paths.
+  serve the bundle (`vite preview`, `next start`, or the app's own static server)
+  and try every way the lab opens in development, plus the obvious guesses:
+  - the Tune trigger and any menu entry the lab added;
+  - query strings: `?ui-tuning-lab=1`, `?uiTuningLab=1`, `?tune=1`, `?debug=1`;
+  - storage: set `uiTuningLab.open` and `uiTuningLab.default` in `localStorage`
+    and reload;
+  - keyboard: any shortcut the lab registered, plus `Control+Shift+L` and
+    `Meta+Shift+L`.
+
+  Each must leave no trigger, panel, `[popover]`, or `[role=dialog]` from the
+  lab. These checks apply while a lab is present; after the lab is removed, the
+  landing protocol's source check and build are enough.
 
 Record the exact commands, artifact identity, observations, and evidence links in
 the target project's task report or a receipt copied from

@@ -2,9 +2,9 @@
 
 Pick each control from the kind of value it edits, not from what is easiest to
 build. Ranges run from the smallest sensible value (usually 0 for radius, gap,
-and padding) to about double the baseline, and use a step that lands clean
-values. Generating controls from a list of fields is fine; keep each one
-labelled.
+and padding) to two or three times the baseline (the examples use 32 for a
+radius of 12), and use a step that lands clean values. Generating controls from
+a list of fields is fine; keep each one labelled.
 
 | Value | Control | Notes |
 |---|---|---|

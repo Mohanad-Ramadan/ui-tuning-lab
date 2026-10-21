@@ -396,7 +396,7 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   const [replay, setReplay] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [showBaseline, setShowBaseline] = useState(false);
-  const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
@@ -453,9 +453,9 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     console.info(`UITUNINGLAB_VALUES ${values}`);
     try {
       await navigator.clipboard.writeText(values);
-      setStatus({ text: values === "{}" ? "No changes from baseline" : `Copied ${values}` });
+      setStatus(values === "{}" ? "No changes from baseline" : `Copied ${values}`);
     } catch {
-      setStatus({ text: `Clipboard unavailable; values logged to the console: ${values}` });
+      setStatus(`Clipboard unavailable; values logged to the console: ${values}`);
     }
   }
   function reset() { if (baseline) setMotion({ ...baseline }); replayNow(); }
@@ -502,7 +502,7 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
       <button type="button" onClick={replayNow}>Replay</button>
       <button type="button" onClick={reset}>Reset</button>
       <button type="button" onClick={copyValues}>Copy values</button>
-      {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
+      {status && <p role="status">{status}</p>}
     </div>}
   </>;
 }

@@ -40,19 +40,20 @@ cd <skill-creator-dir> && python3 -m scripts.run_eval --eval-set <repo>/evals/tr
   --skill-path <repo> --model claude-opus-5-5 --runs-per-query 3
 ```
 
-## Agent feedback still open (documentation, for 1.0.1)
+## Agent feedback from these runs: resolved after `3d23b79`
 
-From the final pilot and landing runs; none blocked either agent.
+None of these blocked either agent. All six are fixed in documentation and
+examples in the commit after `c9bfc0f`:
 
-- The landing protocol does not say to revert host changes the lab made (a
-  constant lifted into state); the landing agent restored the original render on
-  its own judgement.
-- The landing protocol says to read the console line yourself even when the user
-  already pasted it, and to "ask once" even when the user already chose.
-- `landing-protocol.md` mentions a "Values not copied" status the web examples do
-  not produce, and the ephemeral web example keeps an unused `error` flag.
-- The web example's slider maxima (32, 24) exceed the "about double the baseline"
-  rule in `control-mapping.md`.
-- `verify-protocol.md` does not name concrete activation paths to try against a
-  production bundle, or say which release checks apply after removal.
-- `\bTune\b` relies on a grep extension; `grep -w Tune` is more portable.
+- The landing protocol now says to undo other host changes, such as a constant
+  lifted into state, and suggests `git diff` to find them.
+- It uses values the user already pasted and a remove-or-keep answer the user
+  already gave, instead of re-asking.
+- "Values not copied" is described as Swift-only, and the ephemeral web labs no
+  longer carry an unused `error` flag on their status.
+- `control-mapping.md` now allows two to three times the baseline, which matches
+  the examples.
+- `verify-protocol.md` names concrete activation paths to try against a
+  production bundle, and says the release checks are optional after removal.
+- The removal grep is two portable commands (`grep -rnE` for the markers,
+  `grep -rnw Tune`) instead of the non-portable `\bTune\b`.
