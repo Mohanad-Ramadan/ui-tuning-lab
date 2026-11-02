@@ -61,7 +61,7 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
 - Opening at baseline is visually and behaviorally equivalent to the feature
   without the lab.
 - Every documented activation path opens the lab: the agent path (on iOS, launch
-  with `-UITuningLabOpen 1`), the chosen human path, and the visible fallback. With
+  with `-UITuningLabOpen 1`), every chosen human path, and the visible fallback. With
   a text input focused, shake still reaches the system's undo and does not open
   the lab. After the lab closes, the human path works again without a relaunch.
   VoiceOver or Switch Control can reach the fallback. When more than one lab

@@ -7,8 +7,9 @@ it writes those values into the feature's defaults and removes the panel.
 
 The workflow is inspect-first: the agent derives the platform, gate, container,
 activation, configuration, and baseline from the project and asks at most one
-material question. Activation has an agent path, a human fast path, and a visible
-fallback; shake is used only when inspection proves it free. Ephemeral labs need
+material setup question, plus how the lab should open. Activation has an agent
+path, one or more human fast paths the user picks, and a visible fallback; shake
+is offered only when inspection proves it free. Ephemeral labs need
 no configuration file. Saved profiles are opt-in and live under `uiTuningLab.*`
 or `.ui-tuning-lab/`.
 
@@ -17,7 +18,7 @@ Start with `SKILL.md`; it routes to everything else.
 ## Guarantees
 
 - Development, DEBUG, internal, or tester builds only.
-- Every lab opens through an agent path, a human fast path, and a visible
+- Every lab opens through an agent path, one or more human fast paths, and a visible
   fallback; activation is development-only.
 - Reset always returns to the declared default, however often the lab reopens.
 - Persistence off by default; explicit namespaced Save when requested.

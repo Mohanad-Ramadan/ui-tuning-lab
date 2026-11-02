@@ -12,7 +12,7 @@ Every lab has three ways in:
 | Path | Purpose | Requirement |
 |---|---|---|
 | Agent | The agent launches the lab deterministically to tune, screenshot, adjust | Development-only, documented, no shipped URL scheme |
-| Human | The fastest path for the person on the screen being tuned | Chosen from inspection; shake only when it is free |
+| Human | The fastest path, or paths, for the person on the screen being tuned | Chosen by the user from inspection-derived candidates; shake only when it is free |
 | Fallback | A visible way in when the gesture fails or a screen reader is used | Always present; never hidden |
 
 The fallback is not optional. A gesture-only lab is inaccessible and
@@ -38,18 +38,33 @@ Record these during setup:
 Shake is free only when none of these conflict. Detection is heuristic; when it
 is ambiguous, ask instead of guessing.
 
-## Choose one recommendation
+## Ask how the lab opens
 
-- If the project already has a debug menu or a clear toolbar convention, reuse
-  it and do not ask.
-- Otherwise ask one focused question: "How should the lab open?"
-  - Recommend the best candidate for this screen, with a one-line reason.
-  - Offer up to three alternatives that inspection actually found.
-  - Do not pad the list; two options are fine.
-  - Do not offer a candidate that conflicts with the inspection.
+Always ask "How should the lab open?" Skip it only when the user's request
+already names the human path, or a remembered `activation` in
+`.ui-tuning-lab/lab.json` still fits the screen. An existing debug menu or a
+clear toolbar convention does not skip the question; it becomes the
+recommendation.
 
-This is the same one-question rule as `references/setup-protocol.md`. Activation
-is material because it changes both the implementation and daily use.
+- Recommend the best candidate for this screen, with a one-line reason.
+- Offer up to three alternatives that inspection actually found.
+- Let the user pick more than one. Use a multi-select question when the asking
+  tool supports it; otherwise offer the sensible combination as its own option,
+  for example "Shake + toolbar Tune button" when shake is free and the screen has
+  a toolbar.
+- Do not pad the list; two options are fine.
+- Do not offer a candidate that conflicts with the inspection.
+- Ask only about human paths. The agent path and the visible fallback are always
+  built and are not options.
+
+Activation is material because it changes both the implementation and daily
+use, so it is asked in addition to the single setup question in
+`references/setup-protocol.md`, never in place of it. When both are needed, put
+them in the same prompt rather than asking twice.
+
+Build every human path the user picks. A visible one, such as a toolbar Tune
+button, also serves as the fallback; when every pick is a gesture or a shortcut,
+add the pill.
 
 ## Screen cases
 
@@ -65,7 +80,8 @@ is material because it changes both the implementation and daily use.
 | More than one lab | A picker, or scope the path to the visible feature | Shake scoped to that feature |
 
 When the recommendation is shake, still implement the visible fallback. The table
-recommends the fast path; it never removes the fallback.
+recommends the fast path; it never removes the fallback. Any recommendation can
+be combined with a free alternative from its row when the user picks both.
 
 ## Platform candidates
 
@@ -168,6 +184,8 @@ A project can remember its activation in `.ui-tuning-lab/lab.json`:
 - Use stable tokens, not prose. Suggested human values: `shake`,
   `toolbar-tune`, `long-press-active-tab`, `pill`, `debug-menu`. Suggested agent
   values: `-UITuningLabOpen 1`, `?ui-tuning-lab=1`, `menu:View > Tune UI`.
+- `human` is one token or, when the user picked several, an array of distinct
+  tokens: `"human": ["shake", "toolbar-tune"]`.
 - `verify.sh config` checks the object when it is present. Configs without it
   remain valid.
 - Do not put activation in a saved profile. `verify.sh profile` rejects extra
@@ -176,7 +194,7 @@ A project can remember its activation in `.ui-tuning-lab/lab.json`:
 ## Verify
 
 The hands-on and release checks are in `references/verify-protocol.md`. At
-minimum, exercise the agent path, the chosen human path, and the visible
+minimum, exercise the agent path, every chosen human path, and the visible
 fallback; confirm that a focused text field keeps shake-to-undo; confirm that
 VoiceOver or Switch Control can reach the fallback; and confirm that the human
 path works again after the lab closes.

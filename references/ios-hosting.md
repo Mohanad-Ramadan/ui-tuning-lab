@@ -59,7 +59,9 @@ inaccessible and unrecoverable when the gesture dies.
 - **Human path.** Reuse an existing toolbar or debug menu. Shake only when
   inspection proves it free: no `motionEnded`, shake observer, or shake
   recognizer; no SDK that owns shake (React Native's developer menu, Instabug);
-  no text input on the target screen; and one unambiguous lab.
+  no text input on the target screen; and one unambiguous lab. The user may pick
+  both: keep the toolbar Tune button, which then doubles as the fallback, and add
+  the shake shim from the `variant=shake` example.
 - **Fallback.** A small visible button or pill with explicit colors, for example
   white text on `.ultraThinMaterial`. It is the VoiceOver, Switch Control, and
   recovery path, and the thing to screenshot. Apps often set an accent color that

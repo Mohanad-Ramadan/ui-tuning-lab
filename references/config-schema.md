@@ -25,7 +25,7 @@ Template: `assets/labconfig.template.json`.
 | `variants` | array | each `{ "name": string, "overrides": object }` |
 | `persist` | string | `none` or `namespaced-save` |
 | `profile` | string | the saved-profile name Save writes |
-| `activation` | object | optional; `{ "human": string, "agent": string, "fallback": string }`, each non-blank. Records the chosen entry points (`references/activation.md`). `verify.sh config` validates it when present; configs without it remain valid. |
+| `activation` | object | optional; `{ "human": string or string[], "agent": string, "fallback": string }`, each token non-blank; `human` as an array is non-empty with distinct tokens, for a lab that opens several ways. Records the chosen entry points (`references/activation.md`). `verify.sh config` validates it when present; configs without it remain valid. |
 
 `activation` is memory for reuse, not a requirement. Write it only when the user
 asks to remember how the lab opens, or confirms when a reusable config already

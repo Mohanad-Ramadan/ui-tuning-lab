@@ -20,6 +20,11 @@
 - Optional `activation` object in `.ui-tuning-lab/lab.json` remembers the chosen
   entry points. `verify.sh config` validates it and rejects blank tokens; saved
   profiles still reject it.
+- The agent always asks how the lab should open, even when a toolbar or debug
+  menu exists, unless the request or a fitting remembered `activation` already
+  answers it. The question sits beside the one setup question, in the same
+  prompt, and lets the user pick several human paths, such as shake plus the
+  toolbar Tune button. `activation.human` accepts a list of distinct tokens.
 - Verification, edge cases, landing removal, the surface matrix, and the
   validation receipts cover activation, re-arming, multi-lab selection, and
   release absence.

@@ -32,11 +32,14 @@ A good lab feels like this:
    when the project has one (`references/setup-protocol.md`).
 2. **Decide quietly.** Infer target, scope, container, gate, activation, and
    persistence; persistence is off unless the user asked to save. Ask at most one
-   focused question, only when the answer changes the implementation. Activation
-   is one allowed question (`references/activation.md`).
+   focused setup question, only when the answer changes the implementation.
+   Always ask how the lab should open, letting the user pick more than one human
+   path, unless the request or a fitting remembered `activation` already says;
+   it does not use up the setup question, and both go in one prompt
+   (`references/activation.md`).
 3. **Build the lab.** Start from the matching file in `examples/`. Choose
-   activation per `references/activation.md`: an agent path, a human path, and a
-   visible fallback. Wrap only the feature, lifting a constant config into state
+   activation per `references/activation.md`: an agent path, one or more human
+   paths, and a visible fallback. Wrap only the feature, lifting a constant config into state
    if needed, and keep the panel beside the feature and open while it is used
    (`references/setup-protocol.md`, "Wire the host"). The baseline is the
    feature's declared default (what ships), never the value on screen when the

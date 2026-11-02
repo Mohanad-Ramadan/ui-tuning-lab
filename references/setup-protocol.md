@@ -100,7 +100,8 @@ confirms. Use stable tokens, not prose:
 
 If no configuration exists and the user wants memory, create one from
 `assets/labconfig.template.json` with the inferred target, scope, container,
-baseline, and variants, then say the lab is now reusable. Read the stored
+baseline, and variants, then say the lab is now reusable. When the user picked
+several human paths, store them as an array: `"human": ["shake", "toolbar-tune"]`. Read the stored
 activation during setup; if it conflicts with the current screen, report the
 conflict and ask before replacing it. Never write activation to a saved profile:
 `verify.sh profile` rejects extra fields.
@@ -109,9 +110,11 @@ conflict and ask before replacing it. Never write activation to a saved profile:
 
 Proceed without an interview when those choices are observable and safe. If one
 material ambiguity remains, ask one focused question with concrete options and a
-recommended default. Activation is an allowed question: "How should the lab
-open?" with the inspection-derived candidates, shake recommended only when it is
-free (`references/activation.md`). Do not batch a questionnaire.
+recommended default. Activation is asked separately and always, unless the
+request or a fitting remembered `activation` already answers it: "How should the
+lab open?" with the inspection-derived candidates, more than one selectable, and
+shake recommended only when it is free (`references/activation.md`). When both
+questions are needed, ask them in one prompt. Do not batch a questionnaire.
 
 An ephemeral lab can live entirely in development-only state. Create
 `.ui-tuning-lab/lab.json` only when the user wants a reusable profile or saved
