@@ -31,6 +31,23 @@ expect_fail() {
   fi
 }
 
+expect_fail_message() {
+  name=$1
+  pattern=$2
+  shift 2
+  set +e
+  output=$("$@" 2>&1)
+  status=$?
+  set -e
+  if [ "$status" -ne 0 ] && printf '%s\n' "$output" | grep -q "$pattern"; then
+    printf 'ok - %s\n' "$name"
+    passes=$((passes + 1))
+  else
+    printf 'not ok - %s (expected a failure matching %s, got %s)\n%s\n' "$name" "$pattern" "$status" "$output"
+    failures=$((failures + 1))
+  fi
+}
+
 expect_na() {
   name=$1
   shift
@@ -59,6 +76,12 @@ expect_fail 'invalid persistence mode' "$VERIFY" config "$FIXTURES/config/persis
 expect_fail 'variant missing name' "$VERIFY" config "$FIXTURES/config/variant-name.json"
 expect_fail 'variant overrides not object' "$VERIFY" config "$FIXTURES/config/variant-overrides.json"
 expect_fail 'session persistence is not a supported mode' "$VERIFY" config "$FIXTURES/config/persist-session.json"
+expect_pass 'valid config with remembered activation' "$VERIFY" config "$FIXTURES/config/activation-valid.json"
+expect_fail_message 'activation not an object' '^FAIL: invalid activation:' "$VERIFY" config "$FIXTURES/config/activation-not-object.json"
+expect_fail_message 'activation missing a field' '^FAIL: invalid activation:' "$VERIFY" config "$FIXTURES/config/activation-missing-field.json"
+expect_fail_message 'activation value not a string' '^FAIL: invalid activation:' "$VERIFY" config "$FIXTURES/config/activation-wrong-type.json"
+expect_fail_message 'activation with an extra field' '^FAIL: invalid activation:' "$VERIFY" config "$FIXTURES/config/activation-extra-field.json"
+expect_fail_message 'activation with an empty value' '^FAIL: invalid activation:' "$VERIFY" config "$FIXTURES/config/activation-empty.json"
 expect_pass 'lab config template is valid' "$VERIFY" config "$ROOT/assets/labconfig.template.json"
 expect_pass 'valid profile' "$VERIFY" profile "$FIXTURES/profile/valid.json"
 expect_pass 'profile template is valid' "$VERIFY" profile "$ROOT/assets/profile.template.json"
