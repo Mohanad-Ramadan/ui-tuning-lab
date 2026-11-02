@@ -46,7 +46,7 @@ import SwiftUI
 struct FeatureScreen: View {
     @State private var style = CardStyle.appDefault
     #if DEBUG
-    @State private var showUITuningLab = UITuningLabLaunch.isRequested
+    @State private var showUITuningLab = false
     #endif
 
     var body: some View {
@@ -66,6 +66,10 @@ struct FeatureScreen: View {
                     .presentationDetents([.height(320)])
                     .presentationBackgroundInteraction(.enabled(upThrough: .height(320)))
             }
+            .onAppear {
+                // The agent path opens the lab once per launch.
+                if UITuningLabLaunch.consumeRequest() { showUITuningLab = true }
+            }
             #endif
     }
 
@@ -82,11 +86,19 @@ struct FeatureScreen: View {
 import Foundation
 
 #if DEBUG
-/// The agent path: a DEBUG-only launch argument read before the first render.
+/// The agent path: a DEBUG-only launch argument, honored once per launch.
 /// Launch with `xcrun simctl launch booted <bundle-id> -UITuningLabOpen 1`.
+@MainActor
 enum UITuningLabLaunch {
-    static var isRequested: Bool {
-        ProcessInfo.processInfo.arguments.contains("-UITuningLabOpen")
+    // Launch arguments land in the volatile argument domain, so the value
+    // counts: `-UITuningLabOpen 0` keeps the lab closed.
+    private static var pending = UserDefaults.standard.bool(forKey: "UITuningLabOpen")
+
+    /// True only the first time it is read, so a rebuilt or re-pushed screen
+    /// does not reopen the lab.
+    static func consumeRequest() -> Bool {
+        defer { pending = false }
+        return pending
     }
 }
 #endif
@@ -112,7 +124,7 @@ import SwiftUI
 struct FeatureScreen: View {
     @State private var style = CardStyle.appDefault
     #if DEBUG
-    @State private var showUITuningLab = UITuningLabLaunch.isRequested
+    @State private var showUITuningLab = false
     #endif
 
     var body: some View {
@@ -141,6 +153,10 @@ struct FeatureScreen: View {
                     .presentationDetents([.height(320)])
                     .presentationBackgroundInteraction(.enabled(upThrough: .height(320)))
             }
+            .onAppear {
+                // The agent path opens the lab once per launch.
+                if UITuningLabLaunch.consumeRequest() { showUITuningLab = true }
+            }
             #endif
     }
 }
@@ -154,7 +170,7 @@ import SwiftUI
 import UIKit
 
 /// A zero-sized first-responder shim for shake-to-open. It never takes focus
-/// from a text input and re-arms after the lab closes.
+/// from another responder and re-arms after the lab closes.
 struct UITuningLabShakeReader: UIViewControllerRepresentable {
     let isLabOpen: Bool
     let onShake: () -> Void
@@ -184,11 +200,17 @@ final class UITuningLabShakeController: UIViewController {
         armIfNeeded()
     }
 
-    /// Becomes first responder only when nothing else owns focus.
-    func armIfNeeded() {
-        guard !isLabOpen, !uiTuningLabHasFocusedTextInput, !isFirstResponder,
-              view.window != nil else { return }
-        becomeFirstResponder()
+    /// Becomes first responder only when nothing else owns focus, so it never
+    /// takes focus from a text field, a focused control, or a key-command owner.
+    func armIfNeeded(attempts: Int = 3) {
+        guard !isLabOpen, !isFirstResponder, let window = view.window,
+              window.uiTuningLabFirstResponder == nil else { return }
+        if becomeFirstResponder() || attempts <= 1 { return }
+        // A popover or sheet that is still dismissing can refuse the first try;
+        // retry briefly after it settles. Bounded, so nothing keeps running.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.armIfNeeded(attempts: attempts - 1)
+        }
     }
 
     override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {

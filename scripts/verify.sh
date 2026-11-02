@@ -60,16 +60,16 @@ validate_config() {
     has("profile") and (.profile | type == "string" and length > 0)
   ' "$file" >/dev/null 2>&1 || fail "missing or invalid required configuration fields: $file"
   # Activation is optional; when present it is an object with exactly three
-  # non-empty string tokens. A separate check keeps its error distinguishable.
+  # non-blank string tokens. A separate check keeps its error distinguishable.
   jq -e '
     (has("activation") | not) or
     (.activation | type == "object" and
       (keys | sort) == ["agent", "fallback", "human"] and
-      (.human | type == "string" and length > 0) and
-      (.agent | type == "string" and length > 0) and
-      (.fallback | type == "string" and length > 0))
+      (.human | type == "string" and test("\\S")) and
+      (.agent | type == "string" and test("\\S")) and
+      (.fallback | type == "string" and test("\\S")))
   ' "$file" >/dev/null 2>&1 || \
-    fail "invalid activation: expected an object with non-empty human, agent, and fallback strings: $file"
+    fail "invalid activation: expected an object with non-blank human, agent, and fallback strings: $file"
   reject_placeholders "$file"
   echo "PASS: valid lab configuration: $file"
 }

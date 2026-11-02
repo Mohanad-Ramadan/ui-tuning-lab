@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "labTarget": "feature",
+  "scope": ["appearance"],
+  "container": "FeatureScreen",
+  "baseline": { "cornerRadius": 12 },
+  "variants": [],
+  "persist": "none",
+  "profile": "default",
+  "activation": {
+    "human": "   ",
+    "agent": "-UITuningLabOpen 1",
+    "fallback": "pill"
+  }
+}

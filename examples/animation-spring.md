@@ -64,7 +64,7 @@ import SwiftUI
 struct EntranceScreen: View {
     @State private var motion = EntranceMotion.appDefault
     #if DEBUG
-    @State private var showUITuningLab = UITuningLabLaunch.isRequested
+    @State private var showUITuningLab = false
     @State private var uiTuningLab = UITuningLabMotionState()
     #endif
 
@@ -92,6 +92,10 @@ struct EntranceScreen: View {
                 // Keep the replay token so closing does not re-create the card.
                 if !open { uiTuningLab.speed = 1; uiTuningLab.showBaseline = false }
             }
+            .onAppear {
+                // The agent path opens the lab once per launch.
+                if UITuningLabLaunch.consumeRequest() { showUITuningLab = true }
+            }
         #else
         EntranceCard(motion: motion)
             .frame(maxHeight: .infinity, alignment: .top)
@@ -111,11 +115,19 @@ struct EntranceScreen: View {
 import Foundation
 
 #if DEBUG
-/// The agent path: a DEBUG-only launch argument read before the first render.
+/// The agent path: a DEBUG-only launch argument, honored once per launch.
 /// Launch with `xcrun simctl launch booted <bundle-id> -UITuningLabOpen 1`.
+@MainActor
 enum UITuningLabLaunch {
-    static var isRequested: Bool {
-        ProcessInfo.processInfo.arguments.contains("-UITuningLabOpen")
+    // Launch arguments land in the volatile argument domain, so the value
+    // counts: `-UITuningLabOpen 0` keeps the lab closed.
+    private static var pending = UserDefaults.standard.bool(forKey: "UITuningLabOpen")
+
+    /// True only the first time it is read, so a rebuilt or re-pushed screen
+    /// does not reopen the lab.
+    static func consumeRequest() -> Bool {
+        defer { pending = false }
+        return pending
     }
 }
 #endif
@@ -413,6 +425,15 @@ function opensOnLaunch(): boolean {
   return new URLSearchParams(window.location.search).get("ui-tuning-lab") === "1";
 }
 
+// Drop the parameter once it has been honored, so a remount, reload, or copied
+// link does not reopen the lab.
+function clearLaunchRequest() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("ui-tuning-lab")) return;
+  url.searchParams.delete("ui-tuning-lab");
+  window.history.replaceState(window.history.state, "", url);
+}
+
 // The draft fields that differ from the baseline.
 function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
   return Object.fromEntries(Object.entries(draft).filter(
@@ -421,6 +442,7 @@ function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
 
 export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHostProps) {
   const [open, setOpen] = useState(opensOnLaunch);
+  useEffect(clearLaunchRequest, []);
   const [replay, setReplay] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [showBaseline, setShowBaseline] = useState(false);

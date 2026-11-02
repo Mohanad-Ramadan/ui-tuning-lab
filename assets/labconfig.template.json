@@ -16,6 +16,6 @@
   "activation": {
     "human": "toolbar-tune",
     "agent": "-UITuningLabOpen 1",
-    "fallback": "pill"
+    "fallback": "toolbar-tune"
   }
 }

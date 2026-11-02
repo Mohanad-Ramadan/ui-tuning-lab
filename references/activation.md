@@ -91,7 +91,8 @@ recommends the fast path; it never removes the fallback.
 
 - A `#if DEBUG` menu command with a key equivalent.
 - A floating pill.
-- The `-UITuningLabOpen 1` launch argument, read once at window appear.
+- The `-UITuningLabOpen 1` launch argument, consumed when the first window
+  appears.
 - An existing debug menu.
 
 ### Other platforms
@@ -123,14 +124,20 @@ menu; do not add a second shake listener.
 
 ## Agent path rules
 
-- **iOS:** read `-UITuningLabOpen` from `ProcessInfo` inside `#if DEBUG`; launch
-  with `xcrun simctl launch booted <bundle-id> -UITuningLabOpen 1`. Do not add a
-  URL scheme: a scheme declared in `Info.plist` is registered in Release even
-  when its handler is gated.
-- **Web:** parse `?ui-tuning-lab=1` only inside the development-gated host.
-- **macOS:** read `-UITuningLabOpen` from `ProcessInfo` inside `#if DEBUG` and
-  open the panel on appear; keep the `#if DEBUG` menu command and key equivalent
-  as the human path and visible fallback. Launch with
+- **Honor the request once.** Consume it the first time it is read, so a
+  re-pushed screen, a second window, a remount, or a reload does not reopen the
+  lab.
+- **iOS:** read `UserDefaults.standard.bool(forKey: "UITuningLabOpen")` inside
+  `#if DEBUG`, so `-UITuningLabOpen 0` stays closed, and consume it in
+  `onAppear`; launch with
+  `xcrun simctl launch booted <bundle-id> -UITuningLabOpen 1`. Do not add a URL
+  scheme: a scheme declared in `Info.plist` is registered in Release even when
+  its handler is gated.
+- **Web:** parse `?ui-tuning-lab=1` only inside the development-gated host, then
+  remove it with `history.replaceState` once the lab has opened.
+- **macOS:** read the same `UserDefaults` key inside `#if DEBUG` and open one
+  panel when the first window appears; keep the `#if DEBUG` menu command and key
+  equivalent as the human path and visible fallback. Launch with
   `open <App>.app --args -UITuningLabOpen 1`.
 - The agent cannot shake: `simctl` has no shake command, and UI scripting needs
   focus and accessibility permissions. Do not make the agent depend on it.

@@ -93,6 +93,15 @@ function opensOnLaunch(): boolean {
   return new URLSearchParams(window.location.search).get("ui-tuning-lab") === "1";
 }
 
+// Drop the parameter once it has been honored, so a remount, reload, or copied
+// link does not reopen the lab.
+function clearLaunchRequest() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("ui-tuning-lab")) return;
+  url.searchParams.delete("ui-tuning-lab");
+  window.history.replaceState(window.history.state, "", url);
+}
+
 // The draft fields that differ from the baseline.
 function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
   return Object.fromEntries(Object.entries(draft).filter(
@@ -101,6 +110,7 @@ function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
 
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
   const [open, setOpen] = useState(opensOnLaunch);
+  useEffect(clearLaunchRequest, []);
   const [status, setStatus] = useState<string | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -278,6 +288,15 @@ function opensOnLaunch(): boolean {
   return new URLSearchParams(window.location.search).get("ui-tuning-lab") === "1";
 }
 
+// Drop the parameter once it has been honored, so a remount, reload, or copied
+// link does not reopen the lab.
+function clearLaunchRequest() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("ui-tuning-lab")) return;
+  url.searchParams.delete("ui-tuning-lab");
+  window.history.replaceState(window.history.state, "", url);
+}
+
 // The draft fields that differ from the baseline.
 function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
   return Object.fromEntries(Object.entries(draft).filter(
@@ -286,6 +305,7 @@ function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
 
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
   const [open, setOpen] = useState(opensOnLaunch);
+  useEffect(clearLaunchRequest, []);
   const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);

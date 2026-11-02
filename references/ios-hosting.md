@@ -33,8 +33,9 @@ Choose activation from inspection (`references/activation.md`). The lab needs al
 three paths, and the visible fallback is not optional: a shake-only lab is
 inaccessible and unrecoverable when the gesture dies.
 
-- **Agent path.** Read `-UITuningLabOpen` from `ProcessInfo` inside `#if DEBUG`
-  and launch with `xcrun simctl launch booted <bundle-id> -UITuningLabOpen 1`.
+- **Agent path.** Read `UserDefaults.standard.bool(forKey: "UITuningLabOpen")`
+  inside `#if DEBUG`, consume it once in `onAppear`, and launch with
+  `xcrun simctl launch booted <bundle-id> -UITuningLabOpen 1`.
   Do not add a URL scheme: a scheme declared in `Info.plist` is registered in
   Release even when its handler is gated. The launch argument leaves nothing
   registered.

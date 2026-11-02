@@ -4,8 +4,8 @@ The coordinator lazily owns a nonmodal panel. Its baseline is the declared
 default, `ToolbarStyle.appDefault`; presets and sliders edit the scene model's
 style, and closing releases the panel and hosting tree. The DEBUG menu command and
 Command-Shift-L are the human path and visible fallback; the DEBUG-only
-`-UITuningLabOpen` launch argument, read in `FeatureWindow.onAppear`, is the agent
-path (`references/activation.md`). **Copy values** puts the fields that differ
+`-UITuningLabOpen 1` launch argument, consumed once in `FeatureWindow.onAppear`, is
+the agent path (`references/activation.md`). **Copy values** puts the fields that differ
 from the baseline on the pasteboard and logs them as one
 `UITUNINGLAB_VALUES {...}` line for landing (`references/landing-protocol.md`).
 The default candidate has no persistence. Every
@@ -14,7 +14,6 @@ lab type carries the `UITuningLab` prefix and lives in a file wrapped in
 
 <!-- file: ExampleApp.swift -->
 ```swift
-import Foundation
 import SwiftUI
 
 struct ToolbarStyle: Codable, Equatable {
@@ -45,17 +44,13 @@ final class FeatureSceneModel: ObservableObject {
 
 struct FeatureWindow: View {
     @StateObject private var model = FeatureSceneModel()
-    #if DEBUG
-    // The agent path: `open ExampleApp.app --args -UITuningLabOpen 1`.
-    private let opensUITuningLab =
-        ProcessInfo.processInfo.arguments.contains("-UITuningLabOpen")
-    #endif
 
     var body: some View {
         FeatureView(style: model.style)
             #if DEBUG
             .focusedSceneValue(\.showUITuningLab, { model.uiTuningLab.show() })
-            .onAppear { if opensUITuningLab { model.uiTuningLab.show() } }
+            // The agent path opens one panel, in the first window, once per launch.
+            .onAppear { if UITuningLabLaunch.consumeRequest() { model.uiTuningLab.show() } }
             .onDisappear { model.uiTuningLab.close() }
             #endif
     }
@@ -70,6 +65,29 @@ struct ExampleApp: App {
             #endif
     }
 }
+```
+
+<!-- file: UITuningLabLaunch.swift -->
+```swift
+import Foundation
+
+#if DEBUG
+/// The agent path: a DEBUG-only launch argument, honored once per launch.
+/// Launch with `open ExampleApp.app --args -UITuningLabOpen 1`.
+@MainActor
+enum UITuningLabLaunch {
+    // Launch arguments land in the volatile argument domain, so the value
+    // counts: `-UITuningLabOpen 0` keeps the lab closed.
+    private static var pending = UserDefaults.standard.bool(forKey: "UITuningLabOpen")
+
+    /// True only the first time it is read, so a second window or a reappearing
+    /// window does not open another panel.
+    static func consumeRequest() -> Bool {
+        defer { pending = false }
+        return pending
+    }
+}
+#endif
 ```
 
 <!-- file: UITuningLabCoordinator.swift -->
@@ -294,10 +312,10 @@ private func uiTuningLabNormalized(_ field: Any) -> Any {
 
 Each window's `FeatureSceneModel` owns exactly one coordinator; the focused scene
 routes the menu and `Command-Shift-L` shortcut to that coordinator, and the launch
-argument opens the panel on appear for the agent. Window dismissal closes the
-panel, which releases its hosting tree. Test focus return, multiple windows,
-keyboard navigation, VoiceOver, closed-state allocations, and the archived Release
-app before approval.
+argument opens one panel, in the first window to appear, for the agent. Window
+dismissal closes the panel, which releases its hosting tree. Test focus return,
+multiple windows, keyboard navigation, VoiceOver, closed-state allocations, and
+the archived Release app before approval.
 
 ## Optional persistence, only when requested
 

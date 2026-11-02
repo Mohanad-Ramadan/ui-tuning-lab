@@ -82,6 +82,7 @@ expect_fail_message 'activation missing a field' '^FAIL: invalid activation:' "$
 expect_fail_message 'activation value not a string' '^FAIL: invalid activation:' "$VERIFY" config "$FIXTURES/config/activation-wrong-type.json"
 expect_fail_message 'activation with an extra field' '^FAIL: invalid activation:' "$VERIFY" config "$FIXTURES/config/activation-extra-field.json"
 expect_fail_message 'activation with an empty value' '^FAIL: invalid activation:' "$VERIFY" config "$FIXTURES/config/activation-empty.json"
+expect_fail_message 'activation with a blank value' '^FAIL: invalid activation:' "$VERIFY" config "$FIXTURES/config/activation-blank.json"
 expect_pass 'lab config template is valid' "$VERIFY" config "$ROOT/assets/labconfig.template.json"
 expect_pass 'valid profile' "$VERIFY" profile "$FIXTURES/profile/valid.json"
 expect_pass 'profile template is valid' "$VERIFY" profile "$ROOT/assets/profile.template.json"
