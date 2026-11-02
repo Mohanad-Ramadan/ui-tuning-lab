@@ -125,3 +125,9 @@ lint, hands-on checks, and release-artifact inspection separate, and never mark 
 unrun check as passed. For each activation path the agent could not exercise
 (shake in the Simulator, a gesture, a hardware shortcut), give the user the
 exact steps to try it.
+
+Before landing, open the report with **How to try it**: where the pill or
+command is (which corner, which menu), then three to five numbered steps from
+opening the lab to pasting the `UITUNINGLAB_VALUES` line back. Name every
+choice the user makes inside the lab (pick a theme, switch mode) and anything
+that still lives elsewhere in the app, so nothing about the setup is a surprise.

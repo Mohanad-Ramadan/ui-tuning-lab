@@ -64,7 +64,11 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
   with `-UITuningLabOpen 1`), every chosen human path, and the visible fallback. With
   a text input focused, shake still reaches the system's undo and does not open
   the lab. After the lab closes, the human path works again without a relaunch.
-  VoiceOver or Switch Control can reach the fallback. When more than one lab
+  VoiceOver or Switch Control can reach the fallback. Opening by the agent path
+  alone proves nothing about the fallback: confirm it is visible and on top (on
+  web, `document.elementFromPoint` at the pill's center returns the pill or its
+  child, not another dev overlay), and that it still works while any app modal
+  the screen offers is open. When more than one lab
   exists, each path opens the intended one, never an arbitrary one.
 - At least two presets differ meaningfully and all direct controls update the same
   configuration consumed by the feature.

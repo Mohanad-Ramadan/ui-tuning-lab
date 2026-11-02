@@ -17,6 +17,13 @@ Common checks:
   regain first responder without stealing focus from a text field.
 - With more than one lab, scope activation to the visible feature or offer a
   picker; never open an arbitrary lab.
+- Another development overlay (router or query devtools, a framework dev
+  indicator) can sit in the lab's corner and cover the pill. Hit-test the
+  fallback, and move the lab, not the other tool.
+- An app modal (a settings sheet, a dialog) makes the rest of the page inert
+  while it is open, the lab included. Keep the lab in the top layer with
+  `pointer-events: auto`, and move any picker the tuning depends on into the lab
+  (`references/setup-protocol.md`, "Wire the host").
 - Do not add an iOS URL scheme for the agent. A scheme registered in `Info.plist`
   survives Release even when its handler does not.
 - When activation is remembered, a changed screen (a new text field, a toolbar)

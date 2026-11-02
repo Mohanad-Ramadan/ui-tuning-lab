@@ -32,6 +32,11 @@ a list of fields is fine; keep each one labelled.
 - **Reset**: copies the baseline back into the draft.
 - **Copy values**: see `references/landing-protocol.md`. Its status line shows
   what was copied at that moment; after further edits, copy again before landing.
+- **Target picker**, when the feature has variants to choose between (a theme,
+  a mode, a layout variant): at the top of the panel, driving the app's real
+  setting, with the current choice in the panel header ("Ember · dark"). An
+  empty or untunable state offers this picker instead of pointing to another
+  screen or menu.
 
 ## Required for motion
 

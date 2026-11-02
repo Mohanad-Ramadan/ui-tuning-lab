@@ -60,6 +60,19 @@ native panel instead and say why.
   developer menu. Otherwise use a fixed-position button. Activation chrome is
   development-only and must not move the feature: "opening changes nothing" is
   about the feature.
+- **Find a free corner.** Before pinning the pill and panel, check which corners
+  other development overlays already hold: TanStack Router or Query Devtools,
+  the Next.js dev indicator, the Vercel toolbar, Storybook, the app's own help
+  or chat widget. Pick a free corner, or stack above the overlay, and say which
+  in the report. Never move or hide the other tool to make room.
+- **Put every choice the tuning needs inside the lab.** When the target has
+  variants the user picks between (a color theme, light or dark mode, a layout
+  variant, a locale), add that picker to the panel, driving the app's real
+  setting. The user must never leave the lab to choose what they are tuning,
+  and above all never through a modal: modal libraries (Radix, Headless UI,
+  MUI) make everything outside the open modal inert, the lab included. Give
+  the lab root `pointer-events: auto` and render it in the top layer
+  (`popover="manual"`) so it stays usable over any app modal that does open.
 - **Keep the panel beside the feature and open while it is used.** Pin it to an
   edge or corner, never centered over the feature, and do not light-dismiss it:
   clicking or scrolling the feature is part of tuning. Close it with an explicit

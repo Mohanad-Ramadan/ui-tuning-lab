@@ -28,6 +28,10 @@
 - Verification, edge cases, landing removal, the surface matrix, and the
   validation receipts cover activation, re-arming, multi-lab selection, and
   release absence.
+- Labs pin to a corner no other dev overlay holds, keep any target picker
+  (theme, mode, variant) inside the panel, and stay usable over app modals.
+  The fallback pill is hit-tested, not just opened by the agent path, and the
+  pre-landing report opens with **How to try it**.
 
 ## 1.0.0 — unreleased
 
