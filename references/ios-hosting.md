@@ -1,4 +1,4 @@
-# iOS Hosting: Panels, Triggers, and UIKit or Hybrid Apps
+# iOS Hosting: Panels, Activation, and UIKit or Hybrid Apps
 
 Read this when the lab runs on iPhone or iPad, or the app is UIKit or a mix of
 UIKit and SwiftUI. The SwiftUI examples assume a `NavigationStack` toolbar and a
@@ -27,18 +27,109 @@ feature. Instead:
 
 On iPad (regular width), keep the popover from the examples.
 
-## The trigger: visible, and on screen
+## Activation: agent path, human path, fallback
 
-- The trigger is DEBUG-only chrome, so it may add a button, but it must not move
-  the feature. Prefer an existing navigation bar or debug menu. In SwiftUI
-  without a `NavigationStack`, use `.overlay(alignment:)` or `.safeAreaInset`; in
-  UIKit, add a `UIBarButtonItem` or a small fixed button in `viewDidLoad`, inside
-  `#if DEBUG`.
-- Give it explicit colors (for example white text on `.ultraThinMaterial`). Apps
-  often set an accent color that matches their background, which makes a default
-  `Button` invisible.
-- Confirm in a screenshot that the trigger is visible and that tapping it opens
-  the lab. `source-gates` cannot see a trigger that never renders.
+Choose activation from inspection (`references/activation.md`). The lab needs all
+three paths, and the visible fallback is not optional: a shake-only lab is
+inaccessible and unrecoverable when the gesture dies.
+
+- **Agent path.** Read `-UITuningLabOpen` from `ProcessInfo` inside `#if DEBUG`
+  and launch with `xcrun simctl launch booted <bundle-id> -UITuningLabOpen 1`.
+  Do not add a URL scheme: a scheme declared in `Info.plist` is registered in
+  Release even when its handler is gated. The launch argument leaves nothing
+  registered.
+- **Human path.** Reuse an existing toolbar or debug menu. Shake only when
+  inspection proves it free: no `motionEnded`, shake observer, or shake
+  recognizer; no SDK that owns shake (React Native's developer menu, Instabug);
+  no text input on the target screen; and one unambiguous lab.
+- **Fallback.** A small visible button or pill with explicit colors, for example
+  white text on `.ultraThinMaterial`. It is the VoiceOver, Switch Control, and
+  recovery path, and the thing to screenshot. Apps often set an accent color that
+  matches their background, which makes a default `Button` invisible.
+
+Shake is app code, not a SwiftUI modifier. There is no `.onShake`. The shim below
+is DEBUG-only, calls `super.motionEnded`, leaves shake-to-undo to a focused text
+input, and re-arms when the lab closes. Put the exact outer gate first and nest
+`#if canImport(UIKit)` inside it; `source-gates` accepts that shape.
+
+```swift
+#if DEBUG
+#if canImport(UIKit)
+import SwiftUI
+import UIKit
+
+/// A zero-sized first-responder shim for shake-to-open. It never takes focus
+/// from a text input and re-arms after the lab closes.
+struct UITuningLabShakeReader: UIViewControllerRepresentable {
+    let isLabOpen: Bool
+    let onShake: () -> Void
+
+    func makeUIViewController(context: Context) -> UITuningLabShakeController {
+        let controller = UITuningLabShakeController()
+        controller.onShake = onShake
+        controller.isLabOpen = isLabOpen
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UITuningLabShakeController, context: Context) {
+        controller.onShake = onShake
+        controller.isLabOpen = isLabOpen
+        controller.armIfNeeded()
+    }
+}
+
+final class UITuningLabShakeController: UIViewController {
+    var onShake: (() -> Void)?
+    var isLabOpen = false
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        armIfNeeded()
+    }
+
+    /// Becomes first responder only when nothing else owns focus.
+    func armIfNeeded() {
+        guard !isLabOpen, !uiTuningLabHasFocusedTextInput, !isFirstResponder,
+              view.window != nil else { return }
+        becomeFirstResponder()
+    }
+
+    override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
+        guard motion == .motionShake, !isLabOpen, !uiTuningLabHasFocusedTextInput else {
+            return super.motionEnded(motion, with: event)
+        }
+        onShake?()
+    }
+
+    private var uiTuningLabHasFocusedTextInput: Bool {
+        view.window?.uiTuningLabFirstResponder is UITextInput
+    }
+}
+
+private extension UIView {
+    var uiTuningLabFirstResponder: UIResponder? {
+        if isFirstResponder { return self }
+        for subview in subviews {
+            if let responder = subview.uiTuningLabFirstResponder { return responder }
+        }
+        return nil
+    }
+}
+#endif
+#endif
+```
+
+Attach it with `.background { UITuningLabShakeReader(...).frame(width: 0, height: 0) }`
+so it occupies no layout, and keep the fallback on screen. In the Simulator,
+document Device > Shake (⌃⌘Z); the agent cannot shake (`simctl` has no shake
+command), which is why the launch argument exists.
+
+- Confirm in a screenshot that the visible fallback is on screen and that tapping
+  it opens the lab. `source-gates` cannot see a control that never renders.
+- If shake is not free, skip the shim and use the screen-appropriate human path;
+  never force shake over a focused text field's undo.
 
 ## UIKit hosts
 
@@ -106,7 +197,7 @@ target or an extension target.
 ```swift
 CardFeature(style: style)
     #if DEBUG
-    .toolbar { /* lab trigger */ }
+    .toolbar { /* lab activation */ }
     #endif
 ```
 

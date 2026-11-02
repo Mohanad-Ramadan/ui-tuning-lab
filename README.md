@@ -6,15 +6,19 @@ back to the original, and Replay and Speed for motion. When you pick a winner,
 it writes those values into the feature's defaults and removes the panel.
 
 The workflow is inspect-first: the agent derives the platform, gate, container,
-configuration, and baseline from the project and asks at most one material
-question. Ephemeral labs need no configuration file. Saved profiles are opt-in
-and live under `uiTuningLab.*` or `.ui-tuning-lab/`.
+activation, configuration, and baseline from the project and asks at most one
+material question. Activation has an agent path, a human fast path, and a visible
+fallback; shake is used only when inspection proves it free. Ephemeral labs need
+no configuration file. Saved profiles are opt-in and live under `uiTuningLab.*`
+or `.ui-tuning-lab/`.
 
 Start with `SKILL.md`; it routes to everything else.
 
 ## Guarantees
 
 - Development, DEBUG, internal, or tester builds only.
+- Every lab opens through an agent path, a human fast path, and a visible
+  fallback; activation is development-only.
 - Reset always returns to the declared default, however often the lab reopens.
 - Persistence off by default; explicit namespaced Save when requested.
 - Closing releases all lab-owned UI, timers, observers, listeners, and tasks.

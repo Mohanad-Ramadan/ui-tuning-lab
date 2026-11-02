@@ -1,5 +1,25 @@
 # Changelog — ui-tuning-lab
 
+## 1.1.0 — unreleased
+
+- New `references/activation.md`: every lab has an agent path, a human fast path,
+  and a mandatory visible fallback. Shake is recommended only when inspection
+  proves it free; a focused text field keeps the system's shake-to-undo.
+- iOS: the `-UITuningLabOpen 1` launch argument gives the agent a deterministic
+  entry point; a DEBUG-only first-responder shim handles shake; the visible pill
+  is the fallback. No URL scheme is registered in Release.
+- Every default example now carries the full triad: an agent path, a human path,
+  and a visible fallback. iOS uses the `-UITuningLabOpen 1` launch argument,
+  macOS reads it on window appear alongside the DEBUG menu command, and web labs
+  parse `?ui-tuning-lab=1` only inside the development-gated module.
+- New `variant=shake` in `examples/swiftui-popover-palette.md`, which both the
+  example lint and compile suites discover automatically.
+- Optional `activation` object in `.ui-tuning-lab/lab.json` remembers the chosen
+  entry points. `verify.sh config` validates it; saved profiles still reject it.
+- Verification, edge cases, landing removal, the surface matrix, and the
+  validation receipts cover activation, re-arming, multi-lab selection, and
+  release absence.
+
 ## 1.0.0 — unreleased
 
 First public release candidate.

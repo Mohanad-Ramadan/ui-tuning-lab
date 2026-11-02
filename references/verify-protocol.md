@@ -60,6 +60,12 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
 
 - Opening at baseline is visually and behaviorally equivalent to the feature
   without the lab.
+- Every documented activation path opens the lab: the agent path (on iOS, launch
+  with `-UITuningLabOpen 1`), the chosen human path, and the visible fallback. With
+  a text input focused, shake still reaches the system's undo and does not open
+  the lab. After the lab closes, the human path works again without a relaunch.
+  VoiceOver or Switch Control can reach the fallback. When more than one lab
+  exists, each path opens the intended one, never an arbitrary one.
 - At least two presets differ meaningfully and all direct controls update the same
   configuration consumed by the feature.
 - Reset restores the baseline (the declared default) exactly, including after the
@@ -81,24 +87,27 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
 ## Release-artifact inspection
 
 - iOS/macOS: archive the Release scheme, inspect the built product for lab symbols,
-  strings, commands, menu items, and resources, then launch that archived product
-  and try every development activation path.
+  strings, commands, menu items, launch arguments, and resources, then launch that
+  archived product and try every development activation path, including the
+  `-UITuningLabOpen 1` launch argument, a focused text field followed by shake,
+  any debug menu command or key equivalent, the fallback control's label, and any
+  URL scheme or notification name the lab registered.
 - Web: produce the production bundle, then search every emitted asset and source
   map (when shipped) for the lab markers and for lab-only strings such as the
-  trigger and preset labels. Do not rely on a missing lab chunk: bundlers often
+  fallback and preset labels. Do not rely on a missing lab chunk: bundlers often
   emit a single file, so the absence of a separate chunk proves nothing. Then
   serve the bundle (`vite preview`, `next start`, or the app's own static server)
   and try every way the lab opens in development, plus the obvious guesses:
-  - the Tune trigger and any menu entry the lab added;
+  - the fallback control and any menu entry the lab added;
   - query strings: `?ui-tuning-lab=1`, `?uiTuningLab=1`, `?tune=1`, `?debug=1`;
   - storage: set `uiTuningLab.open` and `uiTuningLab.default` in `localStorage`
     and reload;
   - keyboard: any shortcut the lab registered, plus `Control+Shift+L` and
     `Meta+Shift+L`.
 
-  Each must leave no trigger, panel, `[popover]`, or `[role=dialog]` from the
-  lab. These checks apply while a lab is present; after the lab is removed, the
-  landing protocol's source check and build are enough.
+  Each must leave no activation control, panel, `[popover]`, or `[role=dialog]`
+  from the lab. These checks apply while a lab is present; after the lab is
+  removed, the landing protocol's source check and build are enough.
 
 Record the exact commands, artifact identity, observations, and evidence links in
 the target project's task report or a receipt copied from

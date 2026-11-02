@@ -4,7 +4,7 @@ description: "Add a temporary, development-only control panel beside a real scre
 license: MIT
 metadata:
   author: "Mohanad Ramadan"
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # UI Tuning Lab
@@ -17,6 +17,8 @@ the feature's defaults and take the panel away. Nothing about the lab ships.
 A good lab feels like this:
 
 - Opening it changes nothing on screen: the feature renders exactly as before.
+- **It opens without hunting.** The agent can open it deterministically, the
+  human has a fast path, and a visible fallback is always there.
 - Every control edits the same configuration the feature renders, live.
 - **Show baseline** flips the real feature back to the original and returns to
   the draft; **Replay** and **Speed** make motion judgeable.
@@ -25,22 +27,24 @@ A good lab feels like this:
 ## Workflow
 
 1. **Inspect.** Find the platform, build system, the feature's configuration
-   model, the development gate, the native transient surface, and test commands.
-   Reuse an existing debug menu or panel library when the project has one
-   (`references/setup-protocol.md`).
-2. **Decide quietly.** Infer target, scope, container, and gate; persistence is
-   off unless the user asked to save. Ask at most one focused question, only when
-   the answer changes the implementation.
-3. **Build the lab.** Start from the matching file in `examples/`. Wrap only the
-   feature, lifting a constant config into state if needed, and keep the panel
-   beside the feature and open while it is used (`references/setup-protocol.md`,
-   "Wire the host"). The baseline is the feature's declared default (what
-   ships), never the value on screen when the lab opens: a draft kept from an
-   earlier open must still count as a change. Keep the draft separate. Pick
-   controls from `references/control-mapping.md`: at least two presets, direct
-   controls, Show baseline, Reset, and Copy values, plus Replay and Speed for
-   motion. Add Save and Load saved only when persistence was requested
-   (`references/config-schema.md`).
+   model, the development gate, the native transient surface, the activation
+   surface, and test commands. Reuse an existing debug menu or panel library
+   when the project has one (`references/setup-protocol.md`).
+2. **Decide quietly.** Infer target, scope, container, gate, activation, and
+   persistence; persistence is off unless the user asked to save. Ask at most one
+   focused question, only when the answer changes the implementation. Activation
+   is one allowed question (`references/activation.md`).
+3. **Build the lab.** Start from the matching file in `examples/`. Choose
+   activation per `references/activation.md`: an agent path, a human path, and a
+   visible fallback. Wrap only the feature, lifting a constant config into state
+   if needed, and keep the panel beside the feature and open while it is used
+   (`references/setup-protocol.md`, "Wire the host"). The baseline is the
+   feature's declared default (what ships), never the value on screen when the
+   lab opens: a draft kept from an earlier open must still count as a change.
+   Keep the draft separate. Pick controls from `references/control-mapping.md`:
+   at least two presets, direct controls, Show baseline, Reset, and Copy values,
+   plus Replay and Speed for motion. Add Save and Load saved only when
+   persistence was requested (`references/config-schema.md`).
 4. **Tune with the user.** Open the lab in the running app and iterate. If the
    user is not available, stop here and report the lab as built, with every
    hands-on check listed as not run. You can still run the release-artifact
@@ -74,6 +78,7 @@ module (presets, a diff function) need no marker: the file itself is gated.
 | Guarantee | How it is checked |
 |---|---|
 | **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files, and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
+| **Activatable only in development.** The lab opens through the documented agent path, the chosen human path, and a visible fallback; none survives Release. | Hands-on: every documented path opens the lab, a focused text field keeps shake-to-undo, and the fallback is reachable. Release archive: launch arguments, URL schemes, shake selectors, notification names, key commands, and fallback labels are absent or inert (`references/verify-protocol.md`). |
 | **Reversible.** Reset restores the baseline (the declared default) exactly, behavior included. | Hands-on: open, change everything, close, reopen, Reset, and compare with the unmodified app. |
 | **Explicit persistence.** Nothing is written unless the user asked; saves go only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | No storage writer in an ephemeral lab; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
 | **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
@@ -90,8 +95,11 @@ a save would overwrite a production key.
 ## Route to details
 
 - `references/setup-protocol.md`: inspection, reusing existing tools, when to ask.
-- `references/surface-matrix.md`: native containers and gates per platform.
-- `references/ios-hosting.md`: iOS panels, triggers, Xcode targets, and UIKit or
+- `references/activation.md`: how the lab opens: agent path, human path, fallback,
+  and remembering the choice.
+- `references/surface-matrix.md`: native containers, gates, and activation per
+  platform.
+- `references/ios-hosting.md`: iOS panels, activation, Xcode targets, and UIKit or
   hybrid apps.
 - `references/control-mapping.md`: which control for which value; required controls.
 - `references/landing-protocol.md`: reading values, writing defaults, removal.
@@ -105,9 +113,9 @@ a save would overwrite a production key.
 
 ## Report
 
-Return the files changed; the chosen container, gate, and baseline source; any
-production-side change (such as a constant lifted into state); any save
-location; and the commands run with their results. After landing, add the values
+Return the files changed; the chosen container, gate, activation paths, and
+baseline source; any production-side change (such as a constant lifted into
+state); any save location; and the commands run with their results. After landing, add the values
 table, the declaration changed, and whether the lab was removed or kept; before
 landing, say the lab is in place and awaiting a winner. Keep static
 lint, hands-on checks, and release-artifact inspection separate, and never mark an

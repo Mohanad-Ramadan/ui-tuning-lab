@@ -5,7 +5,7 @@ ephemeral lab.
 
 | Document | Purpose | Written by | Location | Validator |
 |---|---|---|---|---|
-| Lab config | A reusable lab definition: target, scope, baseline, presets | The agent, when a lab is meant to be reused | `.ui-tuning-lab/lab.json` in the project | `verify.sh config` |
+| Lab config | A reusable lab definition: target, scope, baseline, presets, optional activation | The agent, when a lab is meant to be reused | `.ui-tuning-lab/lab.json` in the project | `verify.sh config` |
 | Saved profile | Values the user saved from a running lab | The lab's explicit Save action | `.ui-tuning-lab/<name>.json` (Application Support on Apple platforms) or `uiTuningLab.<name>` in web storage | `verify.sh profile` |
 
 Both use `schemaVersion: 1`, written as the integer literal `1`. Both reject
@@ -25,6 +25,12 @@ Template: `assets/labconfig.template.json`.
 | `variants` | array | each `{ "name": string, "overrides": object }` |
 | `persist` | string | `none` or `namespaced-save` |
 | `profile` | string | the saved-profile name Save writes |
+| `activation` | object | optional; `{ "human": string, "agent": string, "fallback": string }`, each non-empty. Records the chosen entry points (`references/activation.md`). `verify.sh config` validates it when present; configs without it remain valid. |
+
+`activation` is memory for reuse, not a requirement. Write it only when the user
+asks to remember how the lab opens, or confirms when a reusable config already
+exists. It never goes in a saved profile: `verify.sh profile` rejects extra
+fields.
 
 ## Saved profile
 

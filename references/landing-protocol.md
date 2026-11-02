@@ -58,9 +58,10 @@ for now"), do that. Otherwise ask once, recommending removal unless the user
 expects to tune again soon:
 
 - **Remove (default).** Delete the lab files (`UITuningLab*.swift`,
-  `*.ui-tuning-lab.tsx`), the gated host code that opens them (the Tune trigger,
-  the marked DEBUG-only state such as `showUITuningLab`, the web `TuningLabHost`
-  block and its gated `import()`), and any lab-only helper. Undo every other host
+  `*.ui-tuning-lab.tsx`), the gated host code that opens them (the launch-argument
+  handler, the shake shim, the Tune trigger or fallback pill, the marked
+  DEBUG-only state such as `showUITuningLab`, the web `TuningLabHost` block and
+  its gated `import()`), and any lab-only helper. Undo every other host
   change the lab needed: if a constant was lifted into state so the lab could
   edit it, point the feature back at the constant, which now holds the winner.
   `git diff` against the commit before the lab is the quickest way to see what
@@ -69,10 +70,10 @@ expects to tune again soon:
   1. `sh <skill-dir>/scripts/verify.sh source-gates <feature-dir>` reports
      `N/A: supported sources contain no lab references`. The other `N/A`
      message, no supported sources, means the wrong directory was checked.
-  2. `grep -rnE 'TuningLab|tuning-lab' <feature-dir>` and
-     `grep -rnw Tune <feature-dir>` (the trigger label as a whole word) find
-     nothing left from the lab. Web host code is deliberately unmarked, so the
-     linter alone cannot see it.
+  2. `grep -rnE 'TuningLab|tuning-lab|UITuningLabOpen|ui-tuning-lab=' <feature-dir>`
+     finds nothing left from the lab, and a search for the fallback label (for
+     example `grep -rnw Tune` or the pill's accessibility label) is clean too.
+     Web host code is deliberately unmarked, so the linter alone cannot see it.
   3. The project builds, in both Debug and Release where they differ.
 
   The release-artifact checks in `references/verify-protocol.md` are for a lab

@@ -10,6 +10,10 @@
 ## Required checks
 
 - [ ] Baseline equivalence; compact and relaxed variants; exact reset.
+- [ ] Agent path: `-UITuningLabOpen 1` opens the lab; the argument, handler, and strings are absent from the archived Release product.
+- [ ] Human path: the chosen gesture or control opens the lab; with a text field focused, shake performs the system undo; the path re-arms after the lab closes.
+- [ ] The visible fallback opens the lab and is reachable with VoiceOver and Switch Control.
+- [ ] With more than one lab, each path opens the intended lab; a remembered activation that conflicts with the screen is reported.
 - [ ] Copy values copies and logs only changed fields; landing writes them into the feature defaults; removal leaves `source-gates` at N/A.
 - [ ] If persistence was requested, explicit namespaced Save and Load saved success, and failure-with-draft-retention.
 - [ ] Rotation and compact/regular presentation adaptation.

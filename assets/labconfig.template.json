@@ -12,5 +12,10 @@
     { "name": "relaxed", "overrides": { "cornerRadius": 20, "spacing": 16 } }
   ],
   "persist": "none",
-  "profile": "default"
+  "profile": "default",
+  "activation": {
+    "human": "toolbar-tune",
+    "agent": "-UITuningLabOpen 1",
+    "fallback": "pill"
+  }
 }
