@@ -74,7 +74,8 @@ recommends the fast path; it never removes the fallback.
 - Shake, when free. In the Simulator, Device > Shake (⌃⌘Z).
 - A toolbar Tune button.
 - A long-press on the active tab.
-- A small floating pill with explicit colors.
+- A small floating pill with explicit colors, pinned to the full screen rather
+  than to a content-sized feature view (`references/ios-hosting.md`).
 - ⌥⌘L on iPad, a hardware keyboard, or the Simulator.
 - The `-UITuningLabOpen 1` launch argument for the agent.
 

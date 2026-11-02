@@ -9,21 +9,38 @@ popover; many real apps have neither.
 A popover becomes a sheet on compact width, and a long `Form` sheet covers the
 feature. Instead:
 
-- Present the controls in a sheet with one small fixed detent, about a third of
-  the screen (270–320 pt; the iOS example uses 320):
-  `.presentationDetents([.height(320)])`.
-- Keep the feature usable behind it:
-  `.presentationBackgroundInteraction(.enabled(upThrough: .height(320)))`.
-- Keep each screen of controls within the detent. A handful of rows (the iOS
-  example) fits in one `Form`; beyond about six rows, split the controls into
-  tabs (a segmented `Picker`): for example Layout, Animation, and Actions. With a
-  single detent the sheet cannot grow, so anything below the fold is reachable
-  only by scrolling inside it.
+- Open the controls in a short sheet, about a third of the screen (320 pt), and
+  let the user drag it taller. Never ship a single fixed detent: a sheet that
+  cannot grow cuts off its last rows, and the user cannot reach them. Bind the
+  selection so it always opens short:
+
+  ```swift
+  @State private var uiTuningLabDetent = PresentationDetent.height(320)
+  // On the presented controls:
+  .presentationDetents([.height(320), .medium, .large], selection: $uiTuningLabDetent)
+  .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+  .presentationDragIndicator(.visible)
+  ```
+
+  The feature stays usable behind the short and medium sheet. `.large` is for
+  reading every control at once.
+- Budget rows for the short sheet. The tab header, grabber, `Form` insets, and
+  home indicator take about 110 pt, so 320 pt leaves about 210 pt. A labeled
+  slider (title and value above the slider) is about 70 pt in a `Form`, so **at
+  most three sliders per tab**. A toggle, button, or single-line picker is about
+  44 pt. Past that budget, split the controls into tabs (a segmented `Picker`):
+  for example Layout, Animation, and Actions. Rows past the budget stay
+  reachable by dragging the sheet taller, never only by scrolling a 320 pt
+  sheet.
 - Put a **Close** button in the tab header row and keep drag-to-dismiss. Close is
   required: drag alone is not discoverable and VoiceOver users need a button.
 - Check the largest preset in a screenshot. If the feature grows into the area
   under the sheet, move the feature's preview up or note the overlap in the
   report; never hide part of the feature silently.
+- Screenshot **every tab** at the short detent and confirm its last row is fully
+  visible. Then open the lab at `.large` (set `uiTuningLabDetent = .large` for
+  one run, or drag the grabber) and screenshot that too. A tab whose last row is
+  cut at 320 pt means the row budget was exceeded: split the tab.
 
 On iPad (regular width), keep the popover from the examples.
 
@@ -47,6 +64,14 @@ inaccessible and unrecoverable when the gesture dies.
   white text on `.ultraThinMaterial`. It is the VoiceOver, Switch Control, and
   recovery path, and the thing to screenshot. Apps often set an accent color that
   matches their background, which makes a default `Button` invisible.
+  Pin it to the full screen, not to the feature: a feature view is often only as
+  tall as its content, so an `.overlay(alignment: .bottomTrailing)` on it lands
+  mid-screen, under other layers, or outside a hosted view's bounds. Attach the
+  pill to the outermost view of the screen, after
+  `.frame(maxWidth: .infinity, maxHeight: .infinity)`, and keep it inside the
+  safe area. In a SwiftUI view hosted by a UIKit controller
+  (`UIHostingController` added as a child), that outermost view is the hosted
+  root view.
 
 Shake is app code, not a SwiftUI modifier. There is no `.onShake`. The shim below
 is DEBUG-only, calls `super.motionEnded`, leaves shake-to-undo to a focused text
@@ -125,7 +150,11 @@ private extension UIView {
 Attach it with `.background { UITuningLabShakeReader(...).frame(width: 0, height: 0) }`
 so it occupies no layout, and keep the fallback on screen. In the Simulator,
 document Device > Shake (⌃⌘Z); the agent cannot shake (`simctl` has no shake
-command), which is why the launch argument exists.
+command), which is why the launch argument exists. Shake therefore stays
+unverified by the agent: the report must say so and give the user the exact
+check, for example "In Simulator, choose Device > Shake (⌃⌘Z) on the
+Who's Watching screen; the lab should open." Never report shake as working
+without the user's confirmation.
 
 - Confirm in a screenshot that the visible fallback is on screen and that tapping
   it opens the lab. `source-gates` cannot see a control that never renders.
@@ -161,8 +190,10 @@ private func observeUITuningLab() {   // call from viewDidLoad
         model: uiTuningLabModel, baseline: .appDefault))
     if let sheet = controls.sheetPresentationController {
         let compact = UISheetPresentationController.Detent.Identifier("uiTuningLabCompact")
-        sheet.detents = [.custom(identifier: compact) { _ in 270 }]
-        sheet.largestUndimmedDetentIdentifier = compact   // the feature stays usable
+        // Opens short; the user can drag it taller to reach every control.
+        sheet.detents = [.custom(identifier: compact) { _ in 320 }, .medium(), .large()]
+        sheet.selectedDetentIdentifier = compact
+        sheet.largestUndimmedDetentIdentifier = .medium   // the feature stays usable
         sheet.prefersGrabberVisible = true
     }
     present(controls, animated: true)

@@ -119,4 +119,6 @@ state); any save location; and the commands run with their results. After landin
 table, the declaration changed, and whether the lab was removed or kept; before
 landing, say the lab is in place and awaiting a winner. Keep static
 lint, hands-on checks, and release-artifact inspection separate, and never mark an
-unrun check as passed.
+unrun check as passed. For each activation path the agent could not exercise
+(shake in the Simulator, a gesture, a hardware shortcut), give the user the
+exact steps to try it.

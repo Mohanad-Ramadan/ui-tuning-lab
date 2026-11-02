@@ -47,6 +47,7 @@ struct FeatureScreen: View {
     @State private var style = CardStyle.appDefault
     #if DEBUG
     @State private var showUITuningLab = false
+    @State private var uiTuningLabDetent = PresentationDetent.height(320)
     #endif
 
     var body: some View {
@@ -61,10 +62,13 @@ struct FeatureScreen: View {
                 // kept from an earlier session must still count as a change.
                 UITuningLabControls(style: $style, baseline: .appDefault)
                     // On iPhone the popover becomes a short sheet the feature
-                    // stays usable behind (references/ios-hosting.md).
+                    // stays usable behind; drag it taller to reach every control
+                    // (references/ios-hosting.md).
                     .presentationCompactAdaptation(.sheet)
-                    .presentationDetents([.height(320)])
-                    .presentationBackgroundInteraction(.enabled(upThrough: .height(320)))
+                    .presentationDetents([.height(320), .medium, .large],
+                                         selection: $uiTuningLabDetent)
+                    .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                    .presentationDragIndicator(.visible)
             }
             .onAppear {
                 // The agent path opens the lab once per launch.
@@ -125,11 +129,15 @@ struct FeatureScreen: View {
     @State private var style = CardStyle.appDefault
     #if DEBUG
     @State private var showUITuningLab = false
+    @State private var uiTuningLabDetent = PresentationDetent.height(320)
     #endif
 
     var body: some View {
         CardFeature(style: style)
             #if DEBUG
+            // Pin the pill to the full screen: the feature is only as tall as
+            // its content, so an overlay on it alone can land mid-screen.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .bottomTrailing) {
                 Button("Tune") { showUITuningLab = true }
                     .font(.footnote.weight(.semibold))
@@ -150,8 +158,10 @@ struct FeatureScreen: View {
             .popover(isPresented: $showUITuningLab) {
                 UITuningLabControls(style: $style, baseline: .appDefault)
                     .presentationCompactAdaptation(.sheet)
-                    .presentationDetents([.height(320)])
-                    .presentationBackgroundInteraction(.enabled(upThrough: .height(320)))
+                    .presentationDetents([.height(320), .medium, .large],
+                                         selection: $uiTuningLabDetent)
+                    .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                    .presentationDragIndicator(.visible)
             }
             .onAppear {
                 // The agent path opens the lab once per launch.

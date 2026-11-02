@@ -66,6 +66,7 @@ struct EntranceScreen: View {
     #if DEBUG
     @State private var showUITuningLab = false
     @State private var uiTuningLab = UITuningLabMotionState()
+    @State private var uiTuningLabDetent = PresentationDetent.medium
     #endif
 
     var body: some View {
@@ -84,9 +85,11 @@ struct EntranceScreen: View {
                     // The declared default, never the value on screen at open.
                     baseline: .appDefault
                 )
-                // Compact width adapts to a sheet; keep the card visible above it.
-                .presentationDetents([.medium])
-                .presentationBackgroundInteraction(.enabled)
+                // Compact width adapts to a sheet; keep the card visible above
+                // it, and let the user drag it taller to reach every control.
+                .presentationDetents([.medium, .large], selection: $uiTuningLabDetent)
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .presentationDragIndicator(.visible)
             }
             .onChange(of: showUITuningLab) { _, open in
                 // Keep the replay token so closing does not re-create the card.
