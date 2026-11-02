@@ -56,6 +56,10 @@ recommendation.
 - Do not offer a candidate that conflicts with the inspection.
 - Ask only about human paths. The agent path and the visible fallback are always
   built and are not options.
+- When the question mentions the pill, name the corner inspection found free and
+  why, for example "pill bottom-left; TanStack Devtools holds bottom-right".
+  Never state a default corner without that check
+  (`references/setup-protocol.md`, "placement").
 
 Activation is material because it changes both the implementation and daily
 use, so it is asked in addition to the single setup question in
@@ -97,7 +101,7 @@ be combined with a free alternative from its row when the user picks both.
 
 ### Web
 
-- A floating pill pinned to a corner.
+- A floating pill pinned to a corner no other dev overlay holds.
 - An existing debug menu.
 - A keyboard shortcut such as `Control+Shift+L`, registered only in the
   development-gated lab module.

@@ -10,6 +10,11 @@ tests. Record these working choices:
 - gate: the project's development, DEBUG, internal, or tester mechanism;
 - activation: the agent path, the human path, and the visible fallback, chosen
   from inspection (`references/activation.md`);
+- placement: which corners or edges other development overlays already hold
+  (router or query devtools, a framework dev indicator, a hosting toolbar, a
+  help or chat widget), found from the app's root layout and dev dependencies
+  before the activation question is written, so the question names a free
+  corner ("Wire the host", "Find a free corner");
 - persistence: none unless the user asks to save or reuse profiles;
 - profiles: one working draft unless named profiles were requested;
 - baseline: the feature's declared default, the value it ships with (for example
