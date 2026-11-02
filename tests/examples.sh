@@ -100,7 +100,7 @@ require_text examples/macos-panel-minimal.md 'baseline: .appDefault)' 'macOS bas
 require_text examples/web-floating-panel.md 'const baseline: CardConfig = appDefault;' 'web baseline is the declared default'
 require_text examples/animation-spring.md 'const baseline: EntranceMotion = appDefault;' 'web motion baseline is the declared default'
 require_text examples/animation-spring.md 'uiTuningLab.rendered(draft: motion, baseline: .appDefault)' 'SwiftUI motion baseline is the declared default'
-require_text examples/swiftui-popover-palette.md '.presentationBackgroundInteraction(.enabled(upThrough: .height(320)))' 'iOS sheet leaves the feature usable'
+require_text examples/swiftui-popover-palette.md '.presentationBackgroundInteraction(.enabled(upThrough: .medium))' 'iOS sheet leaves the feature usable'
 require_text examples/swiftui-popover-palette.md 'Button("Close") { dismiss() }' 'iOS lab has a Close button'
 
 # The default variant must carry the full triad: agent path, human path, and
