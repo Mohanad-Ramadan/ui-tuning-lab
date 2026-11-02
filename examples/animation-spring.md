@@ -21,6 +21,10 @@ Every lab in this example provides:
 
 ## SwiftUI (iOS 17+)
 
+The toolbar Tune button is the human path and visible fallback; the DEBUG-only
+`-UITuningLabOpen` launch argument is the agent path, read through
+`UITuningLabLaunch` (`references/activation.md`).
+
 <!-- file: EntranceFeature.swift -->
 ```swift
 import SwiftUI
@@ -60,7 +64,7 @@ import SwiftUI
 struct EntranceScreen: View {
     @State private var motion = EntranceMotion.appDefault
     #if DEBUG
-    @State private var showUITuningLab = false
+    @State private var showUITuningLab = UITuningLabLaunch.isRequested
     @State private var uiTuningLab = UITuningLabMotionState()
     #endif
 
@@ -100,6 +104,21 @@ struct EntranceScreen: View {
     }
     #endif
 }
+```
+
+<!-- file: UITuningLabLaunch.swift -->
+```swift
+import Foundation
+
+#if DEBUG
+/// The agent path: a DEBUG-only launch argument read before the first render.
+/// Launch with `xcrun simctl launch booted <bundle-id> -UITuningLabOpen 1`.
+enum UITuningLabLaunch {
+    static var isRequested: Bool {
+        ProcessInfo.processInfo.arguments.contains("-UITuningLabOpen")
+    }
+}
+#endif
 ```
 
 <!-- file: UITuningLabMotion.swift -->
@@ -270,7 +289,9 @@ private func uiTuningLabNormalized(_ field: Any) -> Any {
 
 `springEasing` turns a bounce value into a CSS `linear()` easing so the same spring
 runs through the Web Animations API. `linear()` needs Chromium 113+, Safari 17.2+,
-or Firefox 112+.
+or Firefox 112+. The Tune button is the human path and visible fallback;
+`?ui-tuning-lab=1` is the agent path, parsed only inside the DEV-gated lab module
+(`references/activation.md`).
 
 <!-- file: EntranceCard.tsx -->
 ```tsx
@@ -385,6 +406,13 @@ const speeds = [1, 0.5, 0.25, 0.1];
 // opens: a draft kept from an earlier session must still count as a change.
 const baseline: EntranceMotion = appDefault;
 
+// The agent path: `?ui-tuning-lab=1` opens the lab on load. It is parsed here,
+// inside the development-only module, so production never sees the parameter.
+function opensOnLaunch(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("ui-tuning-lab") === "1";
+}
+
 // The draft fields that differ from the baseline.
 function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
   return Object.fromEntries(Object.entries(draft).filter(
@@ -392,7 +420,7 @@ function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
 }
 
 export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHostProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(opensOnLaunch);
   const [replay, setReplay] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [showBaseline, setShowBaseline] = useState(false);

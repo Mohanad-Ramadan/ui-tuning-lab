@@ -3,6 +3,9 @@
 This is implementation guidance, not a completed validation. The feature and lab
 share one `CardStyle`. The baseline is the declared default, `CardStyle.appDefault`,
 so it stays the same however many times the lab is opened and closed.
+The default host opens from the `-UITuningLabOpen` launch argument for the agent
+and the toolbar button for the human; the optional shake variant adds shake as
+the fast path and keeps a visible pill (`references/activation.md`).
 Every lab type carries the `UITuningLab` prefix and lives in a file wrapped in
 `#if DEBUG`, so `source-gates` can find it and Release builds compile it out.
 **Copy values** puts the fields that differ from the baseline on the pasteboard
@@ -43,7 +46,7 @@ import SwiftUI
 struct FeatureScreen: View {
     @State private var style = CardStyle.appDefault
     #if DEBUG
-    @State private var showUITuningLab = false
+    @State private var showUITuningLab = UITuningLabLaunch.isRequested
     #endif
 
     var body: some View {
@@ -73,6 +76,152 @@ struct FeatureScreen: View {
     #endif
 }
 ```
+
+<!-- file: UITuningLabLaunch.swift -->
+```swift
+import Foundation
+
+#if DEBUG
+/// The agent path: a DEBUG-only launch argument read before the first render.
+/// Launch with `xcrun simctl launch booted <bundle-id> -UITuningLabOpen 1`.
+enum UITuningLabLaunch {
+    static var isRequested: Bool {
+        ProcessInfo.processInfo.arguments.contains("-UITuningLabOpen")
+    }
+}
+#endif
+```
+
+The launch argument opens the lab once on launch; the toolbar Tune button is the
+human path and the visible fallback (`references/activation.md`). Leave
+`UITuningLabLaunch.swift` in place for either variant.
+
+## Optional shake activation, only when shake is free
+
+Use this variant only when inspection found no shake owner, no text input on the
+screen, and one unambiguous lab (`references/activation.md`). It replaces the
+toolbar button with a visible pill and adds the DEBUG-only responder shim; the
+agent launch argument stays shared. Replace `FeatureScreen.swift`, add
+`UITuningLabShake.swift`, and leave the launch, controls, and values files
+unchanged.
+
+<!-- file: FeatureScreen.swift variant=shake -->
+```swift
+import SwiftUI
+
+struct FeatureScreen: View {
+    @State private var style = CardStyle.appDefault
+    #if DEBUG
+    @State private var showUITuningLab = UITuningLabLaunch.isRequested
+    #endif
+
+    var body: some View {
+        CardFeature(style: style)
+            #if DEBUG
+            .overlay(alignment: .bottomTrailing) {
+                Button("Tune") { showUITuningLab = true }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.black.opacity(0.75), in: Capsule())
+                    .padding()
+                    .accessibilityLabel("Open UI tuning lab")
+                    .disabled(showUITuningLab)
+            }
+            .background {
+                UITuningLabShakeReader(isLabOpen: showUITuningLab) {
+                    showUITuningLab = true
+                }
+                .frame(width: 0, height: 0)
+            }
+            .popover(isPresented: $showUITuningLab) {
+                UITuningLabControls(style: $style, baseline: .appDefault)
+                    .presentationCompactAdaptation(.sheet)
+                    .presentationDetents([.height(320)])
+                    .presentationBackgroundInteraction(.enabled(upThrough: .height(320)))
+            }
+            #endif
+    }
+}
+```
+
+<!-- file: UITuningLabShake.swift variant=shake -->
+```swift
+#if DEBUG
+#if canImport(UIKit)
+import SwiftUI
+import UIKit
+
+/// A zero-sized first-responder shim for shake-to-open. It never takes focus
+/// from a text input and re-arms after the lab closes.
+struct UITuningLabShakeReader: UIViewControllerRepresentable {
+    let isLabOpen: Bool
+    let onShake: () -> Void
+
+    func makeUIViewController(context: Context) -> UITuningLabShakeController {
+        let controller = UITuningLabShakeController()
+        controller.onShake = onShake
+        controller.isLabOpen = isLabOpen
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UITuningLabShakeController, context: Context) {
+        controller.onShake = onShake
+        controller.isLabOpen = isLabOpen
+        controller.armIfNeeded()
+    }
+}
+
+final class UITuningLabShakeController: UIViewController {
+    var onShake: (() -> Void)?
+    var isLabOpen = false
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        armIfNeeded()
+    }
+
+    /// Becomes first responder only when nothing else owns focus.
+    func armIfNeeded() {
+        guard !isLabOpen, !uiTuningLabHasFocusedTextInput, !isFirstResponder,
+              view.window != nil else { return }
+        becomeFirstResponder()
+    }
+
+    override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
+        guard motion == .motionShake, !isLabOpen, !uiTuningLabHasFocusedTextInput else {
+            return super.motionEnded(motion, with: event)
+        }
+        onShake?()
+    }
+
+    private var uiTuningLabHasFocusedTextInput: Bool {
+        guard let responder = view.window?.uiTuningLabFirstResponder else { return false }
+        return responder is UITextInput
+    }
+}
+
+private extension UIView {
+    var uiTuningLabFirstResponder: UIResponder? {
+        if isFirstResponder { return self }
+        for subview in subviews {
+            if let responder = subview.uiTuningLabFirstResponder { return responder }
+        }
+        return nil
+    }
+}
+#endif
+#endif
+```
+
+The shared launch argument opens the lab once on launch; the pill replaces the
+toolbar button as the visible fallback, and the shim re-arms it after close. In
+the Simulator, Device > Shake (⌃⌘Z) exercises the human path; `xcrun simctl
+launch --terminate-running-process booted <bundle-id> -UITuningLabOpen 1`
+exercises the agent path.
 
 <!-- file: UITuningLabControls.swift -->
 ```swift

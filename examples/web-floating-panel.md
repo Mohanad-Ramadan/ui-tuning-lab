@@ -3,10 +3,13 @@
 The feature and controls share one config state. All lab code lives in
 `FeatureScreen.ui-tuning-lab.tsx`; the feature reaches it only through a dynamic
 import inside an `import.meta.env.DEV` block, so production builds drop both the
-branch and the lab chunk. The baseline is the declared default, `appDefault`;
-closing unmounts the popover and its listener. The default candidate is ephemeral and has no storage
-writer or Save action. **Copy values** copies the fields that differ from the
-baseline and logs them as one `UITUNINGLAB_VALUES {...}` console line for landing
+branch and the lab chunk. The Tune button is the human path and the visible
+fallback; `?ui-tuning-lab=1` is the agent path, parsed only inside that
+development module (`references/activation.md`). The baseline is the declared
+default, `appDefault`; closing unmounts the popover and its listener. The default
+candidate is ephemeral and has no storage writer or Save action. **Copy values**
+copies the fields that differ from the baseline and logs them as one
+`UITUNINGLAB_VALUES {...}` console line for landing
 (`references/landing-protocol.md`).
 
 <!-- file: CardFeature.tsx -->
@@ -83,6 +86,13 @@ const presets = {
 // opens: a draft kept from an earlier session must still count as a change.
 const baseline: CardConfig = appDefault;
 
+// The agent path: `?ui-tuning-lab=1` opens the lab on load. It is parsed here,
+// inside the development-only module, so production never sees the parameter.
+function opensOnLaunch(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("ui-tuning-lab") === "1";
+}
+
 // The draft fields that differ from the baseline.
 function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
   return Object.fromEntries(Object.entries(draft).filter(
@@ -90,7 +100,7 @@ function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
 }
 
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(opensOnLaunch);
   const [status, setStatus] = useState<string | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -261,6 +271,13 @@ const presets = {
 // opens: a draft kept from an earlier session must still count as a change.
 const baseline: CardConfig = appDefault;
 
+// The agent path: `?ui-tuning-lab=1` opens the lab on load. It is parsed here,
+// inside the development-only module, so production never sees the parameter.
+function opensOnLaunch(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("ui-tuning-lab") === "1";
+}
+
 // The draft fields that differ from the baseline.
 function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
   return Object.fromEntries(Object.entries(draft).filter(
@@ -268,7 +285,7 @@ function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
 }
 
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(opensOnLaunch);
   const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);

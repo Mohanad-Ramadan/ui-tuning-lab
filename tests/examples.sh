@@ -17,6 +17,12 @@ require_text() {
   if grep -qF "$2" "$ROOT/$1"; then ok "$3"; else not_ok "$3"; fi
 }
 
+# require_in <extracted-file> <text> <name>: assert against the code a variant
+# actually produces, so a feature that lives only in another variant cannot pass.
+require_in() {
+  if grep -qF "$2" "$1"; then ok "$3"; else not_ok "$3"; fi
+}
+
 lint_status() {
   set +e
   output=$("$VERIFY" source-gates "$1" 2>&1)
@@ -96,6 +102,57 @@ require_text examples/animation-spring.md 'const baseline: EntranceMotion = appD
 require_text examples/animation-spring.md 'uiTuningLab.rendered(draft: motion, baseline: .appDefault)' 'SwiftUI motion baseline is the declared default'
 require_text examples/swiftui-popover-palette.md '.presentationBackgroundInteraction(.enabled(upThrough: .height(320)))' 'iOS sheet leaves the feature usable'
 require_text examples/swiftui-popover-palette.md 'Button("Close") { dismiss() }' 'iOS lab has a Close button'
+
+# The default variant must carry the full triad: agent path, human path, and
+# visible fallback. These checks read the extracted variant, not the merged
+# Markdown, so an activation path that exists only in the shake variant fails.
+ios_default="$WORK/swiftui-popover-palette-default"
+ios_shake="$WORK/swiftui-popover-palette-shake"
+require_in "$ios_default/UITuningLabLaunch.swift" 'ProcessInfo.processInfo.arguments.contains("-UITuningLabOpen")' 'iOS default agent path reads the launch argument'
+require_in "$ios_default/FeatureScreen.swift" 'UITuningLabLaunch.isRequested' 'iOS default host opens from the agent path'
+require_in "$ios_default/FeatureScreen.swift" 'Button("Tune", action: openUITuningLab)' 'iOS default host keeps a visible fallback'
+if grep -q 'UITuningLabShake' "$ios_default"/*; then
+  not_ok 'iOS default host is decoupled from shake'
+else
+  ok 'iOS default host is decoupled from shake'
+fi
+require_in "$ios_shake/FeatureScreen.swift" 'UITuningLabShakeReader' 'iOS shake variant attaches the responder shim'
+require_in "$ios_shake/FeatureScreen.swift" 'UITuningLabLaunch.isRequested' 'iOS shake variant shares the agent path'
+require_in "$ios_shake/UITuningLabShake.swift" 'super.motionEnded(motion, with: event)' 'iOS shake shim preserves system shake handling'
+require_in "$ios_shake/UITuningLabShake.swift" 'return responder is UITextInput' 'iOS shake shim leaves text input shake-to-undo alone'
+require_in "$ios_shake/UITuningLabShake.swift" 'becomeFirstResponder()' 'iOS shake shim re-arms after the lab closes'
+require_in "$ios_shake/FeatureScreen.swift" '.accessibilityLabel("Open UI tuning lab")' 'iOS shake fallback is accessible'
+
+# The SwiftUI motion example is a default host too, so it needs the same triad.
+motion_default="$WORK/animation-spring-default"
+require_in "$motion_default/UITuningLabLaunch.swift" 'ProcessInfo.processInfo.arguments.contains("-UITuningLabOpen")' 'SwiftUI motion default agent path reads the launch argument'
+require_in "$motion_default/EntranceScreen.swift" 'UITuningLabLaunch.isRequested' 'SwiftUI motion default host opens from the agent path'
+require_in "$motion_default/EntranceScreen.swift" 'Button("Tune", action: openUITuningLab)' 'SwiftUI motion default host keeps a visible fallback'
+
+# macOS pairs the launch argument with the existing menu command and shortcut.
+macos_default="$WORK/macos-panel-minimal-default"
+require_in "$macos_default/ExampleApp.swift" 'ProcessInfo.processInfo.arguments.contains("-UITuningLabOpen")' 'macOS default agent path reads the launch argument'
+require_in "$macos_default/ExampleApp.swift" '.onAppear { if opensUITuningLab { model.uiTuningLab.show() } }' 'macOS default host opens from the agent path'
+require_in "$macos_default/UITuningLabCoordinator.swift" '.keyboardShortcut("l", modifiers: [.command, .shift])' 'macOS default host keeps the human path'
+
+# Web labs parse the agent query only inside the development-only module.
+for dir in "$WORK/web-floating-panel-default" "$WORK/web-floating-panel-persist"; do
+  [ -f "$dir/FeatureScreen.ui-tuning-lab.tsx" ] || continue
+  require_in "$dir/FeatureScreen.ui-tuning-lab.tsx" 'get("ui-tuning-lab") === "1"' "$(basename "$dir") web lab parses the agent query"
+  require_in "$dir/FeatureScreen.ui-tuning-lab.tsx" 'style={triggerStyle}>Tune</button>' "$(basename "$dir") web lab keeps a visible fallback"
+done
+require_in "$WORK/animation-spring-default/EntranceScreen.ui-tuning-lab.tsx" 'get("ui-tuning-lab") === "1"' 'web motion lab parses the agent query'
+if grep -q 'URLSearchParams' "$WORK/web-floating-panel-default/FeatureScreen.tsx" \
+    "$WORK/animation-spring-default/EntranceScreen.tsx"; then
+  not_ok 'web agent query is parsed only inside the development-gated lab module'
+else
+  ok 'web agent query is parsed only inside the development-gated lab module'
+fi
+if grep -qE 'CFBundleURLSchemes|UIApplication\.shared\.open' "$ROOT/examples/swiftui-popover-palette.md"; then
+  not_ok 'iOS agent path does not register a URL scheme'
+else
+  ok 'iOS agent path does not register a URL scheme'
+fi
 # A baseline taken from the screen at open becomes the draft after a reopen.
 if grep -nE 'setBaseline\(|uiTuningLabBaseline|baseline = (style|config|motion)|baseline: *(model\.)?(style|config|motion)\b|baseline \?\? ' "$ROOT"/examples/*.md >/dev/null; then
   not_ok 'no example captures the baseline from the screen at open'
