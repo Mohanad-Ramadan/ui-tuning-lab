@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "labTarget": "feature",
+  "scope": [
+    "appearance"
+  ],
+  "container": "FeatureScreen",
+  "baseline": {
+    "cornerRadius": 12
+  },
+  "variants": [
+    {
+      "name": "compact",
+      "overrides": {
+        "cornerRadius": 4
+      }
+    },
+    {
+      "name": "round",
+      "overrides": {
+        "cornerRadius": 24
+      }
+    }
+  ],
+  "persist": "none",
+  "profile": "default",
+  "candidates": [
+    "b",
+    "ledger-tight"
+  ]
+}

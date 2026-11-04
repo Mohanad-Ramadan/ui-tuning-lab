@@ -77,12 +77,23 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
 - Copy values copies, and logs as one `UITUNINGLAB_VALUES` line, only the fields
   that differ from the baseline; `{}` when nothing changed. Landing writes those
   values into the feature defaults (`references/landing-protocol.md`).
-- When persistence was requested, an explicit Save writes only the requested
-  namespaced profile, which passes `verify.sh profile`, and retains the draft on
-  failure. Load saved applies the stored overrides to the draft without changing
-  the baseline, and reports incompatible data without modifying it. Otherwise,
-  confirm that no Save action or storage writer is present and record the Save checks as `N/A: persistence not requested`, with
-  evidence of that absence.
+- Candidates, Done, and Compare (`references/candidates.md`): Keep as candidate
+  logs one `UITUNINGLAB_CANDIDATE` line per new name and skips a draft that
+  matches the baseline or an existing candidate; Remove logs
+  `UITUNINGLAB_CANDIDATE_REMOVED`; Compare renders each candidate in the real
+  feature and Draft restores the draft exactly; Show baseline and Compare are
+  exclusive; closing while a candidate is shown restores the draft. Done copies
+  the values and logs one `UITUNINGLAB_DONE` line whose `winner` names the
+  matching candidate or is `null`. The footer hint is visible without scrolling
+  past the controls.
+- When persistence was requested, each Keep writes only its namespaced
+  candidate (`.ui-tuning-lab/candidates/<name>.json` or
+  `uiTuningLab.candidates.<name>`), which passes `verify.sh profile`, and
+  retains the draft on failure. Remove deletes only that candidate. Reopening
+  lists the stored candidates without changing the baseline, and reports
+  incompatible data without modifying it. Otherwise, confirm that no storage
+  writer is present and record the storage checks as
+  `N/A: persistence not requested`, with evidence of that absence.
 - Touch, pointer, keyboard, focus, selection, gestures, screen-reader navigation,
   large text, reduced motion, resizing, rotation, and dismissal remain usable as
   applicable.
@@ -119,6 +130,6 @@ the target project's task report or a receipt copied from
 skill's receipts during ordinary app work; the bundled platform receipts are
 reserved for pilots validating this skill itself.
 
-Failed or unrun applicable checks remain blocking. Save checks may be marked
-`N/A: persistence not requested` only with evidence that the lab has no Save
+Failed or unrun applicable checks remain blocking. Storage checks may be marked
+`N/A: persistence not requested` only with evidence that the lab has no storage
 action or storage writer. All other required checks still need evidence.

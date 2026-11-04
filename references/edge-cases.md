@@ -34,6 +34,13 @@ Common checks:
 - On save failure, show the error and retain the draft.
 - On corrupt or incompatible saved data, keep the file untouched, keep the
   current draft, and report the incompatibility.
-- Reset needs no confirmation: the baseline is always one click away, and Copy
-  values preserves a draft worth keeping. Confirm only before Load saved replaces
+- Reset needs no confirmation: the baseline is always one click away, and Keep
+  as candidate preserves a draft worth keeping. Confirm only before Load replaces
   a draft that differs from the baseline, if the user asked for that.
+- A seeded candidate that now matches the baseline, or whose fields no longer
+  exist in the configuration, is dropped from the lab and reported, never
+  silently rewritten.
+- The log is the agent's only view of an ephemeral lab's candidates. When the
+  log no longer reaches back to the lab's opening (a relaunch, a cleared
+  console), ask the user to press Done again: it carries every candidate still in
+  the panel, with its values.

@@ -180,7 +180,7 @@ require_text examples/web-floating-panel.md 'firstControl.current?.focus()' 'web
 require_text examples/web-floating-panel.md 'trigger.current?.focus()' 'web dismissal restores trigger focus'
 require_text examples/web-floating-panel.md 'cancelAnimationFrame(focusFrame)' 'web cleanup cancels pending initial-focus work'
 require_text examples/web-floating-panel.md 'value={config.gap}' 'web lab controls every config field'
-require_text examples/web-floating-panel.md 'uiTuningLab.default' 'web save uses the uiTuningLab namespace'
+require_text examples/web-floating-panel.md 'uiTuningLab.candidates.' 'web candidates use the uiTuningLab namespace'
 for example in swiftui-popover-palette macos-panel-minimal; do
   require_text "examples/$example.md" 'Toggle("Show baseline", isOn: showingBaseline)' "$example.md lab flips to the baseline"
 done
@@ -234,10 +234,15 @@ done
 template_fields=$(jq -r 'keys[]' "$ROOT/assets/profile.template.json" | sort | tr '\n' ' ')
 for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; do
   dir="$WORK/$example-persist"
-  if grep -q 'Load saved' "$dir"/* && grep -Eq 'schemaVersion (==|!==) 1' "$dir"/*; then
-    ok "$example.md persist variant loads with a schema check"
+  if grep -Eq 'schemaVersion (==|!==) 2' "$dir"/*; then
+    ok "$example.md persist variant loads candidates with a schema check"
   else
-    not_ok "$example.md persist variant loads with a schema check"
+    not_ok "$example.md persist variant loads candidates with a schema check"
+  fi
+  if grep -Eq 'candidates' "$dir"/* && ! grep -Eq 'Button\("Save"\)|>Save</button>' "$dir"/*; then
+    ok "$example.md persist variant stores candidates instead of one Save slot"
+  else
+    not_ok "$example.md persist variant stores candidates instead of one Save slot"
   fi
   fields=$(awk '
     /^struct UITuningLabProfile: Codable \{$/ || /^type UITuningLabProfile = \{$/ { inside = 1; next }
@@ -250,6 +255,19 @@ for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; d
   else
     not_ok "$example.md profile fields match assets/profile.template.json" "got: $fields; want: $template_fields"
   fi
+done
+
+# Candidates, Done, and Compare are in every variant users copy
+# (references/candidates.md), the ephemeral default included.
+for example in $EXAMPLES; do
+  for variant in $(example_variants "$ROOT/examples/$example"); do
+    dir="$WORK/${example%.md}-$variant"
+    label="$example [$variant]"
+    for needle in 'Keep as candidate' 'Compare' 'Done' 'Finished? Keep the ones you like, then press Done' \
+        'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE'; do
+      if grep -rqF "$needle" "$dir"; then ok "$label has $needle"; else not_ok "$label has $needle"; fi
+    done
+  done
 done
 
 if grep -rn 'variantLab' "$ROOT/SKILL.md" "$ROOT/examples" "$ROOT/references" "$ROOT/validation" >/dev/null; then

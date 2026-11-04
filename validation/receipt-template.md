@@ -18,8 +18,9 @@
 - [ ] With multiple labs, each path opens the intended one.
 - [ ] Reset exactly restores the baseline (the declared default), also after close and reopen.
 - [ ] Copy values copies and logs only the changed fields, and landing writes them into the feature defaults.
-- [ ] If persistence was requested, explicit Save succeeds under the documented namespace.
-- [ ] If persistence was requested, Save failure is visible and retains the draft.
+- [ ] Candidates, Compare, and Done (`references/candidates.md`): Keep as candidate logs `UITUNINGLAB_CANDIDATE` and skips duplicates; Compare renders each candidate and Draft restores the draft; Done logs a `UITUNINGLAB_DONE` line carrying the winner and every candidate; the finish hint is visible.
+- [ ] If persistence was requested, Keep writes one candidate under the documented namespace.
+- [ ] If persistence was requested, a failed candidate write is visible and retains the draft.
 - [ ] Primary pointer/touch, keyboard, focus, and gesture paths work.
 - [ ] Applicable accessibility and reduced-motion paths work.
 - [ ] Dismissal releases all lab-owned UI and work.
@@ -27,8 +28,8 @@
 
 ## Evidence
 
-For an ephemeral lab, replace both Save checkboxes with
-`N/A: persistence not requested` and attach evidence that no Save action or
+For an ephemeral lab, replace both storage checkboxes with
+`N/A: persistence not requested` and attach evidence that no storage action or
 storage writer is present. Do not mark an unrun applicable check as N/A.
 
 - Static-check commands/output:
@@ -42,4 +43,4 @@ storage writer is present. Do not mark an unrun applicable check as N/A.
 ## Result
 
 PENDING — any unchecked, failed, or untested applicable item blocks approval.
-Documented N/A Save checks do not block an ephemeral lab.
+Documented N/A storage checks do not block an ephemeral lab.

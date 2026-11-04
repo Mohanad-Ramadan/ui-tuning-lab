@@ -14,21 +14,32 @@ on one line:
 UITUNINGLAB_VALUES {"cornerRadius":20,"spacing":12}
 ```
 
-If the user already pasted the line or the values, use them. Otherwise read
-the most recent line yourself rather than asking for a paste:
+Labs also log their candidates and a `UITUNINGLAB_DONE` line when the user
+presses Done (`references/candidates.md`). Use, in order:
+
+1. What the user says in chat wins: values they pasted, or a candidate they
+   named ("land b").
+2. Otherwise the newest of the latest `UITUNINGLAB_DONE` and
+   `UITUNINGLAB_VALUES` lines; the lab stays open after Done, so a later Copy
+   values supersedes it. From a Done line, land its `winner`. When `winner` is
+   `null` and there is at least one candidate, ask which to land, listing the
+   draft's `values` and every candidate with its `basedOn` and `values`.
+
+Read the lines yourself rather than asking for a paste:
 
 | Platform | Where to read it |
 |---|---|
-| Web | the browser console, for example the built-in browser's console messages filtered by `UITUNINGLAB_VALUES` |
-| iOS Simulator | `xcrun simctl spawn booted log show --last 10m --style compact --predicate 'subsystem == "ui-tuning-lab" AND eventMessage CONTAINS "UITUNINGLAB_VALUES"'` |
-| macOS | `log show --last 10m --style compact --predicate 'subsystem == "ui-tuning-lab" AND eventMessage CONTAINS "UITUNINGLAB_VALUES"'` |
+| Web | the browser console, for example the built-in browser's console messages filtered by `UITUNINGLAB_` |
+| iOS Simulator | `xcrun simctl spawn booted log show --last 1h --style compact --predicate 'subsystem == "ui-tuning-lab" AND eventMessage CONTAINS "UITUNINGLAB_"'` |
+| macOS (`/usr/bin/log`, since zsh has a `log` builtin) | `/usr/bin/log show --last 1h --style compact --predicate 'subsystem == "ui-tuning-lab" AND eventMessage CONTAINS "UITUNINGLAB_"'` |
 
 If no line is available, ask the user to press Copy values and paste the result.
 `{}` means the draft matches the baseline, so there is nothing to land. `null`
 means the draft cleared an optional field. In the Swift labs, a status starting
 `Values not copied` means encoding failed (for example a non-finite number); fix
 the value first. The web labs cannot hit that case, because their values are
-plain numbers. If the
+plain numbers. A candidate's
+`values`, like Copy values, holds only what differs from the baseline. If the
 winner came from a saved profile, `overrides` holds the full configuration: land
 only the fields that differ from the current defaults.
 
@@ -55,7 +66,10 @@ the values and never land.
 
 If the user has already said which they want ("get rid of the panel", "keep it
 for now"), do that. Otherwise ask once, recommending removal unless the user
-expects to tune again soon:
+expects to tune again soon. When candidates other than the winner exist, the
+same prompt asks whether to keep those finalists for later; keeping them writes
+them into the project (`references/candidates.md`, "Keeping finalists for
+later") and is independent of removing the lab:
 
 - **Remove (default).** Delete the lab files (`UITuningLab*.swift`,
   `*.ui-tuning-lab.tsx`), the gated host code that opens them (the launch-argument
@@ -91,4 +105,5 @@ the computed style in the browser, or take a simulator screenshot. Report:
 - the values table;
 - the file and declaration changed;
 - whether the lab was removed (with the `N/A` result) or kept;
+- which finalists were kept in `.ui-tuning-lab/candidates/`, if any;
 - anything not landed and why.

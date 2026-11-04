@@ -1,5 +1,31 @@
 # Changelog — ui-tuning-lab
 
+## 1.2.0 — unreleased
+
+- New `references/candidates.md`. Every lab, ephemeral ones included, has
+  **Keep as candidate** (finalists named `a`, `b`, … with the preset each came
+  from), a candidates list with Load and Remove, **Compare** to flip the real
+  feature between Draft and each candidate, **Done**, and an always-visible
+  footer hint that says how to finish.
+- New log lines `UITUNINGLAB_CANDIDATE`, `UITUNINGLAB_CANDIDATE_REMOVED`, and
+  `UITUNINGLAB_DONE`. The Done line carries the winner (or `null`) and every
+  candidate with its values, so it alone is enough to land.
+- On Apple platforms the agent can wait for Done by polling `/usr/bin/log show`
+  in the background instead of waiting for a message (a `log stream | grep -m1`
+  pipeline never exits, and zsh shadows `log` with a builtin).
+- Saved profiles gain `schemaVersion: 2` (candidates), adding `basedOn` and
+  `savedAt`; `schemaVersion: 1` files still validate. Persisted labs store one
+  file or key per candidate (`.ui-tuning-lab/candidates/<name>.json`,
+  `uiTuningLab.candidates.<name>`) instead of a single Save slot.
+- At landing the agent offers to keep the other finalists in the project's
+  `.ui-tuning-lab/candidates/`, lists them in `lab.json` under the new optional
+  `candidates` field, and seeds them into the lab when it is reopened.
+  `verify.sh config` validates the field.
+- Landing takes what the user names in chat first, then the newest
+  `UITUNINGLAB_DONE` or `UITUNINGLAB_VALUES` line, over a one-hour log window.
+- Candidate names are never reused within a run, and a persisted lab never
+  overwrites a stored entry, readable or not.
+
 ## 1.1.0 — unreleased
 
 - New `references/activation.md`: every lab has an agent path, a human fast path,

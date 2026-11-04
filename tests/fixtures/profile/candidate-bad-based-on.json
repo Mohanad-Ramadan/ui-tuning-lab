@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 2,
+  "name": "b",
+  "platform": "macos",
+  "container": "FeatureWindow.panel",
+  "scope": [
+    "appearance"
+  ],
+  "basedOn": "Ledger",
+  "savedAt": "2026-11-04T14:23:24Z",
+  "overrides": {
+    "height": 52,
+    "cornerRadius": 14
+  },
+  "notes": ""
+}

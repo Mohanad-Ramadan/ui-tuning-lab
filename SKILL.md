@@ -4,7 +4,7 @@ description: "Add a temporary, development-only control panel beside a real scre
 license: MIT
 metadata:
   author: "Mohanad Ramadan"
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # UI Tuning Lab
@@ -23,6 +23,9 @@ A good lab feels like this:
 - **Show baseline** flips the real feature back to the original and returns to
   the draft; **Replay** and **Speed** make motion judgeable.
 - **Copy values** hands over only what changed, and the agent lands it in code.
+- **Keep as candidate** shortlists finalists, **Compare** flips between them in
+  the real feature, and **Done** tells the agent the session is over. A footer
+  hint says how to finish, so the user never has to guess.
 
 ## Workflow
 
@@ -45,17 +48,24 @@ A good lab feels like this:
    feature's declared default (what ships), never the value on screen when the
    lab opens: a draft kept from an earlier open must still count as a change.
    Keep the draft separate. Pick controls from `references/control-mapping.md`:
-   at least two presets, direct controls, Show baseline, Reset, and Copy values,
-   plus Replay and Speed for motion. Add Save and Load saved only when
-   persistence was requested (`references/config-schema.md`).
+   at least two presets, direct controls, Show baseline, Reset, Copy values,
+   Keep as candidate, Compare, Done, and the finish hint, plus Replay and Speed
+   for motion (`references/candidates.md`). Candidates stay in memory and the
+   log; write them to storage only when persistence was requested
+   (`references/config-schema.md`). When `.ui-tuning-lab/lab.json` lists kept
+   `candidates`, seed the lab with them.
 4. **Tune with the user.** Open the lab in the running app and iterate. If the
    user is not available, stop here and report the lab as built, with every
    hands-on check listed as not run. You can still run the release-artifact
    checks yourself: build, search the output, serve it, and try activation
-   paths.
-5. **Land the winner.** Read the `UITUNINGLAB_VALUES` line, write the values into
-   the feature's defaults, show a baseline-to-winner table, then remove the lab
-   (default) or keep it (`references/landing-protocol.md`).
+   paths. On Apple platforms, wait for Done with a background log watch
+   (`references/candidates.md`, "Waiting for Done").
+5. **Land the winner.** Take the candidate or values the user names in chat,
+   else the newest `UITUNINGLAB_DONE` or `UITUNINGLAB_VALUES` line
+   (`references/landing-protocol.md`, step 1), write the values into the
+   feature's defaults, show a baseline-to-winner table, offer to keep the other
+   finalists for later, then remove the lab (default) or keep it
+   (`references/landing-protocol.md`).
 6. **Verify.** Run the checks below and report what passed, what failed, and what
    was not run.
 
@@ -83,7 +93,7 @@ module (presets, a diff function) need no marker: the file itself is gated.
 | **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files, and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
 | **Activatable only in development.** The lab opens through the documented agent path, the chosen human path, and a visible fallback; none survives Release. | Hands-on: every documented path opens the lab, a focused text field keeps shake-to-undo, and the fallback is reachable. Release archive: launch arguments, URL schemes, shake selectors, notification names, key commands, and fallback labels are absent or inert (`references/verify-protocol.md`). |
 | **Reversible.** Reset restores the baseline (the declared default) exactly, behavior included. | Hands-on: open, change everything, close, reopen, Reset, and compare with the unmodified app. |
-| **Explicit persistence.** Nothing is written unless the user asked; saves go only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | No storage writer in an ephemeral lab; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
+| **Explicit persistence.** Nothing is written unless the user asked; candidates in an ephemeral lab live only in memory and the log; saves go only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | No storage writer in an ephemeral lab; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
 | **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
 
 `source-gates` is advisory lint: a PASS cannot prove release absence or that every
@@ -105,8 +115,10 @@ a save would overwrite a production key.
 - `references/ios-hosting.md`: iOS panels, activation, Xcode targets, and UIKit or
   hybrid apps.
 - `references/control-mapping.md`: which control for which value; required controls.
+- `references/candidates.md`: Keep as candidate, Compare, Done, the finish hint,
+  waiting for Done, and keeping finalists for a later session.
 - `references/landing-protocol.md`: reading values, writing defaults, removal.
-- `references/config-schema.md`: `lab.json` and saved profiles.
+- `references/config-schema.md`: `lab.json`, candidates, and saved profiles.
 - `references/verify-protocol.md`: static, hands-on, and release-artifact checks.
 - `references/edge-cases.md`: rotation, focus, hot reload, corrupt saved data.
 - `references/container-tuning.md`: only when tuning the host container itself.
@@ -128,6 +140,8 @@ exact steps to try it.
 
 Before landing, open the report with **How to try it**: where the pill or
 command is (which corner, which menu), then three to five numbered steps from
-opening the lab to pasting the `UITUNINGLAB_VALUES` line back. Name every
+opening the lab to pressing **Done**: try presets, Keep as candidate for each
+finalist, Compare them, then Done (or say "land b"). Say whether the agent is
+waiting for Done on its own or needs a message. Name every
 choice the user makes inside the lab (pick a theme, switch mode) and anything
 that still lives elsewhere in the app, so nothing about the setup is a surprise.

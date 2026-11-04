@@ -13,8 +13,8 @@ A receipt is evidence, not a forecast. Use `PENDING` for every unrun check and
 identity, and links to screenshots, video, logs, or inspection output. Never copy
 results between commits.
 
-Save checks apply only when persistence was requested. For an ephemeral lab,
-record `N/A: persistence not requested` with evidence that no Save action or
+Storage checks apply only when persistence was requested. For an ephemeral lab,
+record `N/A: persistence not requested` with evidence that no storage action or
 storage writer is present. Other applicable checks still require PASS evidence.
 
 Publishing remains separate and requires explicit approval after all three

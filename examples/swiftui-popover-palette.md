@@ -11,6 +11,18 @@ Every lab type carries the `UITuningLab` prefix and lives in a file wrapped in
 **Copy values** puts the fields that differ from the baseline on the pasteboard
 and logs them as one `UITUNINGLAB_VALUES {...}` line for landing
 (`references/landing-protocol.md`).
+**Keep as candidate**, the candidates list (Load, Remove), **Compare**, and
+**Done** follow `references/candidates.md`. The host owns the
+`UITuningLabCandidates` store beside the draft, so candidates and `basedOn`
+survive closing the popover; they live in memory and in the log only, and a
+name is never reused within a run. Compare shares the Show baseline stash, and
+while either shows something other than the draft the editing controls, Keep,
+Reset, Copy values, and Load are disabled. Done is disabled only while Show
+baseline is on; while Compare shows a candidate, Done loads it into the draft
+first, so it is the winner. Closing the lab restores the draft. The finish hint
+is pinned below the scrolling Form, so it shows at the smallest detent. To
+reopen a session, seed the store's `initial:` array; each seeded candidate logs
+its own `UITUNINGLAB_CANDIDATE` line.
 
 <!-- file: CardFeature.swift -->
 ```swift
@@ -48,6 +60,11 @@ struct FeatureScreen: View {
     #if DEBUG
     @State private var showUITuningLab = false
     @State private var uiTuningLabDetent = PresentationDetent.height(320)
+    // Candidates and basedOn live beside the draft and outlive the popover. To
+    // reopen a session, seed the finalists kept in the project here
+    // (references/candidates.md).
+    @StateObject private var uiTuningLabCandidates =
+        UITuningLabCandidates<CardStyle>(baseline: .appDefault, initial: [])
     #endif
 
     var body: some View {
@@ -61,6 +78,7 @@ struct FeatureScreen: View {
                 // The declared default, never the value on screen at open: a draft
                 // kept from an earlier session must still count as a change.
                 UITuningLabControls(style: $style, baseline: .appDefault)
+                    .environmentObject(uiTuningLabCandidates)
                     // On iPhone the popover becomes a short sheet the feature
                     // stays usable behind; drag it taller to reach every control
                     // (references/ios-hosting.md).
@@ -130,6 +148,11 @@ struct FeatureScreen: View {
     #if DEBUG
     @State private var showUITuningLab = false
     @State private var uiTuningLabDetent = PresentationDetent.height(320)
+    // Candidates and basedOn live beside the draft and outlive the popover. To
+    // reopen a session, seed the finalists kept in the project here
+    // (references/candidates.md).
+    @StateObject private var uiTuningLabCandidates =
+        UITuningLabCandidates<CardStyle>(baseline: .appDefault, initial: [])
     #endif
 
     var body: some View {
@@ -157,6 +180,7 @@ struct FeatureScreen: View {
             }
             .popover(isPresented: $showUITuningLab) {
                 UITuningLabControls(style: $style, baseline: .appDefault)
+                    .environmentObject(uiTuningLabCandidates)
                     .presentationCompactAdaptation(.sheet)
                     .presentationDetents([.height(320), .medium, .large],
                                          selection: $uiTuningLabDetent)
@@ -263,9 +287,13 @@ import SwiftUI
 struct UITuningLabControls: View {
     @Binding var style: CardStyle
     let baseline: CardStyle
+    // Owned by the host beside the draft, so candidates and basedOn survive
+    // closing and reopening the lab.
+    @EnvironmentObject private var candidates: UITuningLabCandidates<CardStyle>
     @Environment(\.dismiss) private var dismiss
     @State private var status: String?
-    @State private var stashedDraft: CardStyle?  // set while the baseline is shown
+    @State private var stashedDraft: CardStyle?  // set while the baseline or a candidate is shown
+    @State private var comparing: String?       // the candidate Compare shows, nil for the draft
 
     private static let compact = CardStyle(cornerRadius: 4, spacing: 4)
     private static let relaxed = CardStyle(cornerRadius: 24, spacing: 16)
@@ -274,10 +302,16 @@ struct UITuningLabControls: View {
         Form {
             Button("Close") { dismiss() }
             Toggle("Show baseline", isOn: showingBaseline)
+            if !candidates.all.isEmpty {
+                Picker("Compare", selection: comparedCandidate) {
+                    Text("Draft").tag(String?.none)
+                    ForEach(candidates.all) { Text($0.name).tag(Optional($0.name)) }
+                }
+            }
             Group {
                 HStack {
-                    Button("Compact") { style = Self.compact }
-                    Button("Relaxed") { style = Self.relaxed }
+                    Button("Compact") { style = Self.compact; candidates.basedOn = "compact" }
+                    Button("Relaxed") { style = Self.relaxed; candidates.basedOn = "relaxed" }
                 }
                 LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
                     .accessibilityHidden(true)  // the slider reports its own value
@@ -288,29 +322,62 @@ struct UITuningLabControls: View {
                     .accessibilityHidden(true)  // the slider reports its own value
                 Slider(value: $style.spacing, in: 0...24, step: 1) { Text("Spacing") }
                 HStack {
-                    Button("Reset") { style = baseline }
+                    Button("Reset") { style = baseline; candidates.basedOn = "baseline" }
                     Button("Copy values") {
                         status = uiTuningLabCopyValues(from: baseline, to: style)
                     }
                 }
             }
             .disabled(stashedDraft != nil)
+            HStack {
+                Button("Keep as candidate", action: keep)
+                    .disabled(stashedDraft != nil)
+                // While Compare shows a candidate, Done lands that candidate.
+                Button("Done", action: done)
+                    .disabled(stashedDraft != nil && comparing == nil)
+            }
+            if !candidates.all.isEmpty {
+                Section("Candidates") {
+                    ForEach(candidates.all) { candidate in
+                        HStack {
+                            Text("\(candidate.name), from \(candidate.basedOn)")
+                            Spacer()
+                            Button("Load") { load(candidate) }
+                                .accessibilityLabel("Load \(candidate.name)")
+                                .disabled(stashedDraft != nil)
+                            Button("Remove") { remove(candidate.name) }
+                                .accessibilityLabel("Remove \(candidate.name)")
+                        }
+                    }
+                }
+            }
             if let status { Text(status).font(.footnote) }
+        }
+        // Pinned below the scrolling controls, so it shows at every detent.
+        .safeAreaInset(edge: .bottom) {
+            Text("Finished? Keep the ones you like, then press Done, or tell the agent \"land b\".")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(.bar)
         }
         .frame(minWidth: 280)
         // A Form row with several buttons fires all of them on iOS unless borderless.
         .buttonStyle(.borderless)
-        // Never leave the feature showing the baseline once the lab is gone.
+        // Never leave the feature showing the baseline or a candidate once the lab is gone.
         .onDisappear { if let stashedDraft { style = stashedDraft } }
     }
 
     /// Shows the baseline in the real feature; turning it off restores the draft.
     private var showingBaseline: Binding<Bool> {
         Binding(
-            get: { stashedDraft != nil },
+            get: { stashedDraft != nil && comparing == nil },
             set: { show in
+                comparing = nil
                 if show {
-                    stashedDraft = style
+                    if stashedDraft == nil { stashedDraft = style }
                     style = baseline
                 } else if let draft = stashedDraft {
                     style = draft
@@ -318,6 +385,58 @@ struct UITuningLabControls: View {
                 }
             }
         )
+    }
+
+    /// Shows a candidate in the real feature, sharing the baseline's stash;
+    /// Draft restores the draft.
+    private var comparedCandidate: Binding<String?> {
+        Binding(
+            get: { comparing },
+            set: { name in
+                if let name, let candidate = candidates.named(name) {
+                    if stashedDraft == nil { stashedDraft = style }
+                    style = candidate.value
+                    comparing = name
+                } else {
+                    if let draft = stashedDraft { style = draft }
+                    stashedDraft = nil
+                    comparing = nil
+                }
+            }
+        )
+    }
+
+    private func keep() {
+        do {
+            let kept = try candidates.keep(style)
+            status = "Kept \(kept.name)"
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    private func done() {
+        // The candidate on screen becomes the draft, so it is the winner.
+        var draft = style
+        if let name = comparing, let candidate = candidates.named(name) {
+            stashedDraft = nil
+            comparing = nil
+            load(candidate)
+            draft = candidate.value
+        }
+        status = candidates.done(draft)
+    }
+
+    private func load(_ candidate: UITuningLabCandidate<CardStyle>) {
+        style = candidate.value
+        candidates.basedOn = candidate.name
+        status = "Loaded \(candidate.name)"
+    }
+
+    private func remove(_ name: String) {
+        if comparing == name { comparedCandidate.wrappedValue = nil }
+        candidates.remove(name)
+        status = "Removed \(name)"
     }
 }
 #endif
@@ -344,15 +463,7 @@ struct UITuningLabValuesError: LocalizedError {
 /// Floating-point numbers are rounded to three decimals at any depth, so slider
 /// noise is not reported. A field the draft cleared to nil is reported as null.
 func uiTuningLabChangedValues<Value: Encodable>(from baseline: Value, to draft: Value) throws -> String {
-    let before = try uiTuningLabFields(baseline)
-    let after = try uiTuningLabFields(draft)
-    var changed: [String: Any] = [:]
-    for key in Set(before.keys).union(after.keys)
-    where (before[key] as? NSObject) != (after[key] as? NSObject) {
-        changed[key] = after[key] ?? NSNull()
-    }
-    let data = try JSONSerialization.data(withJSONObject: changed, options: [.sortedKeys])
-    return String(decoding: data, as: UTF8.self)
+    try uiTuningLabJSON(uiTuningLabChangedFields(from: baseline, to: draft))
 }
 
 /// Copies the changed values and logs them on one line the agent can find:
@@ -369,6 +480,172 @@ func uiTuningLabCopyValues<Value: Encodable>(from baseline: Value, to draft: Val
     #endif
     uiTuningLabLog.notice("UITUNINGLAB_VALUES \(values, privacy: .public)")
     return values == "{}" ? "No changes from baseline" : "Copied \(values)"
+}
+
+/// A finalist kept from the draft (references/candidates.md). It lives in
+/// memory, and in storage only when the lab persists it.
+struct UITuningLabCandidate<Value: Codable>: Identifiable {
+    var name: String
+    var basedOn: String  // a preset's kebab-case name, `baseline`, or a candidate's name
+    var value: Value
+    var id: String { name }
+}
+
+/// Why Keep did not add a candidate, worded for the panel's status line.
+struct UITuningLabNotKept: LocalizedError {
+    let errorDescription: String?
+}
+
+/// The candidates list, oldest first, owned beside the draft so it survives
+/// closing the lab. Every change logs one line the agent can replay:
+/// `UITUNINGLAB_CANDIDATE {...}` and `UITUNINGLAB_CANDIDATE_REMOVED {...}`.
+@MainActor
+final class UITuningLabCandidates<Value: Codable>: ObservableObject {
+    @Published private(set) var all: [UITuningLabCandidate<Value>] = []
+    /// Where the draft came from: `baseline` until a preset, Reset, or Load changes it.
+    @Published var basedOn = "baseline"
+    let baseline: Value
+    private var taken: Set<String> = []  // every name issued or reserved this run
+
+    /// Seed with finalists kept in the project to reopen a session; empty by default.
+    init(baseline: Value, initial: [UITuningLabCandidate<Value>] = []) {
+        self.baseline = baseline
+        for candidate in initial { _ = try? adopt(candidate) }
+    }
+
+    func named(_ name: String) -> UITuningLabCandidate<Value>? {
+        all.first { $0.name == name }
+    }
+
+    /// Marks names as used, such as every file in storage, so Keep never issues them.
+    func reserve(_ names: some Sequence<String>) { taken.formUnion(names) }
+
+    /// Keeps the draft under a name never used before in this run. A draft that
+    /// matches the baseline or an existing candidate is not kept. `store` runs
+    /// before the candidate is added; if it throws, nothing is added or logged.
+    func keep(_ draft: Value, store: (UITuningLabCandidate<Value>) throws -> Void = { _ in })
+        throws -> UITuningLabCandidate<Value> {
+        let candidate = UITuningLabCandidate(
+            name: uiTuningLabCandidateName(excluding: taken), basedOn: basedOn, value: draft)
+        let line = try checked(candidate)
+        do { try store(candidate) } catch {
+            throw UITuningLabNotKept(errorDescription: "Not kept: \(error.localizedDescription)")
+        }
+        add(candidate, line: line)
+        return candidate
+    }
+
+    /// Adds a seeded or stored candidate and logs it. Returns false, silently,
+    /// when the name is already in the list; throws when it now matches the
+    /// baseline or another candidate.
+    @discardableResult
+    func adopt(_ candidate: UITuningLabCandidate<Value>) throws -> Bool {
+        taken.insert(candidate.name)
+        guard named(candidate.name) == nil else { return false }
+        add(candidate, line: try checked(candidate))
+        return true
+    }
+
+    func remove(_ name: String) {
+        guard named(name) != nil else { return }
+        all.removeAll { $0.name == name }
+        uiTuningLabLogLine("UITUNINGLAB_CANDIDATE_REMOVED", ["name": name])
+    }
+
+    /// Copies the draft's values like Copy values, then logs the handoff line
+    /// `UITUNINGLAB_DONE {...}`. The winner is the candidate the draft matches.
+    func done(_ draft: Value) -> String {
+        let copied = uiTuningLabCopyValues(from: baseline, to: draft)
+        let values: [String: Any]
+        let kept: [[String: Any]]
+        do {
+            values = try uiTuningLabChangedFields(from: baseline, to: draft)
+            kept = try all.map { try uiTuningLabCandidateFields($0, baseline: baseline) }
+        } catch {
+            return "Done not logged: \(error.localizedDescription)"
+        }
+        let draftValues = try? uiTuningLabJSON(values)
+        let winner = all.first { (try? uiTuningLabChangedValues(from: baseline, to: $0.value)) == draftValues }
+        var line: [String: Any] = ["candidates": kept, "values": values, "winner": NSNull()]
+        if let winner { line["winner"] = winner.name }
+        uiTuningLabLogLine("UITUNINGLAB_DONE", line)
+        if let winner { return "Done: \(winner.name) is the winner. \(copied)" }
+        if all.isEmpty { return "Done. \(copied)" }
+        return "Done: the draft matches no candidate, so the agent will ask which to land. \(copied)"
+    }
+
+    /// The candidate's log line, or why it cannot join the list.
+    private func checked(_ candidate: UITuningLabCandidate<Value>) throws -> [String: Any] {
+        let line: [String: Any]
+        let values: String
+        do {
+            line = try uiTuningLabCandidateFields(candidate, baseline: baseline)
+            values = try uiTuningLabChangedValues(from: baseline, to: candidate.value)
+        } catch {
+            throw UITuningLabNotKept(errorDescription: "Not kept: \(error.localizedDescription)")
+        }
+        if values == "{}" {
+            throw UITuningLabNotKept(errorDescription: "Matches the baseline; nothing to keep")
+        }
+        if let twin = all.first(where: { (try? uiTuningLabChangedValues(from: baseline, to: $0.value)) == values }) {
+            throw UITuningLabNotKept(errorDescription: "Same as \(twin.name)")
+        }
+        return line
+    }
+
+    private func add(_ candidate: UITuningLabCandidate<Value>, line: [String: Any]) {
+        taken.insert(candidate.name)
+        uiTuningLabLogLine("UITUNINGLAB_CANDIDATE", line)
+        all.append(candidate)
+    }
+}
+
+/// `a` to `z`, then `aa`, `ab`, and so on: the first name not in `taken`.
+/// Letters only, and never `draft` or `baseline`, which Compare and basedOn use.
+func uiTuningLabCandidateName(excluding taken: Set<String>) -> String {
+    let used = taken.union(["draft", "baseline"])
+    return (0...).lazy.map(uiTuningLabCandidateName(at:)).first { !used.contains($0) }!
+}
+
+private func uiTuningLabCandidateName(at index: Int) -> String {
+    var remaining = index + 1
+    var name = ""
+    while remaining > 0 {
+        remaining -= 1
+        name = String(UnicodeScalar(UInt8(97 + remaining % 26))) + name
+        remaining /= 26
+    }
+    return name
+}
+
+/// One candidate as it appears in the log: its values are the diff against the baseline.
+private func uiTuningLabCandidateFields<Value: Encodable>(
+    _ candidate: UITuningLabCandidate<Value>, baseline: Value
+) throws -> [String: Any] {
+    ["basedOn": candidate.basedOn, "name": candidate.name,
+     "values": try uiTuningLabChangedFields(from: baseline, to: candidate.value)]
+}
+
+/// Logs `TAG {...}` with sorted keys at every level, readable outside the debugger.
+private func uiTuningLabLogLine(_ tag: String, _ object: [String: Any]) {
+    guard let json = try? uiTuningLabJSON(object) else { return }
+    uiTuningLabLog.notice("\(tag, privacy: .public) \(json, privacy: .public)")
+}
+
+private func uiTuningLabJSON(_ object: [String: Any]) throws -> String {
+    let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    return String(decoding: data, as: UTF8.self)
+}
+
+private func uiTuningLabChangedFields<Value: Encodable>(from baseline: Value, to draft: Value) throws -> [String: Any] {
+    let before = try uiTuningLabFields(baseline)
+    let after = try uiTuningLabFields(draft)
+    var changed: [String: Any] = [:]
+    for key in Set(before.keys).union(after.keys)
+    where (before[key] as? NSObject) != (after[key] as? NSObject) {
+        changed[key] = after[key] ?? NSNull()
+    }
+    return changed
 }
 
 private func uiTuningLabFields<Value: Encodable>(_ value: Value) throws -> [String: Any] {
@@ -405,44 +682,62 @@ product before changing the receipt from pending.
 
 ## Optional persistence, only when requested
 
-The candidate above is ephemeral. If the user explicitly requests saved profiles,
+The candidate above is ephemeral. If the user explicitly requests persistence,
 replace `UITuningLabControls.swift` with this version. `FeatureScreen.swift` stays
-unchanged, and the envelope, writer, and loader stay development-only. Load saved
-applies the stored overrides to the draft; the baseline stays the declared default, so
-Reset still returns to it. An unreadable or incompatible file is reported and
-left untouched.
+unchanged, and the envelope, writer, and loader stay development-only. Each Keep
+also writes the candidate as a `schemaVersion` 2 profile, and Remove deletes that
+candidate's file and nothing else. Opening the lab adds every saved candidate to
+the list, ordered by `savedAt` (which keeps fractional seconds) and then by name,
+and logs each one; Load applies its overrides to the draft, and the baseline
+stays the declared default, so Reset still returns to it. Every stored file name
+stays taken, even for a file that was skipped. A file that does not decode, has
+another schema or platform, has a name that differs from its file or is not
+kebab-case, or now matches the baseline is reported in the status line, skipped,
+and left untouched.
 
 <!-- file: UITuningLabControls.swift variant=persist -->
 ```swift
 import SwiftUI
 
 #if DEBUG
+/// A kept candidate on disk: `<name>.json` in `directory`, `schemaVersion` 2
+/// (references/config-schema.md).
 struct UITuningLabProfile: Codable {
-    var schemaVersion = 1
-    var name = "default"
+    var schemaVersion = 2
+    var name: String
+    var basedOn: String
     var platform = "ios"
     var container = "FeatureScreen.popover"
     var scope = ["appearance", "layout"]
+    var savedAt: String  // ISO-8601 UTC with fractional seconds, ending in Z
     var overrides: CardStyle
     var notes = ""
 
-    static var fileURL: URL {
+    static var directory: URL {
         URL.applicationSupportDirectory
             .appending(path: ".ui-tuning-lab", directoryHint: .isDirectory)
-            .appending(path: "default.json")
+            .appending(path: "candidates", directoryHint: .isDirectory)
+    }
+
+    static func fileURL(_ name: String) -> URL {
+        directory.appending(path: "\(name).json")
     }
 }
 
 struct UITuningLabProfileMismatch: LocalizedError {
-    var errorDescription: String? { "the saved profile has an incompatible schema or platform" }
+    let errorDescription: String?
 }
 
 struct UITuningLabControls: View {
     @Binding var style: CardStyle
     let baseline: CardStyle
+    // Owned by the host beside the draft, so candidates and basedOn survive
+    // closing and reopening the lab.
+    @EnvironmentObject private var candidates: UITuningLabCandidates<CardStyle>
     @Environment(\.dismiss) private var dismiss
     @State private var status: String?
-    @State private var stashedDraft: CardStyle?  // set while the baseline is shown
+    @State private var stashedDraft: CardStyle?  // set while the baseline or a candidate is shown
+    @State private var comparing: String?       // the candidate Compare shows, nil for the draft
 
     private static let compact = CardStyle(cornerRadius: 4, spacing: 4)
     private static let relaxed = CardStyle(cornerRadius: 24, spacing: 16)
@@ -451,10 +746,16 @@ struct UITuningLabControls: View {
         Form {
             Button("Close") { dismiss() }
             Toggle("Show baseline", isOn: showingBaseline)
+            if !candidates.all.isEmpty {
+                Picker("Compare", selection: comparedCandidate) {
+                    Text("Draft").tag(String?.none)
+                    ForEach(candidates.all) { Text($0.name).tag(Optional($0.name)) }
+                }
+            }
             Group {
                 HStack {
-                    Button("Compact") { style = Self.compact }
-                    Button("Relaxed") { style = Self.relaxed }
+                    Button("Compact") { style = Self.compact; candidates.basedOn = "compact" }
+                    Button("Relaxed") { style = Self.relaxed; candidates.basedOn = "relaxed" }
                 }
                 LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
                     .accessibilityHidden(true)  // the slider reports its own value
@@ -465,41 +766,63 @@ struct UITuningLabControls: View {
                     .accessibilityHidden(true)  // the slider reports its own value
                 Slider(value: $style.spacing, in: 0...24, step: 1) { Text("Spacing") }
                 HStack {
-                    Button("Reset") { style = baseline }
+                    Button("Reset") { style = baseline; candidates.basedOn = "baseline" }
                     Button("Copy values") {
                         status = uiTuningLabCopyValues(from: baseline, to: style)
                     }
                 }
-                HStack {
-                    Button("Save") {
-                        do { try save(); status = "Saved" }
-                        catch { status = "Save failed: \(error.localizedDescription)" }
-                    }
-                    Button("Load saved") {
-                        do { try loadSaved(); status = "Loaded saved values" }
-                        catch {
-                            status = "Saved profile not loaded: \(error.localizedDescription). The file was left unchanged."
+            }
+            .disabled(stashedDraft != nil)
+            HStack {
+                Button("Keep as candidate", action: keep)
+                    .disabled(stashedDraft != nil)
+                // While Compare shows a candidate, Done lands that candidate.
+                Button("Done", action: done)
+                    .disabled(stashedDraft != nil && comparing == nil)
+            }
+            if !candidates.all.isEmpty {
+                Section("Candidates") {
+                    ForEach(candidates.all) { candidate in
+                        HStack {
+                            Text("\(candidate.name), from \(candidate.basedOn)")
+                            Spacer()
+                            Button("Load") { load(candidate) }
+                                .accessibilityLabel("Load \(candidate.name)")
+                                .disabled(stashedDraft != nil)
+                            Button("Remove") { remove(candidate.name) }
+                                .accessibilityLabel("Remove \(candidate.name)")
                         }
                     }
                 }
             }
-            .disabled(stashedDraft != nil)
             if let status { Text(status).font(.footnote) }
+        }
+        // Pinned below the scrolling controls, so it shows at every detent.
+        .safeAreaInset(edge: .bottom) {
+            Text("Finished? Keep the ones you like, then press Done, or tell the agent \"land b\".")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(.bar)
         }
         .frame(minWidth: 280)
         // A Form row with several buttons fires all of them on iOS unless borderless.
         .buttonStyle(.borderless)
-        // Never leave the feature showing the baseline once the lab is gone.
+        // Never leave the feature showing the baseline or a candidate once the lab is gone.
         .onDisappear { if let stashedDraft { style = stashedDraft } }
+        .onAppear(perform: loadSaved)
     }
 
     /// Shows the baseline in the real feature; turning it off restores the draft.
     private var showingBaseline: Binding<Bool> {
         Binding(
-            get: { stashedDraft != nil },
+            get: { stashedDraft != nil && comparing == nil },
             set: { show in
+                comparing = nil
                 if show {
-                    stashedDraft = style
+                    if stashedDraft == nil { stashedDraft = style }
                     style = baseline
                 } else if let draft = stashedDraft {
                     style = draft
@@ -509,25 +832,140 @@ struct UITuningLabControls: View {
         )
     }
 
-    private func save() throws {
-        let data = try JSONEncoder().encode(UITuningLabProfile(overrides: style))
-        try FileManager.default.createDirectory(
-            at: UITuningLabProfile.fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true)
-        try data.write(to: UITuningLabProfile.fileURL, options: .atomic)
+    /// Shows a candidate in the real feature, sharing the baseline's stash;
+    /// Draft restores the draft.
+    private var comparedCandidate: Binding<String?> {
+        Binding(
+            get: { comparing },
+            set: { name in
+                if let name, let candidate = candidates.named(name) {
+                    if stashedDraft == nil { stashedDraft = style }
+                    style = candidate.value
+                    comparing = name
+                } else {
+                    if let draft = stashedDraft { style = draft }
+                    stashedDraft = nil
+                    comparing = nil
+                }
+            }
+        )
     }
 
-    private func loadSaved() throws {
-        let data = try Data(contentsOf: UITuningLabProfile.fileURL)
-        let profile = try JSONDecoder().decode(UITuningLabProfile.self, from: data)
-        guard profile.schemaVersion == 1, profile.platform == "ios" else {
-            throw UITuningLabProfileMismatch()
+    private func keep() {
+        do {
+            let kept = try candidates.keep(style, store: save)
+            status = "Kept \(kept.name)"
+        } catch {
+            status = error.localizedDescription
         }
-        style = profile.overrides
+    }
+
+    private func done() {
+        // The candidate on screen becomes the draft, so it is the winner.
+        var draft = style
+        if let name = comparing, let candidate = candidates.named(name) {
+            stashedDraft = nil
+            comparing = nil
+            load(candidate)
+            draft = candidate.value
+        }
+        status = candidates.done(draft)
+    }
+
+    private func load(_ candidate: UITuningLabCandidate<CardStyle>) {
+        style = candidate.value
+        candidates.basedOn = candidate.name
+        status = "Loaded \(candidate.name)"
+    }
+
+    private func remove(_ name: String) {
+        if comparing == name { comparedCandidate.wrappedValue = nil }
+        candidates.remove(name)
+        let file = UITuningLabProfile.fileURL(name)
+        do {
+            if FileManager.default.fileExists(atPath: file.path) {
+                try FileManager.default.removeItem(at: file)
+            }
+            status = "Removed \(name)"
+        } catch {
+            status = "Removed \(name), file not deleted: \(error.localizedDescription)"
+        }
+    }
+
+    /// Writes one new candidate atomically, refusing a name storage already holds.
+    private func save(_ candidate: UITuningLabCandidate<CardStyle>) throws {
+        let file = UITuningLabProfile.fileURL(candidate.name)
+        guard !FileManager.default.fileExists(atPath: file.path) else {
+            throw UITuningLabProfileMismatch(errorDescription: "\(file.lastPathComponent) already exists")
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let profile = UITuningLabProfile(
+            name: candidate.name, basedOn: candidate.basedOn,
+            savedAt: formatter.string(from: .now), overrides: candidate.value)
+        let data = try JSONEncoder().encode(profile)
+        try FileManager.default.createDirectory(
+            at: UITuningLabProfile.directory, withIntermediateDirectories: true)
+        try data.write(to: file, options: .atomic)
+    }
+
+    /// Adds every saved candidate to the list, oldest first. Every stored name
+    /// stays taken. A file that does not decode, has another schema or platform,
+    /// a name that differs from its file or is not kebab-case, or now matches
+    /// the baseline is reported and left untouched.
+    private func loadSaved() {
+        let files = ((try? FileManager.default.contentsOfDirectory(
+            at: UITuningLabProfile.directory, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "json" }
+        candidates.reserve(files.map { $0.deletingPathExtension().lastPathComponent })
+        let kebab = "^[a-z0-9]+(-[a-z0-9]+)*$"
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let wholeSeconds = ISO8601DateFormatter()
+        var loaded: [(savedAt: Date, profile: UITuningLabProfile)] = []
+        var skipped: [String] = []
+        for file in files {
+            do {
+                let profile = try JSONDecoder().decode(
+                    UITuningLabProfile.self, from: Data(contentsOf: file))
+                guard profile.schemaVersion == 2, profile.platform == "ios" else {
+                    throw UITuningLabProfileMismatch(errorDescription: "incompatible schema or platform")
+                }
+                guard profile.name == file.deletingPathExtension().lastPathComponent,
+                      profile.name.range(of: kebab, options: .regularExpression) != nil,
+                      profile.basedOn.range(of: kebab, options: .regularExpression) != nil else {
+                    throw UITuningLabProfileMismatch(errorDescription: "name or basedOn does not match the file")
+                }
+                guard let savedAt = formatter.date(from: profile.savedAt)
+                        ?? wholeSeconds.date(from: profile.savedAt) else {
+                    throw UITuningLabProfileMismatch(errorDescription: "savedAt is not an ISO-8601 time")
+                }
+                loaded.append((savedAt, profile))
+            } catch {
+                skipped.append("\(file.lastPathComponent) (\(error.localizedDescription))")
+            }
+        }
+        loaded.sort {
+            ($0.savedAt, $0.profile.name.count, $0.profile.name)
+                < ($1.savedAt, $1.profile.name.count, $1.profile.name)
+        }
+        for (_, profile) in loaded {
+            do {
+                try candidates.adopt(UITuningLabCandidate(
+                    name: profile.name, basedOn: profile.basedOn, value: profile.overrides))
+            } catch {
+                skipped.append("\(profile.name).json (\(error.localizedDescription))")
+            }
+        }
+        if !skipped.isEmpty {
+            status = "Skipped \(skipped.joined(separator: ", ")). The files were left unchanged."
+        }
     }
 }
 #endif
 ```
 
-An explicit Save atomically writes `default.json` under Application Support's
-`.ui-tuning-lab/`; a write failure displays an error and retains the current style.
+Keep atomically writes `<name>.json` under Application Support's
+`.ui-tuning-lab/candidates/` after checking that the file does not exist. A write
+failure refuses the Keep: the status line shows the error, and the candidate is
+neither added nor logged.

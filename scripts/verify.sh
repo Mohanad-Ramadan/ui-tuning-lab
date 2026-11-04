@@ -22,18 +22,26 @@ not_applicable() {
 LAB_PATTERN='UITuningLab|uiTuningLab|ui-tuning-lab'
 
 # Checks shared by lab configs and saved profiles (references/config-schema.md).
-require_json_v1() {
+# require_json_schema <file> <kind> <versions>: schemaVersion must be one of the
+# space-separated integer literals in <versions>.
+require_json_schema() {
   file=$1
   kind=$2
+  versions=$3
   [ -f "$file" ] || fail "$kind not found: $file"
   command -v jq >/dev/null 2>&1 || fail "$kind validation requires jq"
   jq -e . "$file" >/dev/null 2>&1 || fail "invalid JSON: $file"
   compact_json=$(tr '\n\r\t' '   ' < "$file")
   # jq 1.7+ prints the top-level literal as written; the grep also covers older
   # jq versions, which print 1.0 as 1.
-  [ "$(jq -c '.schemaVersion' "$file")" = 1 ] &&
-    printf '%s\n' "$compact_json" | grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1[[:space:]]*[,}]' || \
-    fail "schemaVersion must use the integer literal 1: $file"
+  version=$(jq -c '.schemaVersion' "$file")
+  for allowed in $versions; do
+    if [ "$version" = "$allowed" ] &&
+      printf '%s\n' "$compact_json" | grep -Eq "\"schemaVersion\"[[:space:]]*:[[:space:]]*$allowed[[:space:]]*[,}]"; then
+      return 0
+    fi
+  done
+  fail "schemaVersion must use the integer literal $(echo "$versions" | sed 's/ / or /g'): $file"
 }
 
 reject_placeholders() {
@@ -44,7 +52,7 @@ reject_placeholders() {
 
 validate_config() {
   file=$1
-  require_json_v1 "$file" config
+  require_json_schema "$file" config 1
   jq -e '
     type == "object" and
     has("schemaVersion") and (.schemaVersion == 1) and
@@ -74,18 +82,36 @@ validate_config() {
       (.fallback | token))
   ' "$file" >/dev/null 2>&1 || \
     fail "invalid activation: expected an object with non-blank human (one token or a list of distinct tokens), agent, and fallback strings: $file"
+  # Candidates are optional: the names of finalists kept in
+  # .ui-tuning-lab/candidates/ (references/candidates.md).
+  jq -e '
+    (has("candidates") | not) or
+    (.candidates | type == "array" and length > 0 and
+      all(.[]; type == "string" and test("^[a-z0-9]+(-[a-z0-9]+)*$") and
+        . != "draft" and . != "baseline") and
+      (unique | length) == length)
+  ' "$file" >/dev/null 2>&1 || \
+    fail "invalid candidates: expected a non-empty list of distinct kebab-case names other than draft and baseline: $file"
   reject_placeholders "$file"
   echo "PASS: valid lab configuration: $file"
 }
 
 validate_profile() {
   file=$1
-  require_json_v1 "$file" profile
+  require_json_schema "$file" profile "1 2"
+  # Version 1 is the single saved profile; version 2 is a candidate, which also
+  # records when it was kept and what it started from.
   jq -e '
+    def kebab: type == "string" and test("^[a-z0-9]+(-[a-z0-9]+)*$");
     type == "object" and
-    (keys | sort) == (["container", "name", "notes", "overrides", "platform", "schemaVersion", "scope"]) and
-    (.schemaVersion == 1) and
-    (.name | type == "string" and test("^[a-z0-9]+(-[a-z0-9]+)*$")) and
+    (if .schemaVersion == 1 then
+      (keys | sort) == ["container", "name", "notes", "overrides", "platform", "schemaVersion", "scope"]
+    else
+      (keys | sort) == ["basedOn", "container", "name", "notes", "overrides", "platform", "savedAt", "schemaVersion", "scope"] and
+      (.basedOn | kebab) and
+      (.savedAt | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"))
+    end) and
+    (.name | kebab) and
     (.platform == "ios" or .platform == "macos" or .platform == "web") and
     (.container | type == "string" and length > 0) and
     (.scope | type == "array" and length > 0 and all(.[]; type == "string" and length > 0)) and

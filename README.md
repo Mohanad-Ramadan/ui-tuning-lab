@@ -10,8 +10,11 @@ activation, configuration, and baseline from the project and asks at most one
 material setup question, plus how the lab should open. Activation has an agent
 path, one or more human fast paths the user picks, and a visible fallback; shake
 is offered only when inspection proves it free. Ephemeral labs need
-no configuration file. Saved profiles are opt-in and live under `uiTuningLab.*`
-or `.ui-tuning-lab/`.
+no configuration file. Every lab lets you shortlist finalists (Keep as
+candidate), flip between them (Compare), and press Done to hand them to the
+agent; a footer hint says how to finish. Candidates stay in memory unless you
+ask to save them; saved ones live under `uiTuningLab.*` or `.ui-tuning-lab/`,
+and finalists you keep at landing are seeded into the lab next time.
 
 Start with `SKILL.md`; it routes to everything else.
 
@@ -21,7 +24,7 @@ Start with `SKILL.md`; it routes to everything else.
 - Every lab opens through an agent path, one or more human fast paths, and a visible
   fallback; activation is development-only.
 - Reset always returns to the declared default, however often the lab reopens.
-- Persistence off by default; explicit namespaced Save when requested.
+- Persistence off by default; candidates are written to namespaced storage only when requested.
 - Closing releases all lab-owned UI, timers, observers, listeners, and tasks.
 
 ## Checks an installed copy can run

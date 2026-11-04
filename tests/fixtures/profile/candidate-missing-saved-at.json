@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 2,
+  "name": "b",
+  "platform": "macos",
+  "container": "FeatureWindow.panel",
+  "scope": [
+    "appearance"
+  ],
+  "basedOn": "spacious",
+  "overrides": {
+    "height": 52,
+    "cornerRadius": 14
+  },
+  "notes": ""
+}

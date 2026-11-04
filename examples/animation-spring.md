@@ -18,12 +18,23 @@ Every lab in this example provides:
   them as one `UITUNINGLAB_VALUES {...}` line for landing
   (`references/landing-protocol.md`). Speed and the flip are preview settings and
   are never included.
+- **Keep as candidate, Compare, Done**: finalists, a picker that renders each one in
+  the real card, and the session-end signal, as in `references/candidates.md`.
 
 ## SwiftUI (iOS 17+)
 
 The toolbar Tune button is the human path and visible fallback; the DEBUG-only
 `-UITuningLabOpen` launch argument is the agent path, read through
-`UITuningLabLaunch` (`references/activation.md`).
+`UITuningLabLaunch` (`references/activation.md`). The host owns the
+`UITuningLabCandidates` store beside the draft, so candidates and `basedOn`
+survive closing the popover, and a name is never reused within a run; seed its
+`initial:` array to reopen a session. Compare renders a candidate through
+`rendered(draft:baseline:)` and is exclusive with Show baseline; as with the
+baseline, the first edit switches back to the draft. Keep and Load are disabled
+while anything else is shown, and Done only while Show baseline is on: while
+Compare shows a candidate, Done loads it into the draft first, so it is the
+winner. The finish hint is pinned below the scrolling Form. Closing the lab
+shows the draft again.
 
 <!-- file: EntranceFeature.swift -->
 ```swift
@@ -67,6 +78,11 @@ struct EntranceScreen: View {
     @State private var showUITuningLab = false
     @State private var uiTuningLab = UITuningLabMotionState()
     @State private var uiTuningLabDetent = PresentationDetent.medium
+    // Candidates and basedOn live beside the draft and outlive the popover. To
+    // reopen a session, seed the finalists kept in the project here
+    // (references/candidates.md).
+    @StateObject private var uiTuningLabCandidates =
+        UITuningLabCandidates<EntranceMotion>(baseline: .appDefault, initial: [])
     #endif
 
     var body: some View {
@@ -82,6 +98,7 @@ struct EntranceScreen: View {
                 UITuningLabMotionControls(
                     motion: $motion,
                     lab: $uiTuningLab,
+                    candidates: uiTuningLabCandidates,
                     // The declared default, never the value on screen at open.
                     baseline: .appDefault
                 )
@@ -92,8 +109,13 @@ struct EntranceScreen: View {
                 .presentationDragIndicator(.visible)
             }
             .onChange(of: showUITuningLab) { _, open in
-                // Keep the replay token so closing does not re-create the card.
-                if !open { uiTuningLab.speed = 1; uiTuningLab.showBaseline = false }
+                // Closing shows the draft at real time again. Keep the replay
+                // token so closing does not re-create the card.
+                if !open {
+                    uiTuningLab.speed = 1
+                    uiTuningLab.showBaseline = false
+                    uiTuningLab.comparing = nil
+                }
             }
             .onAppear {
                 // The agent path opens the lab once per launch.
@@ -145,9 +167,10 @@ struct UITuningLabMotionState {
     var replayToken = 0
     var speed = 1.0           // 1 = real time; smaller values slow the preview
     var showBaseline = false
+    var comparing: UITuningLabCandidate<EntranceMotion>?  // set while Compare shows a candidate
 
     func rendered(draft: EntranceMotion, baseline: EntranceMotion) -> EntranceMotion {
-        var motion = showBaseline ? baseline : draft
+        var motion = showBaseline ? baseline : (comparing?.value ?? draft)
         motion.duration /= speed
         return motion
     }
@@ -156,6 +179,9 @@ struct UITuningLabMotionState {
 struct UITuningLabMotionControls: View {
     @Binding var motion: EntranceMotion
     @Binding var lab: UITuningLabMotionState
+    // Owned by the host beside the draft, so candidates and basedOn survive
+    // closing and reopening the lab.
+    @ObservedObject var candidates: UITuningLabCandidates<EntranceMotion>
     let baseline: EntranceMotion
     @State private var status: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -169,8 +195,8 @@ struct UITuningLabMotionControls: View {
                 Text("Reduce Motion is on, so the card shows its reduced animation.")
             }
             HStack {
-                Button("Snappy") { apply(Self.snappy) }
-                Button("Playful") { apply(Self.playful) }
+                Button("Snappy") { apply(Self.snappy, named: "snappy") }
+                Button("Playful") { apply(Self.playful, named: "playful") }
             }
             LabeledContent("Duration", value: String(format: "%.2f s", motion.duration))
                 .accessibilityHidden(true)  // the slider reports its own value
@@ -195,27 +221,117 @@ struct UITuningLabMotionControls: View {
             }
             .pickerStyle(.segmented)
             Toggle("Show baseline", isOn: $lab.showBaseline)
+            if !candidates.all.isEmpty {
+                Picker("Compare", selection: comparedCandidate) {
+                    Text("Draft").tag(String?.none)
+                    ForEach(candidates.all) { Text($0.name).tag(Optional($0.name)) }
+                }
+            }
             HStack {
                 Button("Replay") { lab.replayToken += 1 }
-                Button("Reset") { motion = baseline; lab.replayToken += 1 }
+                Button("Reset") { motion = baseline; candidates.basedOn = "baseline"; lab.replayToken += 1 }
                 Button("Copy values") {
                     status = uiTuningLabCopyValues(from: baseline, to: motion)
                 }
             }
+            HStack {
+                Button("Keep as candidate", action: keep)
+                    // Keep snapshots the draft, so only while the draft is shown.
+                    .disabled(lab.showBaseline || lab.comparing != nil)
+                // While Compare shows a candidate, Done lands that candidate.
+                Button("Done", action: done)
+                    .disabled(lab.showBaseline)
+            }
+            if !candidates.all.isEmpty {
+                Section("Candidates") {
+                    ForEach(candidates.all) { candidate in
+                        HStack {
+                            Text("\(candidate.name), from \(candidate.basedOn)")
+                            Spacer()
+                            Button("Load") { load(candidate) }
+                                .accessibilityLabel("Load \(candidate.name)")
+                                .disabled(lab.showBaseline || lab.comparing != nil)
+                            Button("Remove") { remove(candidate.name) }
+                                .accessibilityLabel("Remove \(candidate.name)")
+                        }
+                    }
+                }
+            }
             if let status { Text(status).font(.footnote) }
         }
-        .onChange(of: lab.showBaseline) { lab.replayToken += 1 }
+        // Pinned below the scrolling controls, so it shows at every detent.
+        .safeAreaInset(edge: .bottom) {
+            Text("Finished? Keep the ones you like, then press Done, or tell the agent \"land b\".")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(.bar)
+        }
+        .onChange(of: lab.showBaseline) { _, shown in
+            // Show baseline and Compare are exclusive.
+            if shown { lab.comparing = nil }
+            lab.replayToken += 1
+        }
+        .onChange(of: lab.comparing?.name) { lab.replayToken += 1 }
         // Editing the draft shows the draft, so a change is never hidden.
-        .onChange(of: motion) { lab.showBaseline = false }
+        .onChange(of: motion) { lab.showBaseline = false; lab.comparing = nil }
         .onChange(of: lab.speed) { lab.replayToken += 1 }
         .frame(minWidth: 300)
         // A Form row with several buttons fires all of them on iOS unless borderless.
         .buttonStyle(.borderless)
     }
 
-    private func apply(_ preset: EntranceMotion) {
+    /// Shows a candidate in the real feature; Draft shows the draft again.
+    private var comparedCandidate: Binding<String?> {
+        Binding(
+            get: { lab.comparing?.name },
+            set: { name in
+                lab.showBaseline = false
+                lab.comparing = name.flatMap(candidates.named)
+            }
+        )
+    }
+
+    private func apply(_ preset: EntranceMotion, named name: String) {
         motion = preset
+        candidates.basedOn = name
         lab.replayToken += 1
+    }
+
+    private func keep() {
+        do {
+            let kept = try candidates.keep(motion)
+            status = "Kept \(kept.name)"
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    private func done() {
+        // The candidate on screen becomes the draft, so it is the winner.
+        var draft = motion
+        if let candidate = lab.comparing {
+            load(candidate)
+            draft = candidate.value
+        }
+        status = candidates.done(draft)
+    }
+
+    private func load(_ candidate: UITuningLabCandidate<EntranceMotion>) {
+        motion = candidate.value
+        candidates.basedOn = candidate.name
+        lab.showBaseline = false
+        lab.comparing = nil
+        lab.replayToken += 1
+        status = "Loaded \(candidate.name)"
+    }
+
+    private func remove(_ name: String) {
+        if lab.comparing?.name == name { lab.comparing = nil }
+        candidates.remove(name)
+        status = "Removed \(name)"
     }
 
     private func replayWhenReleased(_ editing: Bool) {
@@ -246,15 +362,7 @@ struct UITuningLabValuesError: LocalizedError {
 /// Floating-point numbers are rounded to three decimals at any depth, so slider
 /// noise is not reported. A field the draft cleared to nil is reported as null.
 func uiTuningLabChangedValues<Value: Encodable>(from baseline: Value, to draft: Value) throws -> String {
-    let before = try uiTuningLabFields(baseline)
-    let after = try uiTuningLabFields(draft)
-    var changed: [String: Any] = [:]
-    for key in Set(before.keys).union(after.keys)
-    where (before[key] as? NSObject) != (after[key] as? NSObject) {
-        changed[key] = after[key] ?? NSNull()
-    }
-    let data = try JSONSerialization.data(withJSONObject: changed, options: [.sortedKeys])
-    return String(decoding: data, as: UTF8.self)
+    try uiTuningLabJSON(uiTuningLabChangedFields(from: baseline, to: draft))
 }
 
 /// Copies the changed values and logs them on one line the agent can find:
@@ -271,6 +379,172 @@ func uiTuningLabCopyValues<Value: Encodable>(from baseline: Value, to draft: Val
     #endif
     uiTuningLabLog.notice("UITUNINGLAB_VALUES \(values, privacy: .public)")
     return values == "{}" ? "No changes from baseline" : "Copied \(values)"
+}
+
+/// A finalist kept from the draft (references/candidates.md). It lives in
+/// memory, and in storage only when the lab persists it.
+struct UITuningLabCandidate<Value: Codable>: Identifiable {
+    var name: String
+    var basedOn: String  // a preset's kebab-case name, `baseline`, or a candidate's name
+    var value: Value
+    var id: String { name }
+}
+
+/// Why Keep did not add a candidate, worded for the panel's status line.
+struct UITuningLabNotKept: LocalizedError {
+    let errorDescription: String?
+}
+
+/// The candidates list, oldest first, owned beside the draft so it survives
+/// closing the lab. Every change logs one line the agent can replay:
+/// `UITUNINGLAB_CANDIDATE {...}` and `UITUNINGLAB_CANDIDATE_REMOVED {...}`.
+@MainActor
+final class UITuningLabCandidates<Value: Codable>: ObservableObject {
+    @Published private(set) var all: [UITuningLabCandidate<Value>] = []
+    /// Where the draft came from: `baseline` until a preset, Reset, or Load changes it.
+    @Published var basedOn = "baseline"
+    let baseline: Value
+    private var taken: Set<String> = []  // every name issued or reserved this run
+
+    /// Seed with finalists kept in the project to reopen a session; empty by default.
+    init(baseline: Value, initial: [UITuningLabCandidate<Value>] = []) {
+        self.baseline = baseline
+        for candidate in initial { _ = try? adopt(candidate) }
+    }
+
+    func named(_ name: String) -> UITuningLabCandidate<Value>? {
+        all.first { $0.name == name }
+    }
+
+    /// Marks names as used, such as every file in storage, so Keep never issues them.
+    func reserve(_ names: some Sequence<String>) { taken.formUnion(names) }
+
+    /// Keeps the draft under a name never used before in this run. A draft that
+    /// matches the baseline or an existing candidate is not kept. `store` runs
+    /// before the candidate is added; if it throws, nothing is added or logged.
+    func keep(_ draft: Value, store: (UITuningLabCandidate<Value>) throws -> Void = { _ in })
+        throws -> UITuningLabCandidate<Value> {
+        let candidate = UITuningLabCandidate(
+            name: uiTuningLabCandidateName(excluding: taken), basedOn: basedOn, value: draft)
+        let line = try checked(candidate)
+        do { try store(candidate) } catch {
+            throw UITuningLabNotKept(errorDescription: "Not kept: \(error.localizedDescription)")
+        }
+        add(candidate, line: line)
+        return candidate
+    }
+
+    /// Adds a seeded or stored candidate and logs it. Returns false, silently,
+    /// when the name is already in the list; throws when it now matches the
+    /// baseline or another candidate.
+    @discardableResult
+    func adopt(_ candidate: UITuningLabCandidate<Value>) throws -> Bool {
+        taken.insert(candidate.name)
+        guard named(candidate.name) == nil else { return false }
+        add(candidate, line: try checked(candidate))
+        return true
+    }
+
+    func remove(_ name: String) {
+        guard named(name) != nil else { return }
+        all.removeAll { $0.name == name }
+        uiTuningLabLogLine("UITUNINGLAB_CANDIDATE_REMOVED", ["name": name])
+    }
+
+    /// Copies the draft's values like Copy values, then logs the handoff line
+    /// `UITUNINGLAB_DONE {...}`. The winner is the candidate the draft matches.
+    func done(_ draft: Value) -> String {
+        let copied = uiTuningLabCopyValues(from: baseline, to: draft)
+        let values: [String: Any]
+        let kept: [[String: Any]]
+        do {
+            values = try uiTuningLabChangedFields(from: baseline, to: draft)
+            kept = try all.map { try uiTuningLabCandidateFields($0, baseline: baseline) }
+        } catch {
+            return "Done not logged: \(error.localizedDescription)"
+        }
+        let draftValues = try? uiTuningLabJSON(values)
+        let winner = all.first { (try? uiTuningLabChangedValues(from: baseline, to: $0.value)) == draftValues }
+        var line: [String: Any] = ["candidates": kept, "values": values, "winner": NSNull()]
+        if let winner { line["winner"] = winner.name }
+        uiTuningLabLogLine("UITUNINGLAB_DONE", line)
+        if let winner { return "Done: \(winner.name) is the winner. \(copied)" }
+        if all.isEmpty { return "Done. \(copied)" }
+        return "Done: the draft matches no candidate, so the agent will ask which to land. \(copied)"
+    }
+
+    /// The candidate's log line, or why it cannot join the list.
+    private func checked(_ candidate: UITuningLabCandidate<Value>) throws -> [String: Any] {
+        let line: [String: Any]
+        let values: String
+        do {
+            line = try uiTuningLabCandidateFields(candidate, baseline: baseline)
+            values = try uiTuningLabChangedValues(from: baseline, to: candidate.value)
+        } catch {
+            throw UITuningLabNotKept(errorDescription: "Not kept: \(error.localizedDescription)")
+        }
+        if values == "{}" {
+            throw UITuningLabNotKept(errorDescription: "Matches the baseline; nothing to keep")
+        }
+        if let twin = all.first(where: { (try? uiTuningLabChangedValues(from: baseline, to: $0.value)) == values }) {
+            throw UITuningLabNotKept(errorDescription: "Same as \(twin.name)")
+        }
+        return line
+    }
+
+    private func add(_ candidate: UITuningLabCandidate<Value>, line: [String: Any]) {
+        taken.insert(candidate.name)
+        uiTuningLabLogLine("UITUNINGLAB_CANDIDATE", line)
+        all.append(candidate)
+    }
+}
+
+/// `a` to `z`, then `aa`, `ab`, and so on: the first name not in `taken`.
+/// Letters only, and never `draft` or `baseline`, which Compare and basedOn use.
+func uiTuningLabCandidateName(excluding taken: Set<String>) -> String {
+    let used = taken.union(["draft", "baseline"])
+    return (0...).lazy.map(uiTuningLabCandidateName(at:)).first { !used.contains($0) }!
+}
+
+private func uiTuningLabCandidateName(at index: Int) -> String {
+    var remaining = index + 1
+    var name = ""
+    while remaining > 0 {
+        remaining -= 1
+        name = String(UnicodeScalar(UInt8(97 + remaining % 26))) + name
+        remaining /= 26
+    }
+    return name
+}
+
+/// One candidate as it appears in the log: its values are the diff against the baseline.
+private func uiTuningLabCandidateFields<Value: Encodable>(
+    _ candidate: UITuningLabCandidate<Value>, baseline: Value
+) throws -> [String: Any] {
+    ["basedOn": candidate.basedOn, "name": candidate.name,
+     "values": try uiTuningLabChangedFields(from: baseline, to: candidate.value)]
+}
+
+/// Logs `TAG {...}` with sorted keys at every level, readable outside the debugger.
+private func uiTuningLabLogLine(_ tag: String, _ object: [String: Any]) {
+    guard let json = try? uiTuningLabJSON(object) else { return }
+    uiTuningLabLog.notice("\(tag, privacy: .public) \(json, privacy: .public)")
+}
+
+private func uiTuningLabJSON(_ object: [String: Any]) throws -> String {
+    let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    return String(decoding: data, as: UTF8.self)
+}
+
+private func uiTuningLabChangedFields<Value: Encodable>(from baseline: Value, to draft: Value) throws -> [String: Any] {
+    let before = try uiTuningLabFields(baseline)
+    let after = try uiTuningLabFields(draft)
+    var changed: [String: Any] = [:]
+    for key in Set(before.keys).union(after.keys)
+    where (before[key] as? NSObject) != (after[key] as? NSObject) {
+        changed[key] = after[key] ?? NSNull()
+    }
+    return changed
 }
 
 private func uiTuningLabFields<Value: Encodable>(_ value: Value) throws -> [String: Any] {
@@ -412,6 +686,13 @@ const panelStyle = {
 } as const;
 const triggerStyle = { position: "fixed", insetBlockEnd: 16, insetInlineEnd: 16 } as const;
 
+// A finalist: the fields that differ from the baseline, plus where it started.
+type Candidate = { name: string; basedOn: string; values: Partial<EntranceMotion> };
+// Candidates the lab opens with. Empty by default; a later session seeds the
+// finalists kept in the project here (references/candidates.md).
+const initialCandidates: Candidate[] = [];
+
+// Preset keys are kebab-case: the key is what a candidate records as basedOn.
 const presets = {
   snappy: { durationMs: 350, bounce: 0, offsetPx: 24 },
   playful: { durationMs: 900, bounce: 0.45, offsetPx: 64 },
@@ -443,12 +724,49 @@ function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
     ([key, value]) => value !== baseline[key as keyof T])) as Partial<T>;
 }
 
+// JSON with sorted keys, so every log line has one stable shape.
+function sortedJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(sortedJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, item]) => `${JSON.stringify(key)}:${sortedJson(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+// 1 -> a, 26 -> z, 27 -> aa, 28 -> ab, ... (bijective base 26)
+function candidateName(index: number): string {
+  let name = "";
+  for (let n = index; n > 0; n = Math.floor(n / 26)) {
+    n -= 1;
+    name = String.fromCharCode(97 + (n % 26)) + name;
+  }
+  return name;
+}
+// The first name never issued in this run, so a removed name is not reused.
+function nextName(issued: Set<string>): string {
+  for (let i = 1; ; i++) {
+    if (!issued.has(candidateName(i))) return candidateName(i);
+  }
+}
+
 export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHostProps) {
   const [open, setOpen] = useState(opensOnLaunch);
   useEffect(clearLaunchRequest, []);
   const [replay, setReplay] = useState(0);
   const [speed, setSpeed] = useState(1);
-  const [showBaseline, setShowBaseline] = useState(false);
+  // What the card renders: "draft", "baseline", or a candidate's name. The draft
+  // stays in `motion` the whole time, so nothing needs stashing.
+  const [shown, setShown] = useState("draft");
+  const showBaseline = shown === "baseline";
+  // Candidates live in memory and in the log; nothing is written to storage.
+  const [candidates, setCandidates] = useState(initialCandidates);
+  // Every name issued in this run, removed ones included: names are never reused.
+  const issued = useRef(new Set(initialCandidates.map(c => c.name)));
+  // Candidates already written to the log, so seeded ones log once.
+  const logged = useRef(new Set<string>());
+  // Where the draft came from: a preset, "baseline", or a candidate's name.
+  const [basedOn, setBasedOn] = useState("baseline");
   const [status, setStatus] = useState<string | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -460,7 +778,7 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   function finishClose() {
     setOpen(false);
     setSpeed(1);
-    setShowBaseline(false);
+    setShown("draft");
   }
   function closeLab() {
     const node = panel.current;
@@ -495,7 +813,20 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
-  const source = showBaseline ? baseline : motion;
+  const shownCandidate = candidates.find(c => c.name === shown);
+  // Seeded candidates log their own line the first time the lab shows them; the
+  // set also guards StrictMode's repeated effects.
+  useEffect(() => {
+    if (!open) return;
+    for (const c of candidates) {
+      if (logged.current.has(c.name)) continue;
+      logged.current.add(c.name);
+      console.info(`UITUNINGLAB_CANDIDATE ${sortedJson(c)}`);
+    }
+  }, [open, candidates]);
+
+  const source = showBaseline ? baseline
+    : shownCandidate ? { ...baseline, ...shownCandidate.values } : motion;
   const rendered = { ...source, durationMs: source.durationMs / speed };
   const replayNow = () => setReplay(count => count + 1);
 
@@ -510,12 +841,63 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
       setStatus(`Clipboard unavailable; values logged to the console: ${values}`);
     }
   }
-  function reset() { setMotion({ ...baseline }); replayNow(); }
-  function apply(preset: EntranceMotion) { setShowBaseline(false); setMotion({ ...preset }); replayNow(); }
+  function reset() { setShown("draft"); setMotion({ ...baseline }); setBasedOn("baseline"); replayNow(); }
+  function apply(name: keyof typeof presets) {
+    setShown("draft");
+    setMotion({ ...presets[name] });
+    setBasedOn(name);
+    replayNow();
+  }
   // Editing the draft shows the draft, so a change is never hidden.
   function edit(patch: Partial<EntranceMotion>) {
-    setShowBaseline(false);
+    setShown("draft");
     setMotion(m => ({ ...m, ...patch }));
+  }
+  // Show baseline and Compare are exclusive: each switches the other off.
+  function show(target: string) { setShown(target); replayNow(); }
+  function keep() {
+    const values = changedValues(baseline, motion);
+    if (Object.keys(values).length === 0) {
+      setStatus("Matches the baseline; nothing to keep");
+      return;
+    }
+    const same = candidates.find(c => sortedJson(c.values) === sortedJson(values));
+    if (same) {
+      setStatus(`Same as ${same.name}`);
+      return;
+    }
+    const candidate: Candidate = { name: nextName(issued.current), basedOn, values };
+    setCandidates(list => [...list, candidate]);
+    issued.current.add(candidate.name);
+    logged.current.add(candidate.name);
+    console.info(`UITUNINGLAB_CANDIDATE ${sortedJson(candidate)}`);
+    setStatus(`Kept as ${candidate.name}`);
+  }
+  function load(candidate: Candidate) {
+    setMotion({ ...baseline, ...candidate.values });
+    setBasedOn(candidate.name);
+    show("draft");
+  }
+  function remove(name: string) {
+    setCandidates(list => list.filter(c => c.name !== name));
+    console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
+    if (shown === name) show("draft");
+  }
+  // Like Copy values, and it tells the agent the session is over. While Compare
+  // shows a candidate, that candidate becomes the draft first, so it is the winner.
+  async function done() {
+    const picked = candidates.find(c => c.name === shown);
+    if (picked) load(picked);
+    const values = changedValues(baseline, picked ? { ...baseline, ...picked.values } : motion);
+    const winner = candidates.find(c => sortedJson(c.values) === sortedJson(values));
+    console.info(`UITUNINGLAB_DONE ${sortedJson({ candidates, values, winner: winner?.name ?? null })}`);
+    const text = JSON.stringify(values);
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus(`Done. Copied ${text}`);
+    } catch {
+      setStatus(`Done. Clipboard unavailable; values logged to the console: ${text}`);
+    }
   }
 
   return <>
@@ -528,8 +910,8 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
       <button type="button" onClick={closeLab}>Close</button>
       {reducedMotion && <p>Reduced motion is on, so the card shows its reduced animation.</p>}
       <button ref={firstControl} type="button"
-        onClick={() => apply(presets.snappy)}>Snappy</button>
-      <button type="button" onClick={() => apply(presets.playful)}>Playful</button>
+        onClick={() => apply("snappy")}>Snappy</button>
+      <button type="button" onClick={() => apply("playful")}>Playful</button>
       <label>Duration <input type="range" min="150" max="1500" step="10"
         value={motion.durationMs}
         onChange={e => edit({ durationMs: Number(e.target.value) })}/>
@@ -550,11 +932,33 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
         {speeds.map(s => <option key={s} value={s}>{s}×</option>)}
       </select></label>
       <button type="button" aria-pressed={showBaseline}
-        onClick={() => { setShowBaseline(shown => !shown); replayNow(); }}>Show baseline</button>
+        onClick={() => show(showBaseline ? "draft" : "baseline")}>Show baseline</button>
       <button type="button" onClick={replayNow}>Replay</button>
       <button type="button" onClick={reset}>Reset</button>
       <button type="button" onClick={copyValues}>Copy values</button>
+      <button type="button" disabled={shown !== "draft"} onClick={keep}>Keep as candidate</button>
+      {candidates.length > 0 && <>
+        <ul aria-label="Candidates">
+          {candidates.map(c => <li key={c.name}>
+            <strong>{c.name}</strong> from {c.basedOn}{" "}
+            <button type="button" aria-label={`Load ${c.name}`} disabled={shown !== "draft"}
+              onClick={() => load(c)}>Load</button>
+            <button type="button" aria-label={`Remove ${c.name}`} onClick={() => remove(c.name)}>Remove</button>
+          </li>)}
+        </ul>
+        <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
+          <legend>Compare</legend>
+          {["draft", ...candidates.map(c => c.name)].map(target => <label key={target}>
+            <input type="radio" name="ui-tuning-lab-compare" checked={shown === target}
+              onChange={() => show(target)}/>
+            {target === "draft" ? "Draft" : target}{" "}
+          </label>)}
+        </fieldset>
+      </>}
+      <button type="button" disabled={showBaseline} onClick={done}>Done</button>
       {status && <p role="status">{status}</p>}
+      <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
+        Finished? Keep the ones you like, then press Done, or tell the agent "land b".</p>
     </div>}
   </>;
 }
@@ -562,6 +966,10 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
 
 Slider changes replay the web card immediately because its animation depends on
 the motion values; SwiftUI replays when a slider is released. Validate on device
-with Reduce Motion on and off, at every speed, and with Show baseline toggled, and
-confirm that closing the lab resets speed and the flip so the feature renders the
-draft at real time.
+with Reduce Motion on and off, at every speed, and with Show baseline and each
+candidate shown, and confirm that closing the lab resets speed and the flip so the
+feature renders the draft at real time. Keep as candidate, Load, Remove, Compare,
+and Done follow `references/candidates.md`; candidates live in React state and the
+console log only, and `initialCandidates` seeds them when reopening the lab. Editing
+or applying a preset while a candidate or the baseline is shown switches back to the
+draft.

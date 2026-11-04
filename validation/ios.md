@@ -15,7 +15,8 @@
 - [ ] The visible fallback opens the lab and is reachable with VoiceOver and Switch Control.
 - [ ] With more than one lab, each path opens the intended lab; a remembered activation that conflicts with the screen is reported.
 - [ ] Copy values copies and logs only changed fields; landing writes them into the feature defaults; removal leaves `source-gates` at N/A.
-- [ ] If persistence was requested, explicit namespaced Save and Load saved success, and failure-with-draft-retention.
+- [ ] Candidates, Compare, and Done (`references/candidates.md`): Keep as candidate logs `UITUNINGLAB_CANDIDATE` and skips duplicates; Compare renders each candidate and Draft restores the draft; Done logs a `UITUNINGLAB_DONE` line carrying the winner and every candidate; the finish hint is visible. **Not run:** added for 1.2.0.
+- [ ] If persistence was requested, Keep writes one namespaced candidate that passes `verify.sh profile`, Remove deletes only it, reopening lists stored candidates, and a failed write retains the draft.
 - [ ] Rotation and compact/regular presentation adaptation.
 - [ ] Dynamic Type, VoiceOver, Reduce Motion, keyboard/focus, gestures, dismissal.
 - [ ] Closing releases the controls and all lab-owned work.
@@ -23,8 +24,8 @@
 
 ## Evidence
 
-For an ephemeral lab, replace the Save checkbox with
-`N/A: persistence not requested` and attach evidence that no Save action or
+For an ephemeral lab, replace the storage checkbox with
+`N/A: persistence not requested` and attach evidence that no storage action or
 storage writer is present. All other applicable checks remain required.
 
 - Static checks: PENDING
