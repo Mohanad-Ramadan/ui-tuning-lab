@@ -21,16 +21,15 @@ on one line:
 UITUNINGLAB_VALUES {"cornerRadius":20,"spacing":12}
 ```
 
-Labs also log their candidates and a `UITUNINGLAB_DONE` line when the user
-presses Done (`references/candidates.md`). Use, in order:
+Labs also log their favorites and a `UITUNINGLAB_DONE` line when the user
+presses ✓ Use this, and write the same object to the result file
+(`references/candidates.md`). Use, in order:
 
-1. What the user says in chat wins: values they pasted, or a candidate they
-   named ("land b").
-2. Otherwise the newest of the latest `UITUNINGLAB_DONE` and
-   `UITUNINGLAB_VALUES` lines; the lab stays open after Done, so a later Copy
-   values supersedes it. From a Done line, land its `winner`. When `winner` is
-   `null` and there is at least one candidate, ask which to land, listing the
-   draft's `values` and every candidate with its `basedOn` and `values`.
+1. What the user says in chat wins: values they pasted, or a name they gave
+   (`land capsule`).
+2. Otherwise the newest `UITUNINGLAB_DONE` line, else the result file. Land its
+   `winner`: a favorite's values, `draft` values, or nothing for `original`.
+3. Otherwise the newest `UITUNINGLAB_VALUES` line.
 
 Read the lines yourself rather than asking for a paste, with the platform's
 command in `references/platform-handoff.md`, "Emit and read".
@@ -77,7 +76,8 @@ later") and is independent of removing the lab:
   `*.ui-tuning-lab.tsx`), the gated host code that opens them (the launch-argument
   handler, the shake shim, the Tune trigger or fallback pill, the marked
   DEBUG-only state such as `showUITuningLab`, the web `TuningLabHost` block and
-  its gated `import()`), and any lab-only helper. Undo every other host
+  its gated `import()`), and any lab-only helper. Delete the result file
+  (`references/platform-handoff.md`, "The result file") when you can reach it. Undo every other host
   change the lab needed: if a constant was lifted into state so the lab could
   edit it, point the feature back at the constant, which now holds the winner.
   `git diff` against the commit before the lab is the quickest way to see what

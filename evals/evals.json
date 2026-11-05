@@ -5,7 +5,7 @@
       "id": 1,
       "name": "ephemeral-web-lab",
       "prompt": "In this Vite + React app, I want to tune the card radius and gap on the home screen live in the browser. Set up whatever you need.",
-      "expected_output": "A development-only lab module next to the feature, loaded through a gated dynamic import, with presets, sliders, Show baseline, Reset, and Copy values, and no storage writer.",
+      "expected_output": "A development-only lab module next to the feature, loaded through a gated dynamic import, with presets, sliders, the Original/Now chips, ★ Keep, ✓ Use this, Reset, and Copy values, and no storage writer besides the result file.",
       "files": [
         "pilots/web-vite"
       ],
@@ -13,7 +13,7 @@
         "Lab code lives in a *.ui-tuning-lab.tsx module",
         "The host loads the lab only via import() inside if (import.meta.env.DEV) {",
         "scripts/verify.sh source-gates on the feature directory exits 0",
-        "The lab has at least two presets, Show baseline, Reset, and Copy values",
+        "The lab has at least two presets, the Original/Now chips, ★ Keep, ✓ Use this, Reset, and Copy values",
         "No localStorage, sessionStorage, or IndexedDB writes exist in the lab",
         "vite build output contains no UITuningLab, uiTuningLab, or ui-tuning-lab strings"
       ]
@@ -39,15 +39,15 @@
       "id": 3,
       "name": "ios-lab-with-save",
       "prompt": "Add a tuning panel to the card palette screen in my SwiftUI iOS app so I can tweak corner radius and spacing, and let me save my favourite setting so it's still there next time I run it.",
-      "expected_output": "A DEBUG-only lab whose types carry the UITuningLab prefix, with Keep as candidate writing one schemaVersion 2 file per candidate only under Application Support/.ui-tuning-lab/candidates/, candidates loaded on open with schema and platform checks, and the baseline unchanged by loading.",
+      "expected_output": "A DEBUG-only lab whose types carry the UITuningLab prefix, with ★ Keep writing one schemaVersion 2 file per favorite only under Application Support/.ui-tuning-lab/candidates/, candidates loaded on open with schema and platform checks, and the baseline unchanged by loading.",
       "files": [],
       "assertions": [
         "Every new lab type name starts with UITuningLab",
         "Each lab file is wrapped in #if DEBUG",
-        "Keep as candidate writes only under .ui-tuning-lab/candidates/ in Application Support, atomically, never over an existing file",
+        "★ Keep writes only under .ui-tuning-lab/candidates/ in Application Support, atomically, never over an existing file",
         "Loading stored candidates checks schemaVersion == 2 and platform == \"ios\"",
         "Loading assigns to the draft, not to the captured baseline",
-        "The panel has Compare, Done, and the footer hint",
+        "The panel has the chip row, ✓ Use this writing the result file, and the hint line",
         "The app typechecks in both DEBUG and Release configurations"
       ]
     }

@@ -20,19 +20,18 @@ A good lab feels like this:
 - **It opens without hunting.** The agent can open it deterministically, the
   human has a fast path, and a visible fallback is always there.
 - Every control edits the same configuration the feature renders, live.
-- **Show baseline** flips the real feature back to the original and returns to
-  the draft; **Replay** and **Speed** make motion judgeable.
-- **Copy values** hands over only what changed, and the agent lands it in code.
-- **Keep as candidate** shortlists finalists, **Compare** flips between them in
-  the real feature, and **Done** tells the agent the session is over. A footer
-  hint says how to finish, so the user never has to guess.
+- **Chips** flip the real feature between Original, Now, and each favorite;
+  **Replay** and **Speed** make motion judgeable.
+- **★ Keep** adds a look to the favorites; **✓ Use this** picks what is shown
+  and hands it to the agent, with no paste: log line, result file, and a
+  `land <name>` code on the clipboard. One hint line says how to finish.
 
 ## Every platform gets the whole lab
 
 Every UI stack gets the same lab. On Android, Flutter, React Native, Windows,
 or a stack with no example at all, build: the
-panel, presets, direct controls, Show baseline, Reset, Copy values, Keep as
-candidate, Compare, Done, the finish hint, and the three activation paths.
+panel, presets, direct controls, the chips, ★ Keep, ✓ Use this, the ⋯ menu
+with Reset and Copy values, the hint, and the three activation paths.
 Start from the platform's example, or the nearest one when there is none, and
 keep every guarantee in the safety checklist. Never replace the lab with a row
 of buttons in the screen, and never drop controls because the platform is new;
@@ -68,20 +67,22 @@ picker in the panel, with the original as the baseline
    feature's declared default (what ships), never the value on screen when the
    lab opens: a draft kept from an earlier open must still count as a change.
    Keep the draft separate. Pick controls from `references/control-mapping.md`:
-   at least two presets, direct controls, Show baseline, Reset, Copy values,
-   Keep as candidate, Compare, Done, and the finish hint, plus Replay and Speed
-   for motion (`references/candidates.md`). Candidates stay in memory and the
-   log; write them to storage only when persistence was requested
+   at least two presets, direct controls, the chips, ★ Keep, ✓ Use this, the ⋯
+   menu (Reset, Copy values), and the hint, plus Replay and Speed for motion
+   (`references/candidates.md`). Favorites stay in memory and the log; the only
+   write is the result file, and favorites go to storage only when persistence
+   was requested
    (`references/config-schema.md`). When `.ui-tuning-lab/lab.json` lists kept
    `candidates`, seed the lab with them.
 4. **Tune with the user.** Open the lab in the running app and iterate. If the
    user is not available, stop here and report the lab as built, with every
    hands-on check listed as not run. You can still run the release-artifact
    checks yourself: build, search the output, serve it, and try activation
-   paths. Wait for Done with a background poll of the platform's log where
-   one exists (`references/platform-handoff.md`, "Wait for Done"). When the app
-   builds only in CI or a cloud device service, the lab still ships complete;
-   ask before pushing, and Done reaches you through chat
+   paths. Wait for the pick with a background poll of the platform's log where
+   one exists (`references/platform-handoff.md`, "Wait for Done"), and read the
+   result file when the log is gone. When the app builds only in CI or a cloud
+   device service, the lab still ships complete; ask before pushing, and the
+   pick reaches you as a pasted `land <name>` line
    (`references/platform-handoff.md`, "No local toolchain").
 5. **Land the winner.** Take the candidate or values the user names in chat,
    else the newest `UITUNINGLAB_DONE` or `UITUNINGLAB_VALUES` line
@@ -117,7 +118,7 @@ module (presets, a diff function) need no marker: the file itself is gated.
 | **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files (for Kotlin, Dart, and C#, which it cannot read, the manual gate check in `references/platform-handoff.md` instead), and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
 | **Activatable only in development.** The lab opens through the documented agent path, the chosen human path, and a visible fallback; none survives Release. | Hands-on: every documented path opens the lab, a focused text field keeps shake-to-undo, and the fallback is reachable. Release archive: launch arguments, URL schemes, shake selectors, notification names, key commands, and fallback labels are absent or inert (`references/verify-protocol.md`). |
 | **Reversible.** Reset restores the baseline (the declared default) exactly, behavior included. | Hands-on: open, change everything, close, reopen, Reset, and compare with the unmodified app. |
-| **Explicit persistence.** Nothing is written unless the user asked; candidates in an ephemeral lab live only in memory and the log; saves go only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | No storage writer in an ephemeral lab; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
+| **Explicit persistence.** The only write an ephemeral lab makes is the result file on ✓ Use this; favorites live only in memory and the log unless the user asked to save them; every write goes only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | An ephemeral lab's only storage writer is the result file; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
 | **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
 
 `source-gates` is a lint: a PASS does not prove the release build is clean, so
@@ -141,10 +142,11 @@ a save would overwrite a production key.
 - `references/control-mapping.md`: which control for which value; required controls.
 - `references/design-variants.md`: alternative designs of a feature as a
   Design picker in the lab, and landing the winning design's code.
-- `references/candidates.md`: Keep as candidate, Compare, Done, the finish hint,
-  waiting for Done, and keeping finalists for a later session.
+- `references/candidates.md`: chips, ★ Keep, ✓ Use this, favorite names, the
+  result file, waiting for the pick, and keeping finalists for later.
 - `references/platform-handoff.md`: per platform, how lab lines are logged and
-  read, how to wait for Done, where candidates are stored, and manual gate
+  read, how to wait for Done, where the result file and favorites are stored,
+  and manual gate
   checks for languages the linter cannot read.
 - `references/landing-protocol.md`: reading values, writing defaults, removal.
 - `references/config-schema.md`: `lab.json`, candidates, and saved profiles.
@@ -169,9 +171,9 @@ looking at, never from memory: some hosts hide shake behind a shortcut only
 
 Before landing, open the report with **How to try it**: where the pill or
 command is (which corner, which menu), then three to five numbered steps from
-opening the lab to pressing **Done**: try presets, Keep as candidate for each
-finalist, Compare them, then Done (or say "land b"). With design variants, the
-first step is picking each design in the panel's Design picker. Say whether the
-agent is waiting for Done on its own or needs a message. Name every
+opening the lab to the pick: try presets, ★ Keep the ones you like, tap the
+chips to compare, then ✓ Use this on the winner. With design variants, the first
+step is picking each design in the panel's Design picker. Say whether the agent
+will see the pick on its own or needs the pasted `land <name>` line. Name every
 choice the user makes inside the lab (pick a theme, switch mode) and anything
 that still lives elsewhere in the app, so nothing about the setup is a surprise.

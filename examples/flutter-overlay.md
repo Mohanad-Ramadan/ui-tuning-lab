@@ -22,14 +22,16 @@ Activation (`references/activation.md`):
   has a debug drawer or developer menu, add an entry that calls the same open
   method, and keep the pill.
 
-The host's lab state owns the candidates store, so candidates, `basedOn`, and
-the Compare stash survive closing the overlay. The default lab is ephemeral:
-candidates live in memory and the log only, and a name is never reused within an
-isolate. Show baseline and Compare share one stash and are exclusive; while
-either shows something other than the draft, presets, sliders, Reset, Copy
-values, Keep, and Load are disabled. Done is disabled only while Show baseline
-is on; while Compare shows a candidate, Done loads it first. Closing restores
-the draft. The finish hint sits below the scrolling controls.
+The host's lab state owns the favorites, so favorites, `basedOn`, and the
+stashed Now survive closing the overlay. The default lab is ephemeral: favorites
+live in memory and the log only, and a name is never reused within an isolate.
+The chip row under the header shows Original, Now, or a favorite in the real
+feature; the draft is stashed meanwhile and restored when Now is tapped or the
+panel closes. While Original is shown the presets and sliders are disabled;
+moving one while a favorite is shown loads that favorite into Now first.
+**★ Keep** adds Now to the favorites, **✓ Use this** picks the shown chip and
+collapses the panel to the result bar, and the **⋯** menu holds Reset and Copy
+values. The hint sits below the scrolling controls.
 
 ## Host change
 
@@ -169,16 +171,6 @@ class _Candidate {
   Map<String, Object> toJson() => {'basedOn': basedOn, 'name': name, 'values': values};
 }
 
-// 1 -> a, 26 -> z, 27 -> aa (bijective base 26).
-String _candidateName(int index) {
-  var name = '';
-  for (var n = index; n > 0; n ~/= 26) {
-    n -= 1;
-    name = String.fromCharCode(97 + n % 26) + name;
-  }
-  return name;
-}
-
 class UITuningLabHost extends StatefulWidget {
   const UITuningLabHost({super.key, required this.style, required this.onChanged, required this.child});
   final CardStyle style;
@@ -189,15 +181,18 @@ class UITuningLabHost extends StatefulWidget {
 }
 
 class _UITuningLabHostState extends State<UITuningLabHost> {
-  // Candidates the lab opens with. Empty by default; a later session seeds the
+  // Favorites the lab opens with. Empty by default; a later session seeds the
   // finalists kept in the project here (references/candidates.md).
   final List<_Candidate> candidates = [];
-  final Set<String> issued = {}; // every name issued, removed ones included
+  // Every name issued, removed ones included, plus the names a favorite never takes.
+  final Set<String> issued = {'draft', 'now', 'original', 'baseline'};
   final Set<String> logged = {};
   String basedOn = 'baseline';
-  String shown = 'draft'; // "draft", "baseline", or a candidate's name
-  CardStyle? stash; // the draft while the baseline or a candidate is shown
+  String? lastPreset;
+  String shown = 'draft'; // the shown chip: "draft" (Now), "original", or a favorite's name
+  CardStyle? stash; // Now, while another chip is shown
   String? status;
+  String? result; // the last pick; while set, the panel is the result bar
   // Hidden means the panel is not built: nothing of it stays in the tree.
   final portal = OverlayPortalController();
   bool isOpen = false;
@@ -231,6 +226,7 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     update(() => isOpen = false);
   }
 
+  // Tapping a chip shows it in the real feature; Now is stashed meanwhile.
   void show(String target) {
     if (target == 'draft') {
       if (stash != null) widget.onChanged(stash!);
@@ -243,26 +239,39 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     update(() => shown = target);
   }
 
-  void applyPreset(String name) { widget.onChanged(_presets[name]!); update(() => basedOn = name); }
-  void reset() { widget.onChanged(_baseline); update(() => basedOn = 'baseline'); }
-
-  Future<void> copyValues() async {
-    final json = _sortedJson(_changed(draft));
-    _log('UITUNINGLAB_VALUES', _changed(draft));
-    await Clipboard.setData(ClipboardData(text: json));
-    update(() => status = json == '{}' ? 'No changes from baseline' : 'Copied $json');
+  // Every control edits Now. Moved while a favorite is shown, it loads that
+  // favorite into Now first; the favorite itself does not change.
+  void edit(CardStyle next, [String? from]) {
+    stash = null;
+    final source = from ?? (shown == 'draft' ? basedOn : shown);
+    widget.onChanged(next);
+    update(() { basedOn = source; shown = 'draft'; });
   }
 
-  // Returns the new candidate, or null with a status. The persist variant writes
-  // the candidate before calling commit().
+  void applyPreset(String name) { lastPreset = name; edit(_presets[name]!, name); }
+  void reset() { lastPreset = null; edit(_baseline, 'baseline'); }
+
+  // Always reports Now, whichever chip is shown.
+  Future<void> copyValues() async {
+    final values = _changed(stash ?? draft);
+    final json = _sortedJson(values);
+    _log('UITUNINGLAB_VALUES', values);
+    await Clipboard.setData(ClipboardData(text: json));
+    update(() => status = json == '{}' ? 'No changes from Original' : 'Copied $json');
+  }
+
+  // Returns the new favorite, or null with a status. Keep is enabled only while
+  // Now is shown, so draft is Now. The persist variant writes the favorite
+  // before calling commit().
   _Candidate? prepareKeep() {
     final values = _changed(draft);
-    if (values.isEmpty) { update(() => status = 'Matches the baseline; nothing to keep'); return null; }
+    if (values.isEmpty) { update(() => status = 'Same as Original'); return null; }
     final same = candidates.where((c) => _sortedJson(c.values) == _sortedJson(values)).firstOrNull;
     if (same != null) { update(() => status = 'Same as ${same.name}'); return null; }
-    var i = 1;
-    while (issued.contains(_candidateName(i))) { i++; }
-    return _Candidate(_candidateName(i), basedOn, values);
+    final stem = lastPreset ?? 'tweak';
+    var name = stem;
+    for (var i = 2; issued.contains(name); i++) { name = '$stem-$i'; }
+    return _Candidate(name, basedOn, values);
   }
 
   void commit(_Candidate c) {
@@ -274,33 +283,27 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
 
   void keep() { final c = prepareKeep(); if (c != null) commit(c); }
 
-  void load(_Candidate c) {
-    stash = null;
-    widget.onChanged(_apply(c.values));
-    update(() { basedOn = c.name; shown = 'draft'; });
-  }
-
   void remove(String name) {
+    if (shown == name) show('draft');
     _log('UITUNINGLAB_CANDIDATE_REMOVED', {'name': name});
     update(() => candidates.removeWhere((c) => c.name == name));
-    if (shown == name) show('draft');
   }
 
-  // Like Copy values, and it tells the agent the session is over. While Compare
-  // shows a candidate, that candidate becomes the draft first: it is the winner.
-  Future<void> done() async {
+  // Picks the shown chip and finishes. Picking again replaces the result.
+  Future<void> useThis() async {
     final picked = candidates.where((c) => c.name == shown).firstOrNull;
-    if (picked != null) load(picked);
-    final values = _changed(picked != null ? _apply(picked.values) : draft);
-    final winner = candidates.where((c) => _sortedJson(c.values) == _sortedJson(values)).firstOrNull;
-    _log('UITUNINGLAB_DONE', {
+    final winner = picked?.name ?? (shown == 'original' ? 'original' : 'draft');
+    final values = picked?.values ?? (shown == 'original' ? <String, double>{} : _changed(draft));
+    final done = <String, Object?>{
       'candidates': [for (final c in candidates) c.toJson()],
       'values': values,
-      'winner': winner?.name,
-    });
-    final json = _sortedJson(values);
-    await Clipboard.setData(ClipboardData(text: json));
-    update(() => status = 'Done. Copied $json');
+      'winner': winner,
+    };
+    _log('UITUNINGLAB_DONE', done);
+    // The result file needs path_provider; without it the log and the
+    // clipboard code carry the pick ("The result file", below).
+    await Clipboard.setData(ClipboardData(text: 'land $winner'));
+    update(() => result = winner);
   }
 
   @override
@@ -310,24 +313,37 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     // (IndexedStack) or a covered route, so the lab hides with it.
     return OverlayPortal(controller: portal, child: widget.child, overlayChildBuilder: (overlayContext) {
       if (!TickerMode.of(overlayContext)) return const SizedBox.shrink();
-      if (isOpen) return panel(overlayContext);
+      if (isOpen) return result == null ? panel(overlayContext) : resultBar(result!);
       return Positioned(right: 16, bottom: 16, child: SafeArea(child: Semantics(
           label: 'Open UI tuning lab', button: true, excludeSemantics: true,
           child: FilledButton(onPressed: open, child: const Text('Tune')))));
     });
   }
 
-  Widget slider(String label, double value, double max, bool editing, ValueChanged<double> onChanged) {
+  Widget resultBar(String name) {
+    return Positioned(right: 16, bottom: 16, child: SafeArea(child: Material(
+      elevation: 8, borderRadius: BorderRadius.circular(24),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16, right: 4),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Semantics(liveRegion: true, child: Text('✓ Sent: $name')),
+          TextButton(onPressed: () => update(() => result = null), child: const Text('Change')),
+        ]),
+      ),
+    )));
+  }
+
+  Widget slider(String label, double value, double max, bool editable, ValueChanged<double> onChanged) {
     return Row(children: [
       SizedBox(width: 96, child: Text(label)),
       Expanded(child: Slider(value: value, max: max, divisions: max.toInt(), label: label,
-          onChanged: editing ? (v) => onChanged(v.roundToDouble()) : null)),
+          onChanged: editable ? (v) => onChanged(v.roundToDouble()) : null)),
       ExcludeSemantics(child: Text('${value.round()}')),
     ]);
   }
 
   Widget panel(BuildContext overlayContext) {
-    final editing = shown == 'draft';
+    final editable = shown != 'original'; // never edit the baseline
     final size = MediaQuery.sizeOf(overlayContext);
     // Phones: a full-width panel docked to the bottom, at most 45% tall, so the
     // feature stays visible above it. Wider screens: a 320-wide corner panel.
@@ -342,50 +358,50 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Expanded(child: Semantics(header: true, child: const Text('UI tuning lab'))),
+                PopupMenuButton<String>(
+                  tooltip: 'More', icon: const Icon(Icons.more_horiz),
+                  onSelected: (choice) { if (choice == 'reset') { reset(); } else { copyValues(); } },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'reset', child: Text('Reset')),
+                    PopupMenuItem(value: 'copy', child: Text('Copy values')),
+                  ],
+                ),
+                TextButton(onPressed: close, child: const Text('Close')),
+              ]),
+              // The chips: Original, Now, then each favorite. Highlighted = shown.
+              Wrap(spacing: 8, runSpacing: 4, children: [
+                ChoiceChip(label: const Text('Original'), selected: shown == 'original',
+                    onSelected: (_) => show('original')),
+                ChoiceChip(label: const Text('Now'), selected: shown == 'draft',
+                    onSelected: (_) => show('draft')),
+                for (final c in candidates)
+                  InputChip(label: Text(c.name), selected: shown == c.name,
+                      onSelected: (_) => show(c.name),
+                      deleteIcon: const Icon(Icons.close, size: 16),
+                      deleteButtonTooltipMessage: 'Remove ${c.name}',
+                      onDeleted: () => remove(c.name)),
+              ]),
               Flexible(child: SingleChildScrollView(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Row(children: [
-                  Expanded(child: Semantics(header: true, child: const Text('UI tuning lab'))),
-                  TextButton(onPressed: close, child: const Text('Close')),
-                ]),
-                SwitchListTile(title: const Text('Show baseline'), value: shown == 'baseline',
-                    onChanged: (on) => show(on ? 'baseline' : 'draft')),
                 Wrap(spacing: 8, children: [
                   for (final name in _presets.keys)
-                    OutlinedButton(onPressed: editing ? () => applyPreset(name) : null,
+                    OutlinedButton(onPressed: editable ? () => applyPreset(name) : null,
                         child: Text(name[0].toUpperCase() + name.substring(1))),
                 ]),
-                slider('Radius', draft.cornerRadius, 32, editing,
-                    (v) => widget.onChanged(draft.copyWith(cornerRadius: v))),
-                slider('Spacing', draft.spacing, 24, editing,
-                    (v) => widget.onChanged(draft.copyWith(spacing: v))),
-                Wrap(spacing: 8, children: [
-                  TextButton(onPressed: editing ? reset : null, child: const Text('Reset')),
-                  TextButton(onPressed: editing ? copyValues : null, child: const Text('Copy values')),
-                  TextButton(onPressed: editing ? keep : null, child: const Text('Keep as candidate')),
-                ]),
-                if (candidates.isNotEmpty) ...[
-                  for (final c in candidates)
-                    Row(children: [
-                      Expanded(child: Text('${c.name} from ${c.basedOn}')),
-                      TextButton(onPressed: editing ? () => load(c) : null,
-                          child: Text('Load', semanticsLabel: 'Load ${c.name}')),
-                      TextButton(onPressed: () => remove(c.name),
-                          child: Text('Remove', semanticsLabel: 'Remove ${c.name}')),
-                    ]),
-                  const Text('Compare'),
-                  Wrap(spacing: 8, children: [
-                    for (final target in ['draft', ...candidates.map((c) => c.name)])
-                      ChoiceChip(label: Text(target == 'draft' ? 'Draft' : target),
-                          selected: shown == target, onSelected: (_) => show(target)),
-                  ]),
-                ],
-                FilledButton(onPressed: shown == 'baseline' ? null : done, child: const Text('Done')),
+                slider('Radius', draft.cornerRadius, 32, editable,
+                    (v) => edit(draft.copyWith(cornerRadius: v))),
+                slider('Spacing', draft.spacing, 24, editable,
+                    (v) => edit(draft.copyWith(spacing: v))),
                 if (status != null) Semantics(liveRegion: true, child: Text(status!)),
               ]))),
-              // Pinned below the scrolling controls, visible however long the panel grows.
-              const Padding(padding: EdgeInsets.only(top: 8), child: Text(
-                  'Finished? Keep the ones you like, then press Done, or tell the agent "land b".')),
+              Wrap(spacing: 8, children: [
+                OutlinedButton(onPressed: shown == 'draft' ? keep : null, child: const Text('★ Keep')),
+                FilledButton(onPressed: useThis, child: const Text('✓ Use this')),
+              ]),
+              // Pinned below the controls, visible however long the panel grows.
+              const Padding(padding: EdgeInsets.only(top: 8), child: Text('Keep favorites · Use this to finish')),
             ]),
           ),
         ),
@@ -435,10 +451,13 @@ CardStyle _styleOf(Map<String, Object> v) => _apply({
 In the host state:
 
 - Add `String design = 'original';` and `String? stashDesign;` beside `stash`.
-- `_Candidate.values` becomes `Map<String, Object>`; `prepareKeep` and
-  `copyValues` use `_changedWith(design, draft)` instead of `_changed(draft)`.
+- `_Candidate.values` becomes `Map<String, Object>`. `prepareKeep` uses
+  `_changedWith(design, draft)`, and `copyValues` reports Now with
+  `_changedWith(stashDesign ?? design, stash ?? draft)`.
+- A favorite is named after its design when that is not `original`, so
+  `prepareKeep` takes `final stem = design != 'original' ? design : lastPreset ?? 'tweak';`.
 - Presets carry a design: `Map<String, ({String design, CardStyle style})>`,
-  and `applyPreset` sets both.
+  and `applyPreset` passes both to `edit`.
 - Fields that are not numbers (a bool toggle, a string choice) go in the same
   map: `_changed` compares with `!=`, `_sortedJson` already prints them, and
   `_styleOf` reads them back with `v['goldAccent'] as bool?`.
@@ -446,9 +465,9 @@ In the host state:
   bloc, `context.watch<HomeBloc>().state` inside the builder works, since a
   variant renders where the feature did. The panel, in the overlay, inherits
   from the host's location too.
-- `reset()` also sets `design = 'original'`.
+- `reset()` becomes `lastPreset = null; edit(_baseline, from: 'baseline', design: 'original');`.
 
-`show`, `load`, and `done` move the design with the style:
+`show`, `edit`, and `useThis` move the design with the style:
 
 ```dart
 void show(String target) {
@@ -467,29 +486,43 @@ void show(String target) {
   update(() => shown = target);
 }
 
-void load(_Candidate c) {
+// While a favorite is shown, design already holds its design, so loading it
+// into Now keeps it unless the control changes the design itself.
+void edit(CardStyle next, {String? from, String? design}) {
   stash = null;
   stashDesign = null;
-  design = _designOf(c.values);
-  widget.onChanged(_styleOf(c.values));
-  update(() { basedOn = c.name; shown = 'draft'; });
+  final source = from ?? (shown == 'draft' ? basedOn : shown);
+  if (design != null) this.design = design;
+  widget.onChanged(next);
+  update(() { basedOn = source; shown = 'draft'; });
 }
 
-// In done(): take the values from the picked candidate itself, never from
+void applyPreset(String name) {
+  final p = _presets[name]!;
+  lastPreset = name;
+  edit(p.style, from: name, design: p.design);
+}
+
+// In useThis(): a favorite's values come from the favorite itself, never from
 // widget.style, which updates only after the parent rebuilds.
-final values = picked != null ? picked.values : _changedWith(design, draft);
+final values = picked?.values ??
+    (shown == 'original' ? <String, Object>{} : _changedWith(design, draft));
 ```
+
+The sliders call `edit(draft.copyWith(...))` as before.
+
 - `build` renders the variant in place of the feature:
   `final body = _designs[design]?.call(context, draft) ?? widget.child;` and
   uses `body` where it used `widget.child`.
-- The panel's first row, under the title, is the Design picker:
+- The panel's first row under the chips is the Design picker, disabled while
+  Original is shown like every other control:
 
 ```dart
 const Text('Design'),
 Wrap(spacing: 8, children: [
   for (final key in _designLabels.keys)
     ChoiceChip(label: Text(_designLabels[key]!), selected: design == key,
-        onSelected: editing ? (_) => update(() => design = key) : null),
+        onSelected: editable ? (_) => edit(draft, design: key) : null),
 ]),
 ```
 
@@ -497,7 +530,7 @@ Landing a design other than `original` moves its builder's body into
 `CardFeature.build` with the winning values in `CardStyle.appDefault`, then
 removes the lab as usual.
 
-## Reading the lines and waiting for Done
+## Reading the lines and waiting for the pick
 
 `debugPrint` lines reach `flutter run` / `flutter logs`, logcat under the
 `flutter` tag on Android, and the unified log on the iOS Simulator. Use the
@@ -506,12 +539,13 @@ the Android wait loop with `TAG=flutter`, or the Simulator `log show` command
 without the subsystem clause. When the agent started `flutter run` itself with
 its output redirected to a file, polling that file with
 `grep -m1 UITUNINGLAB_DONE <file>` in the same `until` loop works on every
-platform. Logcat truncates a line near 4 KB; a Done line with many candidates
-can exceed it, so ask the user to press Done again or read `flutter run` output.
+platform. Logcat truncates a line near 4 KB; a Done line with many favorites
+can exceed it, so ask the user to press ✓ Use this again or read `flutter run`
+output.
 
 When the app builds only in CI or a cloud device service and `flutter` is not
 installed here, follow "No local toolchain" in `references/platform-handoff.md`:
-the lab is the same, Done reaches the agent as a pasted value or "land b", and
+the lab is the same, the pick reaches the agent as the pasted `land <name>` line, and
 the release search runs in the pipeline or is reported as not run.
 
 ## Teardown
@@ -526,6 +560,35 @@ that no `UI tuning lab` subtree remains after closing.
 Removal at landing: delete `feature_screen.ui-tuning-lab.dart`, its import, and
 the `kDebugMode` branch, and point the screen back at
 `CardFeature(style: CardStyle.appDefault)`, which now holds the winner.
+
+## The result file, only when the app has `path_provider`
+
+✓ Use this also writes the Done object plus `savedAt` to
+`getApplicationSupportDirectory()/.ui-tuning-lab/result.json`, replacing the
+last pick atomically. When the app does not depend on `path_provider`, skip
+this section; never add the package for it. Add to the lab file:
+
+```dart
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+
+// Temporary file, then rename: a reader never sees half a pick.
+Future<void> _uiTuningLabWriteResult(Map<String, Object?> done) async {
+  final dir = await Directory('${(await getApplicationSupportDirectory()).path}/.ui-tuning-lab')
+      .create(recursive: true);
+  final temp = File('${dir.path}/result.json.tmp');
+  await temp.writeAsString(
+      _sortedJson({...done, 'savedAt': DateTime.now().toUtc().toIso8601String()}), flush: true);
+  await temp.rename('${dir.path}/result.json');
+}
+```
+
+In `useThis()`, right after `_log('UITUNINGLAB_DONE', done)`:
+`try { await _uiTuningLabWriteResult(done); } catch (e) { status = 'Result file failed: $e'; }`.
+The pick still goes through the log and the clipboard, and the status shows
+after Change. Read it with
+`adb exec-out run-as <package> cat files/.ui-tuning-lab/result.json` on Android
+or the iOS Simulator command in `references/platform-handoff.md`.
 
 ## Persistence variant, only when requested
 
@@ -602,14 +665,14 @@ Future<(List<_Candidate>, List<String>)> _uiTuningLabReadAll(Set<String> reserve
 }
 ```
 
-Wiring: `keep()` becomes `final c = prepareKeep(); if (c == null) return; try { await _uiTuningLabWrite(c, draft); commit(c); } catch (e) { update(() => status = 'Keep failed: $e'); }`,
+Wiring: `keep()` becomes `Future<void> keep() async { final c = prepareKeep(); if (c == null) return; try { await _uiTuningLabWrite(c, draft); commit(c); } catch (e) { update(() => status = 'Keep failed: $e'); } }`,
 so a failed write refuses the Keep. In a design-variant lab, write
 `{..._asMap(overrides), 'design': design}` as `overrides` and read `design`
 back with `_designOf`, so a saved candidate reopens on its design. `remove()` deletes
 `<dir>/<name>.json` first and stops with a status on failure. `open()` awaits
 `_uiTuningLabReadAll(issued)`, adds found candidates not already listed, shows
 the problems in `status`, then logs unlogged candidates. Pull a file with
-`adb exec-out run-as <pkg> cat files/.ui-tuning-lab/candidates/b.json` (the
+`adb exec-out run-as <pkg> cat files/.ui-tuning-lab/candidates/tweak.json` (the
 Android support directory) and validate it with
 `sh <skill-dir>/scripts/verify.sh profile <file>`.
 

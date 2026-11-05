@@ -19,16 +19,17 @@ Activation (`references/activation.md`):
   screen. If the app has a developer menu or drawer, add a menu entry that sets
   the same `showUITuningLab` state, and keep the pill.
 
-The host owns the `UITuningLabCandidates` store beside the draft, so candidates,
-`basedOn`, and the Compare stash survive closing the panel. The default lab is
-ephemeral: candidates live in memory and in logcat only, and a name is never
-reused within a process. Show baseline and Compare share one stash and are
-exclusive; while either shows something other than the draft, presets, sliders,
-Reset, Copy values, Keep, and Load are disabled. Done is disabled only while
-Show baseline is on; while Compare shows a candidate, Done loads it first, so it
-is the winner. Closing restores the draft. The panel's height is capped and the
-finish hint sits below the scrolling controls, so the hint is visible at any
-panel or screen size.
+The host owns the `UITuningLabCandidates` store beside the draft, so favorites,
+`basedOn`, and the stashed Now survive closing the panel. The default lab is
+ephemeral: favorites live in memory and in logcat only, and a name is never
+reused within a process. The chip row under the header shows Original, Now, or
+a favorite in the real feature; Now is stashed meanwhile and restored when Now
+is tapped or the panel closes. While Original is shown the presets and sliders
+are disabled; moving one while a favorite is shown loads that favorite into Now
+first. **★ Keep** adds Now to the favorites, **✓ Use this** picks the shown chip
+and shrinks the panel to the result bar, and the **⋯** menu holds Reset and
+Copy values. The panel's height is capped and the hint sits below the scrolling
+controls, so it is visible at any panel or screen size.
 
 ## Host change (main source set)
 
@@ -205,6 +206,9 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import org.json.JSONObject
+import java.io.File
+import java.io.IOException
+import java.time.Instant
 
 // The declared default, never the value on screen when the lab opens.
 private val baseline = CardStyle.appDefault
@@ -249,32 +253,38 @@ class UITuningLabCandidate(val name: String, val basedOn: String, val values: Ma
     fun asMap() = mapOf("basedOn" to basedOn, "name" to name, "values" to values)
 }
 
-// 1 -> a, 26 -> z, 27 -> aa (bijective base 26).
-private fun candidateName(index: Int): String {
-    var name = ""
-    var n = index
-    while (n > 0) { n -= 1; name = ('a' + n % 26) + name; n /= 26 }
-    return name
+// Temporary file, then rename over the last pick: a reader never sees half a file.
+private fun writeResult(file: File, done: Map<String, Any>) {
+    val dir = file.parentFile ?: throw IOException("no directory for $file")
+    if (!dir.isDirectory && !dir.mkdirs()) throw IOException("cannot create $dir")
+    val temp = File(dir, "result.json.tmp")
+    temp.writeText(uiTuningLabJson(done + ("savedAt" to Instant.now().toString())))
+    if (!temp.renameTo(file)) { temp.delete(); throw IOException("cannot replace $file") }
 }
 
 class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
     val list = mutableStateListOf<UITuningLabCandidate>().apply { addAll(initial) }
-    // Every name issued in this process, removed ones included: never reused.
-    private val issued = initial.map { it.name }.toMutableSet()
+    // Every name issued in this process, removed ones included, plus the names a
+    // favorite never takes.
+    private val issued = (initial.map { it.name } + listOf("draft", "now", "original", "baseline")).toMutableSet()
     private val logged = mutableSetOf<String>()
-    // Where the draft came from: a preset, "baseline", or a candidate's name.
+    // Where Now came from: a preset, "baseline", or a favorite's name.
     var basedOn by mutableStateOf("baseline")
-    // What the real feature shows: "draft", "baseline", or a candidate's name.
+    private var lastPreset: String? = null
+    // The shown chip: "draft" (Now), "original", or a favorite's name.
     var shown by mutableStateOf("draft")
     var status by mutableStateOf<String?>(null)
-    // Holds the draft while the baseline or a candidate is shown.
+    // The last pick; while set, the panel is the result bar.
+    var result by mutableStateOf<String?>(null)
+    // Holds Now while another chip is shown.
     private var stash: CardStyle? = null
 
-    // Seeded or stored candidates log their own line the first time the lab shows them.
+    // Seeded or stored favorites log their own line the first time the lab shows them.
     fun logUnlogged() {
         for (c in list) if (logged.add(c.name)) uiTuningLabLog("UITUNINGLAB_CANDIDATE", uiTuningLabJson(c.asMap()))
     }
 
+    // Tapping a chip shows it in the real feature.
     fun show(target: String, draft: CardStyle, setDraft: (CardStyle) -> Unit) {
         if (target == "draft") {
             stash?.let(setDraft)
@@ -289,24 +299,39 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
 
     fun restoreDraft(setDraft: (CardStyle) -> Unit) = show("draft", baseline, setDraft)
 
-    fun reset(setDraft: (CardStyle) -> Unit) { setDraft(baseline); basedOn = "baseline" }
+    // Every control edits Now. Moved while a favorite is shown, it loads that
+    // favorite into Now first; the favorite itself does not change.
+    fun edit(next: CardStyle, setDraft: (CardStyle) -> Unit, from: String? = null) {
+        val source = from ?: if (shown == "draft") basedOn else shown
+        stash = null
+        setDraft(next)
+        basedOn = source
+        shown = "draft"
+    }
 
-    fun applyPreset(name: String, setDraft: (CardStyle) -> Unit) { setDraft(uiTuningLabPresets.getValue(name)); basedOn = name }
+    fun reset(setDraft: (CardStyle) -> Unit) { lastPreset = null; edit(baseline, setDraft, "baseline") }
 
+    fun applyPreset(name: String, setDraft: (CardStyle) -> Unit) {
+        lastPreset = name
+        edit(uiTuningLabPresets.getValue(name), setDraft, name)
+    }
+
+    // Always reports Now, whichever chip is shown.
     fun copyValues(draft: CardStyle): String {
-        val json = uiTuningLabJson(uiTuningLabChanged(draft))
+        val json = uiTuningLabJson(uiTuningLabChanged(stash ?: draft))
         uiTuningLabLog("UITUNINGLAB_VALUES", json)
-        status = if (json == "{}") "No changes from baseline" else "Copied $json"
+        status = if (json == "{}") "No changes from Original" else "Copied $json"
         return json
     }
 
-    // Returns the new candidate, or null when the draft matches the baseline or a
-    // candidate. The persist variant writes it before calling commit().
+    // Returns the new favorite, or null with a status. Keep is enabled only while
+    // Now is shown, so draft is Now. The persist variant writes it before commit().
     fun prepareKeep(draft: CardStyle): UITuningLabCandidate? {
         val values = uiTuningLabChanged(draft)
-        if (values.isEmpty()) { status = "Matches the baseline; nothing to keep"; return null }
+        if (values.isEmpty()) { status = "Same as Original"; return null }
         list.firstOrNull { it.values == values }?.let { status = "Same as ${it.name}"; return null }
-        val name = generateSequence(1) { it + 1 }.map(::candidateName).first { it !in issued }
+        val stem = lastPreset ?: "tweak"
+        val name = generateSequence(1) { it + 1 }.map { if (it == 1) stem else "$stem-$it" }.first { it !in issued }
         return UITuningLabCandidate(name, basedOn, values)
     }
 
@@ -320,33 +345,27 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
 
     fun keep(draft: CardStyle) { prepareKeep(draft)?.let(::commit) }
 
-    fun load(candidate: UITuningLabCandidate, setDraft: (CardStyle) -> Unit) {
-        stash = null
-        setDraft(uiTuningLabApply(candidate.values))
-        basedOn = candidate.name
-        shown = "draft"
-    }
-
     fun remove(name: String, draft: CardStyle, setDraft: (CardStyle) -> Unit) {
+        if (shown == name) show("draft", draft, setDraft)
         list.removeAll { it.name == name }
         uiTuningLabLog("UITUNINGLAB_CANDIDATE_REMOVED", uiTuningLabJson(mapOf("name" to name)))
-        if (shown == name) show("draft", draft, setDraft)
     }
 
-    // Like Copy values, and it tells the agent the session is over. While Compare
-    // shows a candidate, that candidate becomes the draft first: it is the winner.
-    fun done(draft: CardStyle, setDraft: (CardStyle) -> Unit): String {
+    // Picks the shown chip and finishes; returns the code for the clipboard.
+    // Picking again replaces the result: the newest pick wins.
+    fun useThis(draft: CardStyle, resultFile: File): String {
         val picked = list.firstOrNull { it.name == shown }
-        picked?.let { load(it, setDraft) }
-        val values = uiTuningLabChanged(picked?.let { uiTuningLabApply(it.values) } ?: draft)
-        val winner = list.firstOrNull { it.values == values }?.name
-        val line = uiTuningLabJson(
-            mapOf("candidates" to list.map { it.asMap() }, "values" to values, "winner" to winner))
+        val winner = picked?.name ?: if (shown == "original") "original" else "draft"
+        val values = picked?.values ?: if (shown == "original") emptyMap<String, Any>() else uiTuningLabChanged(draft)
+        val done = mapOf("candidates" to list.map { it.asMap() }, "values" to values, "winner" to winner)
+        val line = uiTuningLabJson(done)
         // Logcat cuts entries near 4 KB. When the Done line may be cut, repeat each
-        // candidate on its own line first, so the agent can rebuild the list.
+        // favorite on its own line first, so the agent can rebuild the list.
         if (line.length > 3500) list.forEach { uiTuningLabLog("UITUNINGLAB_CANDIDATE", uiTuningLabJson(it.asMap())) }
         uiTuningLabLog("UITUNINGLAB_DONE", line)
-        return uiTuningLabJson(values).also { status = "Done. Copied $it" }
+        status = try { writeResult(resultFile, done); null } catch (e: Exception) { "Result file failed: ${e.message}" }
+        result = winner
+        return "land $winner"
     }
 }
 ```
@@ -357,30 +376,37 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
 package com.example.cards
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import java.io.File
 import kotlin.math.roundToInt
 
 // A non-modal panel: it consumes touches only inside its own bounds, so the
 // feature around it stays usable. Composed only while the lab is open.
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UITuningLabPanel(
     draft: CardStyle,
@@ -390,72 +416,89 @@ fun UITuningLabPanel(
     onClose: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
-    val editing = lab.shown == "draft"
+    val resultFile = File(LocalContext.current.noBackupFilesDir, ".ui-tuning-lab/result.json")
+    val editable = lab.shown != "original" // never edit the baseline
     val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
+    var menuOpen by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { lab.logUnlogged() }
-    fun close() = onClose()
     // System back closes the lab first, like Escape on the web.
     BackHandler(onBack = onClose)
+
+    // After ✓ Use this the panel is one bar; Change reopens it.
+    lab.result?.let { name ->
+        Surface(modifier.padding(16.dp), shape = MaterialTheme.shapes.extraLarge,
+            tonalElevation = 3.dp, shadowElevation = 8.dp) {
+            Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("✓ Sent: $name", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                TextButton(onClick = { lab.result = null }) { Text("Change") }
+            }
+        }
+        return
+    }
 
     Surface(modifier.padding(16.dp).widthIn(max = 360.dp).heightIn(max = maxHeight),
         shape = MaterialTheme.shapes.large, tonalElevation = 3.dp, shadowElevation = 8.dp) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("UI tuning lab", style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f).semantics { heading() })
+                Box {
+                    IconButton(onClick = { menuOpen = true },
+                        modifier = Modifier.semantics { contentDescription = "More" }) {
+                        Text("⋯", Modifier.clearAndSetSemantics { })
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(text = { Text("Reset") },
+                            onClick = { menuOpen = false; lab.reset(setDraft) })
+                        DropdownMenuItem(text = { Text("Copy values") }, onClick = {
+                            menuOpen = false
+                            clipboard.setText(AnnotatedString(lab.copyValues(draft)))
+                        })
+                    }
+                }
+                TextButton(onClick = onClose) { Text("Close") }
+            }
+            // The chips: Original, Now, then each favorite. Highlighted = shown.
+            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                for ((target, label) in listOf("original" to "Original", "draft" to "Now")) {
+                    FilterChip(selected = lab.shown == target, onClick = { lab.show(target, draft, setDraft) },
+                        label = { Text(label) }, modifier = Modifier.padding(end = 8.dp))
+                }
+                for (c in lab.list) {
+                    InputChip(selected = lab.shown == c.name, onClick = { lab.show(c.name, draft, setDraft) },
+                        label = { Text(c.name) }, modifier = Modifier.padding(end = 8.dp),
+                        trailingIcon = {
+                            IconButton(onClick = { lab.remove(c.name, draft, setDraft) },
+                                modifier = Modifier.size(24.dp).semantics { contentDescription = "Remove ${c.name}" }) {
+                                Text("×", Modifier.clearAndSetSemantics { })
+                            }
+                        })
+                }
+            }
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("UI tuning lab", style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f).semantics { heading() })
-                    TextButton(onClick = { close() }) { Text("Close") }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Show baseline", Modifier.weight(1f))
-                    Switch(checked = lab.shown == "baseline",
-                        onCheckedChange = { lab.show(if (it) "baseline" else "draft", draft, setDraft) })
-                }
                 Row {
                     for (name in uiTuningLabPresets.keys) {
-                        OutlinedButton(enabled = editing, onClick = { lab.applyPreset(name, setDraft) },
+                        OutlinedButton(enabled = editable, onClick = { lab.applyPreset(name, setDraft) },
                             modifier = Modifier.padding(end = 8.dp)) { Text(name.replaceFirstChar(Char::uppercase)) }
                     }
                 }
-                UITuningLabSlider("Corner radius", draft.cornerRadius, 32, editing) { setDraft(draft.copy(cornerRadius = it)) }
-                UITuningLabSlider("Spacing", draft.spacing, 24, editing) { setDraft(draft.copy(spacing = it)) }
-                Row {
-                    TextButton(enabled = editing, onClick = { lab.reset(setDraft) }) { Text("Reset") }
-                    TextButton(enabled = editing, onClick = {
-                        clipboard.setText(AnnotatedString(lab.copyValues(draft)))
-                    }) { Text("Copy values") }
-                    TextButton(enabled = editing, onClick = { lab.keep(draft) }) { Text("Keep as candidate") }
+                UITuningLabSlider("Corner radius", draft.cornerRadius, 32, editable) {
+                    lab.edit(draft.copy(cornerRadius = it), setDraft)
                 }
-                if (lab.list.isNotEmpty()) {
-                    Text("Candidates", style = MaterialTheme.typography.titleSmall)
-                    for (c in lab.list) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("${c.name} from ${c.basedOn}", Modifier.weight(1f))
-                            TextButton(enabled = editing, onClick = { lab.load(c, setDraft) },
-                                modifier = Modifier.semantics { contentDescription = "Load ${c.name}" }) { Text("Load") }
-                            TextButton(onClick = { lab.remove(c.name, draft, setDraft) },
-                                modifier = Modifier.semantics { contentDescription = "Remove ${c.name}" }) { Text("Remove") }
-                        }
-                    }
-                    Text("Compare", style = MaterialTheme.typography.titleSmall)
-                    Column(Modifier.selectableGroup()) {
-                        for (target in listOf("draft") + lab.list.map { it.name }) {
-                            Row(Modifier.fillMaxWidth().selectable(selected = lab.shown == target, role = Role.RadioButton,
-                                onClick = { lab.show(target, draft, setDraft) }),
-                                verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(selected = lab.shown == target, onClick = null)
-                                Text(if (target == "draft") "Draft" else target)
-                            }
-                        }
-                    }
+                UITuningLabSlider("Spacing", draft.spacing, 24, editable) {
+                    lab.edit(draft.copy(spacing = it), setDraft)
                 }
-                Button(enabled = lab.shown != "baseline", onClick = {
-                    clipboard.setText(AnnotatedString(lab.done(draft, setDraft)))
-                }) { Text("Done") }
                 lab.status?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
             }
-            // Pinned below the scrolling controls, visible however long the panel grows.
-            Text("Finished? Keep the ones you like, then press Done, or tell the agent \"land b\".",
+            Row(Modifier.padding(top = 8.dp)) {
+                OutlinedButton(enabled = lab.shown == "draft", onClick = { lab.keep(draft) },
+                    modifier = Modifier.padding(end = 8.dp)) { Text("★ Keep") }
+                Button(onClick = { clipboard.setText(AnnotatedString(lab.useThis(draft, resultFile))) }) {
+                    Text("✓ Use this")
+                }
+            }
+            // Pinned below the controls, visible however long the panel grows.
+            Text("Keep favorites · Use this to finish",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 12.dp))
         }
     }
@@ -474,21 +517,22 @@ private fun UITuningLabSlider(label: String, value: Int, max: Int, enabled: Bool
 }
 ```
 
-## Reading the lines and waiting for Done
+## Reading the lines and waiting for the pick
 
 Lines go to logcat under the `ui-tuning-lab` tag. Read them with
-`adb logcat -d -s ui-tuning-lab:I`, and wait for Done with the Android loop in
-`references/platform-handoff.md` ("Wait for Done") with `TAG=ui-tuning-lab`.
-Start the wait right after the `am start` command, and stop it if the user
-writes first. A busy device can rotate the logcat buffer, so read soon after
-Done or ask the user to press Done again.
+`adb logcat -d -s ui-tuning-lab:I`, and wait for `UITUNINGLAB_DONE` with the
+Android loop in `references/platform-handoff.md` ("Wait for Done") with
+`TAG=ui-tuning-lab`. Start the wait right after the `am start` command, and stop
+it if the user writes first. A busy device can rotate the logcat buffer; then
+read the result file, which ✓ Use this writes to
+`noBackupFilesDir/.ui-tuning-lab/result.json`:
+`adb exec-out run-as <pkg> cat no_backup/.ui-tuning-lab/result.json`.
 
-Logcat truncates an entry near 4 KB, so a Done line with many candidates can be
-cut. When its JSON exceeds about 3,500 characters, the lab logs every
-candidate on its own `UITUNINGLAB_CANDIDATE` line right before Done; if the Done
-line does not parse, rebuild the list from those lines
-(`references/candidates.md`, "Log lines") and take the draft's values from a
-fresh Copy values.
+Logcat truncates an entry near 4 KB, so a Done line with many favorites can be
+cut. When its JSON exceeds about 3,500 characters, the lab logs every favorite
+on its own `UITUNINGLAB_CANDIDATE` line right before Done; if the Done line does
+not parse, read the result file or rebuild the list from those lines
+(`references/candidates.md`, "Log lines").
 
 `-S` force-stops the app first. Without it, a running process has already used
 its one launch request and the extra is ignored.
@@ -584,7 +628,7 @@ that are not already listed, shows the problems in `status`, then calls
 `logUnlogged()`. Do file work off the main thread in a real app
 (`withContext(Dispatchers.IO)`). Validate a pulled file with
 `sh <skill-dir>/scripts/verify.sh profile <file>` after
-`adb exec-out run-as <pkg> cat no_backup/.ui-tuning-lab/candidates/b.json > b.json`.
+`adb exec-out run-as <pkg> cat no_backup/.ui-tuning-lab/candidates/tweak.json > tweak.json`.
 
 ## Manual gate check
 
@@ -610,3 +654,5 @@ pass. Check by hand and record the evidence (`references/platform-handoff.md`,
   `LocalClipboard` and its suspend `setClipEntry`.
 - `BuildConfig.DEBUG` needs `buildFeatures { buildConfig = true }` on AGP 8+.
 - `Files.move` and `Instant` need API 26, or core library desugaring.
+- `FilterChip` and `InputChip` are stable from Material 3 1.2; the panel's
+  `@OptIn(ExperimentalMaterial3Api::class)` covers older versions.

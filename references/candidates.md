@@ -1,56 +1,59 @@
-# Candidates, Done, and Compare
+# Favorites and Use this
 
-A tuning session rarely ends with one value. The user tries a preset, nudges it,
-likes it, tries something else, and wants to come back. Candidates keep those
-finalists where both the user and the agent can see them, **Done** tells the
-agent the session is over, and **Compare** flips between the finalists in the
-real feature.
+The user flips between looks, keeps the ones they like, and picks one. The panel
+makes that two buttons and a row of chips, and the pick reaches the agent on its
+own.
 
 ## Contents
 
 - The panel
+- Names
 - Log lines
-- Waiting for Done
+- The result file
+- Waiting for the pick
 - Persistence
 - Keeping finalists for later
 
-Every lab has all three, ephemeral labs included: candidates live in memory and
-in the log, so nothing is written to storage unless persistence was requested.
+Every lab has all of this, ephemeral labs included: favorites live in memory and
+in the log. The one write an ephemeral lab makes is the result file below.
 
 ## The panel
 
 | Control | What it does |
 |---|---|
-| **Keep as candidate** | Snapshots the draft under a new name (`a`, `b`, … `z`, then `aa`, `ab`). Disabled while anything other than the draft is shown. |
-| **Candidates list** | One row per candidate: its name, what it started from, **Load** (copies it into the draft; disabled while anything other than the draft is shown) and **Remove**. Hidden while empty. |
-| **Compare** | A picker that appears once a candidate exists: **Draft** and each candidate. Choosing a candidate renders it in the real feature. |
-| **Done** | Copies the draft's values, like Copy values, and logs the handoff line below. While Compare shows a candidate, Done first loads that candidate into the draft, so it is the winner. Disabled while Show baseline is on. The lab stays open. |
-| **Hint** | A footer line pinned below the scrolling controls, so it is visible however long the panel grows: *Finished? Keep the ones you like, then press Done, or tell the agent "land b".* |
+| **Chips** | One row under the header: **Original** (the baseline), **Now** (the draft), then each favorite. Tapping a chip shows it in the real feature. The shown chip is highlighted. |
+| **★ Keep** | Adds what Now shows to the favorites. Skips a look that matches Original ("Same as Original") or a favorite ("Same as capsule"). |
+| **✓ Use this** | Picks whatever chip is shown (Now, a favorite, or Original) and finishes: logs the result, writes the result file, copies `land <name>` to the clipboard, and shrinks the panel to one bar. |
+| **Result bar** | `✓ Sent: capsule · Change`. Change reopens the panel. Picking again replaces the result: the newest pick wins. No confirmation step. |
+| **× on a favorite chip** | Removes it, with an accessible name such as "Remove capsule". |
+| **⋯ menu** | Reset (Now back to Original) and Copy values. |
+| **Hint** | One line pinned below the controls: *Keep favorites · Use this to finish* |
 
 Rules:
 
-- **Keep** skips a draft that matches the baseline ("Matches the baseline;
-  nothing to keep") or an existing candidate ("Same as b"). It never renames or
-  overwrites an existing candidate.
-- **Names are never reused** within a run of the app: after Remove `a`, the
-  next Keep is still a new name. In a persisted lab every name already in
-  storage is taken too, including entries that were skipped as unreadable, and
-  Keep checks that its file or key does not exist before writing. `draft` and
-  `baseline` are never candidate names.
-- **`basedOn`** records where the draft came from: the kebab-case name of the
-  last preset applied (`ledger`), `baseline` after Reset or when the lab first
-  opens, or the candidate's name after Load. It lives beside the draft, so a
-  draft kept across close and reopen keeps its `basedOn`. Edits keep the same
-  `basedOn`.
-- **Compare** shares the Show baseline mechanism: the draft is stashed while a
-  candidate or the baseline is shown, and restored when Draft is picked or the
-  lab closes. Show baseline and Compare are exclusive: turning one on turns the
-  other back to Draft. Editing while a candidate is shown follows the baseline
-  rule (`references/control-mapping.md`): disable the controls, or switch back
-  to the draft on the first edit.
-- Removing the candidate being shown returns Compare to Draft.
-- Keyboard shortcuts for Compare (for example Command-1 to Command-9 on macOS)
-  are optional and only added when inspection shows they are free.
+- Controls edit Now. While Original is shown they are disabled. Moving a control
+  while a favorite is shown first loads that favorite into Now, so a favorite can
+  be refined; the favorite itself does not change.
+- Show baseline, Compare, and Load are not separate controls: the chips are all
+  three. The draft is stashed while another chip is shown and restored when Now
+  is tapped or the lab closes.
+- `basedOn` records where Now came from: the kebab-case name of the last preset
+  applied, `baseline` after Reset or when the lab first opens, or a favorite's
+  name after it was loaded into Now. Edits keep the same `basedOn`.
+- Keyboard shortcuts for the chips (Command-1 to Command-9 on macOS) are optional
+  and only added when inspection shows they are free.
+
+## Names
+
+A favorite is named after what it is, so the chip is readable and the name works
+as a code in chat (`land capsule`):
+
+1. In a design-variant lab, the design key when it is not `original`
+   (`capsule`); otherwise the last preset applied (`compact`); otherwise `tweak`.
+2. If the name is taken, add `-2`, `-3`, … (`capsule-2`).
+3. Names are kebab-case, never reused within a run of the app (a removed name
+   stays taken), and never `draft`, `now`, `original`, or `baseline`. In a
+   persisted lab, every name already in storage is taken too.
 
 ## Log lines
 
@@ -59,44 +62,56 @@ rounding as `UITUNINGLAB_VALUES`. `values` is always the diff against the
 baseline, never the full configuration.
 
 ```text
-UITUNINGLAB_CANDIDATE {"basedOn":"ledger","name":"b","values":{"cornerRadius":14}}
-UITUNINGLAB_CANDIDATE_REMOVED {"name":"a"}
-UITUNINGLAB_DONE {"candidates":[{"basedOn":"ledger","name":"b","values":{"cornerRadius":14}}],"values":{"cornerRadius":14},"winner":"b"}
+UITUNINGLAB_CANDIDATE {"basedOn":"compact","name":"capsule","values":{"cornerRadius":14,"design":"capsule"}}
+UITUNINGLAB_CANDIDATE_REMOVED {"name":"tweak"}
+UITUNINGLAB_DONE {"candidates":[{"basedOn":"compact","name":"capsule","values":{"cornerRadius":14,"design":"capsule"}}],"values":{"cornerRadius":14,"design":"capsule"},"winner":"capsule"}
 ```
 
-- `winner` is the candidate the draft exactly matches when Done is pressed, or
-  `null` when it matches none. `null` with a non-empty `candidates` list means
-  "these are the finalists; decide with me".
-- `candidates` holds every candidate still in the panel, oldest first, each
-  with the same `basedOn`, `name`, and `values` as its `UITUNINGLAB_CANDIDATE`
-  line, so the Done line alone is enough to land or keep any of them.
-- Done with no candidates is the same as Copy values plus a finish signal.
-- A candidate loaded from storage or seeded from the project when the lab opens
-  logs its own `UITUNINGLAB_CANDIDATE` line, so the log always shows every
-  candidate in the panel.
+- **Use this** logs `UITUNINGLAB_DONE`. `winner` is the favorite that was shown,
+  `original` when Original was shown (land nothing), or `draft` when Now was
+  shown; `values` is the winner's values (`{}` for `original`).
+- `candidates` holds every favorite still in the panel, oldest first, so the
+  line alone is enough to land or keep any of them.
+- A favorite loaded from storage or seeded from the project logs its own
+  `UITUNINGLAB_CANDIDATE` line when the lab opens.
+- When the user names a favorite in chat before picking ("land capsule"),
+  rebuild the list from the `UITUNINGLAB_CANDIDATE` and
+  `UITUNINGLAB_CANDIDATE_REMOVED` lines: the latest line for a name wins, unless
+  a later removal names it. An ephemeral lab restarts its names after a relaunch,
+  so when two runs used the same name, ask the user to pick again.
 
-Read them like `UITUNINGLAB_VALUES` (`references/landing-protocol.md`, step 1),
-over a window that covers the whole session (`--last 1h`, or `--start` at the
-time the lab opened) rather than the 10 minutes that suffice for a single Copy
-values. The Done line alone is enough. Before Done is pressed (the user says
-"land b" in chat instead), rebuild the list from the `UITUNINGLAB_CANDIDATE`
-and `UITUNINGLAB_CANDIDATE_REMOVED` lines: the latest `UITUNINGLAB_CANDIDATE`
-line for a name wins, unless a later `UITUNINGLAB_CANDIDATE_REMOVED` names it.
-An ephemeral lab starts again at `a` after a relaunch, so when two runs used the
-same name, ask the user to press Done rather than guessing.
+## The result file
 
-## Waiting for Done
+**Use this** also writes the `UITUNINGLAB_DONE` object, plus `savedAt` (ISO-8601
+UTC), to the app's own storage, so the pick survives quitting the app and the
+agent can read it without a log:
 
-Where the platform has a log the agent can read, wait for Done in the
-background instead of waiting for a message, and say so in **How to try it**.
-The command for each platform is in `references/platform-handoff.md`, "Wait for
-Done". When it exits, its output is the Done line: land from it. If the user
-writes first, stop it and follow their message. On the web, and when the app
-builds only remotely, the finish hint is the whole mechanism.
+- one file, `.ui-tuning-lab/result.json` (web: the `localStorage` key
+  `uiTuningLab.result`), replaced atomically on every pick;
+- development builds only, inside the lab's gate;
+- where the platform needs a dependency the app lacks for this (Flutter
+  `path_provider`, React Native AsyncStorage), skip the file and rely on the log
+  and the clipboard code; never add a dependency for it. The same goes for the
+  clipboard: where the app has no clipboard module (core React Native), show
+  `land <name>` as selectable text in the result bar instead.
+
+Locations and the command to read it per platform are in
+`references/platform-handoff.md`, "The result file". At landing, delete the file
+when the agent can reach it.
+
+## Waiting for the pick
+
+Where the agent can read the device's log, wait for `UITUNINGLAB_DONE` in the
+background instead of waiting for a message, and say so in **How to try it**
+(`references/platform-handoff.md`, "Wait for Done"). When it exits, its output is
+the result: land from it. If the user writes first, stop it and follow their
+message. When the user says they picked but no line arrived, read the result
+file. When neither is reachable (a cloud device), the user pastes the
+`land <name>` line the lab copied.
 
 ## Persistence
 
-Only when persistence was requested, the lab also writes each candidate as a
+Only when persistence was requested, the lab also writes each favorite as a
 saved profile with `schemaVersion: 2` (`references/config-schema.md`), one per
 name, and loads them into the list when it opens:
 

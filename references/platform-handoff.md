@@ -1,7 +1,8 @@
 # Platform Handoff
 
 How each platform emits the lab's log lines, where the agent reads them, how it
-waits for Done, and where a persisted lab keeps its candidates. The lines
+waits for the pick, where the result file lives, and where a persisted lab keeps
+its favorites. The lines
 themselves are the same everywhere (`references/candidates.md`): one tag, a
 space, then one sorted-key JSON object, on a single line.
 
@@ -10,6 +11,7 @@ space, then one sorted-key JSON object, on a single line.
 - Emit and read
 - Wait for Done
 - No local toolchain
+- The result file
 - Where persisted candidates live
 - Gates the source linter cannot see
 
@@ -28,10 +30,9 @@ space, then one sorted-key JSON object, on a single line.
 
 Read with a window that covers the whole session. `adb logcat -d` dumps the
 current buffer and exits; a busy device can rotate the buffer, so read soon
-after Done, or ask the user to press Done again. Logcat also cuts a line at
-about 4 KB, so a Done line with many candidates can arrive truncated: rebuild
-the list from the `UITUNINGLAB_CANDIDATE` lines instead, which each lab logs as
-candidates are kept, loaded, or seeded.
+after the pick, or read the result file. Logcat also cuts a line at about 4 KB,
+so a Done line with many favorites can arrive truncated: read the result file,
+or rebuild the list from the `UITUNINGLAB_CANDIDATE` lines.
 
 ## Wait for Done
 
@@ -99,17 +100,39 @@ whole lab anyway.
   flag when you trigger a run. Otherwise offer the visible pill plus the chosen
   human path, and add the flag to the pipeline's debug job only when the user
   agrees.
-- **Done reaches the agent through chat.** There is no log to poll. Done and
-  Copy values already copy the values; the finish hint and the **How to try
-  it** steps tell the user to paste them, or simply say "land b". Many device
-  services show the device log in their page: say the user can copy the
-  `UITUNINGLAB_DONE` line from there too. Do not start a background wait.
+- **The pick reaches the agent through chat.** There is no log or file to
+  read. ✓ Use this copies a short `land <name>` line and the result bar shows
+  the name, so the user pastes one line or types the name. Many device
+  services show the device log in their page; when the agent can open that
+  page in its own browser, read the `UITUNINGLAB_DONE` line there instead.
+  Do not start a background wait.
 - **Release check in the pipeline.** The release-artifact search below needs a
   release build. Ask whether to add it to the workflow (a release build plus
   the string search for the three markers), or list it as not run.
 - **First build fails.** When the user reports compile errors from the
   pipeline, fix them from the log they paste or the workflow output you can
   read (`gh run view --log-failed`), then ask before pushing again.
+
+## The result file
+
+✓ Use this writes the `UITUNINGLAB_DONE` object plus `savedAt` here, replacing
+the previous pick atomically (temporary file, then rename). Development builds
+only. Read it when the log no longer holds the pick, for example after the app
+quit, and delete it at landing.
+
+| Platform | Location | Agent reads it with |
+|---|---|---|
+| Web | `localStorage` key `uiTuningLab.result` | the built-in browser: evaluate `localStorage.getItem("uiTuningLab.result")` on the app's origin |
+| iOS Simulator | Application Support `.ui-tuning-lab/result.json` | `cat "$(xcrun simctl get_app_container booted <bundle-id> data)/Library/Application Support/.ui-tuning-lab/result.json"` |
+| macOS | Application Support `<bundle-id>/.ui-tuning-lab/result.json` | `cat ~/Library/Application\ Support/<bundle-id>/.ui-tuning-lab/result.json` (a sandboxed app: under its container's `Data/Library`) |
+| Android, and Flutter or React Native on Android | `noBackupFilesDir/.ui-tuning-lab/result.json` (Flutter: the support directory, `files/`) | `adb exec-out run-as <package> cat no_backup/.ui-tuning-lab/result.json` (Flutter: `files/.ui-tuning-lab/result.json`) |
+| Flutter on the iOS Simulator | `getApplicationSupportDirectory()/.ui-tuning-lab/result.json` | the iOS Simulator command above |
+| React Native | AsyncStorage key `uiTuningLab.result`, only when the app already depends on it | the log, or React Native DevTools |
+| Windows | `ApplicationData.Current.LocalFolder\.ui-tuning-lab\result.json` (unpackaged: `%LOCALAPPDATA%\<app-name>\.ui-tuning-lab\result.json`) | `Get-Content <path>` |
+
+When the app lacks the dependency the file needs (Flutter `path_provider`,
+React Native AsyncStorage), the lab skips the file; the log and the clipboard
+code still carry the pick.
 
 ## Where persisted candidates live
 

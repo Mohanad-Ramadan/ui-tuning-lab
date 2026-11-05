@@ -2,6 +2,20 @@
 
 ## 1.3.0 — unreleased
 
+### Simpler finish, automatic handoff
+
+- The panel finishes with two buttons and a chip row. Chips (Original, Now, and
+  each favorite) replace Show baseline, Compare, and Load; **★ Keep** replaces
+  Keep as candidate; **✓ Use this** replaces Done and picks what is shown, then
+  shrinks the panel to a "✓ Sent" bar. No confirmation: the newest pick wins.
+  Reset and Copy values move to a ⋯ menu. The hint is one line.
+- Favorites are named after what they are (`capsule`, `compact-2`), so a name
+  works as a code in chat.
+- ✓ Use this also writes `.ui-tuning-lab/result.json` (web:
+  `uiTuningLab.result`) in development builds and copies `land <name>`, so the
+  agent reads the pick after the app quits, and a cloud-device user pastes one
+  short line.
+
 ### Leaner package
 
 - Maintainer notes are gone from what the agent reads: no "unvalidated / not

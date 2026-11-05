@@ -24,19 +24,13 @@ a list of fields is fine; keep each one labelled.
 
 - **Presets**: at least two meaningful presets that differ clearly from the
   baseline and from each other.
-- **Show baseline**: a flip that renders the baseline in the real
-  feature and restores the draft when turned off. While the baseline is shown,
-  an edit must never land on it silently: either disable the controls (the
-  palette examples, which also disable Reset and Copy values) or switch back to
-  the draft on the first edit (the motion example). Copy values always reports
-  the draft. Restore the draft if the lab closes while the baseline is shown.
-- **Reset**: copies the baseline back into the draft.
-- **Copy values**: see `references/landing-protocol.md`. Its status line shows
-  what was copied at that moment; after further edits, copy again before landing.
-- **Keep as candidate, Compare, and Done**, with the footer hint that says how
-  to finish: see `references/candidates.md`. They are in every lab, ephemeral
-  ones included, because the user's finalists and the end of the session must
-  reach the agent without a paste.
+- **Chips, ★ Keep, and ✓ Use this**, with the hint line: see
+  `references/candidates.md`. The Original chip is the baseline flip; while it
+  is shown the controls are disabled, so an edit never lands on the baseline.
+  Restore the draft if the lab closes while another chip is shown.
+- **⋯ menu** with **Reset** (copies the baseline back into the draft) and
+  **Copy values** (`references/landing-protocol.md`; it always reports the
+  draft).
 - **Target picker**, when the feature has variants to choose between (a theme,
   a mode, a layout variant): at the top of the panel, driving the app's real
   setting, with the current choice in the panel header ("Ember · dark"). An
@@ -63,5 +57,5 @@ a list of fields is fine; keep each one labelled.
   the lab now tunes (for example a matched transition that starts from the old
   card size), list it in the report. It will not follow the draft and may jump.
 
-Speed, Show baseline, Compare, and Replay are preview settings: they never enter
+Speed, the shown chip, and Replay are preview settings: they never enter
 the draft, Copy values, a candidate, or a saved profile.

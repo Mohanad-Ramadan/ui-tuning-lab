@@ -4,7 +4,7 @@ Use this when the user asks for alternative designs of a feature ("make three
 better versions of this list", "try a card layout and a timeline") rather than
 new values for the existing one. The variants are different widget or view
 trees, so they cannot be reached by sliders alone, but they still go through
-the same lab: the same panel, Show baseline, Keep as candidate, Compare, Done,
+the same lab: the same panel, chips, ★ Keep, ✓ Use this,
 and landing. A row of chips or tabs dropped into the screen is not a lab.
 
 ## Where ideas come from
@@ -45,11 +45,12 @@ accessibility, right-to-left, light and dark).
    disabled) rather than editing production code. Copy values reports each
    knob against the selected design's defaults, and landing writes the winning
    design with those defaults plus the changed values.
-6. **Everything else is unchanged.** Show baseline renders `original` with the
-   baseline values; Reset returns to it; Copy values reports only what differs
-   (`{"design":"strip","cardRadius":16}`); Keep as candidate records the design
-   in `values`; Compare flips the real screen between candidates of different
-   designs; Done hands them over (`references/candidates.md`). A saved profile
+6. **Everything else is unchanged.** The Original chip renders `original`
+   with the baseline values; Reset returns to it; Copy values reports only what
+   differs (`{"design":"strip","cardRadius":16}`); ★ Keep records the design in
+   `values` and names the favorite after it (`strip`); the chips flip the real
+   screen between favorites of different designs; ✓ Use this hands the pick
+   over (`references/candidates.md`). A saved profile
    keeps `design` inside `overrides` like any other field, so a persisted or
    seeded candidate reopens on its design.
 
@@ -74,4 +75,4 @@ accessibility, right-to-left, light and dark).
 
 Name each design in one line (what it is and what it optimises for), then the
 usual **How to try it**: open the lab, pick each design in the panel, tune it,
-Keep as candidate for each finalist, Compare, then Done or "land b".
+★ Keep each finalist, tap the chips to compare, then ✓ Use this.

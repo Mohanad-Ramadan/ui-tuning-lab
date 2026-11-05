@@ -36,7 +36,9 @@ for example in $EXAMPLES; do
   extract_example "$ROOT/examples/$example" "$dir"
   if [ -z "$(ls "$dir")" ]; then
     not_ok "$example has no tagged source files"
-  elif grep -Eq 'UITuningLabProfile|localStorage|applicationSupportDirectory|Button\("Save"|>Save</button>|func save\(|function save\(' "$dir"/*; then
+  # The result file (uiTuningLab.result, .ui-tuning-lab/result.json) is the one
+  # write an ephemeral lab makes; favorites must not reach storage.
+  elif grep -Eq 'UITuningLabProfile|uiTuningLab\.candidates|candidates/|Button\("Save"|>Save</button>|func save\(|function save\(' "$dir"/*; then
     not_ok "$example default source includes persistence"
   else
     ok "$example default source is ephemeral"
@@ -181,21 +183,15 @@ require_text examples/web-floating-panel.md 'trigger.current?.focus()' 'web dism
 require_text examples/web-floating-panel.md 'cancelAnimationFrame(focusFrame)' 'web cleanup cancels pending initial-focus work'
 require_text examples/web-floating-panel.md 'value={config.gap}' 'web lab controls every config field'
 require_text examples/web-floating-panel.md 'uiTuningLab.candidates.' 'web candidates use the uiTuningLab namespace'
-for example in swiftui-popover-palette macos-panel-minimal; do
-  require_text "examples/$example.md" 'Toggle("Show baseline", isOn: showingBaseline)' "$example.md lab flips to the baseline"
-done
 require_text examples/swiftui-popover-palette.md '.onDisappear { if let stashedDraft { style = stashedDraft } }' 'iOS closing restores the stashed draft'
 require_text examples/macos-panel-minimal.md 'if let draft = lab.stashedDraft { model.style = draft }' 'macOS closing restores the stashed draft'
 require_text examples/macos-panel-minimal.md 'override func cancelOperation(_ sender: Any?) { close() }' 'macOS panel closes on Escape'
-require_text examples/web-floating-panel.md 'onClick={toggleBaseline}>Show baseline' 'web lab flips to the baseline'
 require_text examples/web-floating-panel.md 'if (stashedDraft.current) setConfigRef.current(stashedDraft.current);' 'web closing restores the stashed draft'
 require_text examples/animation-spring.md 'lab.replayToken += 1' 'SwiftUI motion lab can replay'
 require_text examples/animation-spring.md 'motion.duration /= speed' 'SwiftUI motion lab slows the preview by stretching duration'
-require_text examples/animation-spring.md 'Toggle("Show baseline"' 'SwiftUI motion lab flips to the baseline'
 require_text examples/animation-spring.md 'accessibilityReduceMotion' 'SwiftUI motion respects Reduce Motion'
 require_text examples/animation-spring.md 'key={replay}' 'web motion lab can replay'
 require_text examples/animation-spring.md 'durationMs: source.durationMs / speed' 'web motion lab slows the preview by stretching duration'
-require_text examples/animation-spring.md 'aria-pressed={showBaseline}' 'web motion lab flips to the baseline'
 require_text examples/animation-spring.md 'prefers-reduced-motion: reduce' 'web motion respects reduced motion'
 
 # Landing: every lab can copy its changed values, per language.
@@ -257,14 +253,14 @@ for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; d
   fi
 done
 
-# Candidates, Done, and Compare are in every variant users copy
+# Chips, Keep, Use this, and the result file are in every variant users copy
 # (references/candidates.md), the ephemeral default included.
 for example in $EXAMPLES; do
   for variant in $(example_variants "$ROOT/examples/$example"); do
     dir="$WORK/${example%.md}-$variant"
     label="$example [$variant]"
-    for needle in 'Keep as candidate' 'Compare' 'Done' 'Finished? Keep the ones you like, then press Done' \
-        'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE'; do
+    for needle in 'Original' 'Now' '★ Keep' '✓ Use this' 'Keep favorites · Use this to finish' \
+        'Sent: ' 'land ' 'result' 'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE'; do
       if grep -rqF "$needle" "$dir"; then ok "$label has $needle"; else not_ok "$label has $needle"; fi
     done
   done

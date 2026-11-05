@@ -8,18 +8,20 @@ Command-Shift-L are the human path and visible fallback; the DEBUG-only
 the agent path (`references/activation.md`). **Copy values** puts the fields that differ
 from the baseline on the pasteboard and logs them as one
 `UITUNINGLAB_VALUES {...}` line for landing (`references/landing-protocol.md`).
-**Keep as candidate**, the candidates list (Load, Remove), **Compare**, and
-**Done** follow `references/candidates.md`. The coordinator owns the
-`UITuningLabCandidates` store beside the draft, so candidates and `basedOn`
-survive closing the panel; in the default candidate they live in memory and in
-the log only, and a name is never reused within a run. Compare shares the Show
-baseline stash, and while either shows something other than the draft the
-editing controls, Keep, Reset, Copy values, and Load are disabled. Done is
-disabled only while Show baseline is on; while Compare shows a candidate, Done
-loads it into the draft first, so it is the winner. Closing the panel restores
-the draft. The finish hint is pinned below the controls. To reopen a session,
-seed the store's `initial:` array; each seeded candidate logs its own
-`UITUNINGLAB_CANDIDATE` line. The default candidate has no persistence. Every
+The chips, **★ Keep**, **✓ Use this**, and the **⋯** menu (Reset, Copy values)
+follow `references/candidates.md`. The chip row shows Original, Now, and each
+favorite; clicking one shows it in the real toolbar, and Now is stashed
+meanwhile and restored when Now is clicked or the panel closes. The controls are
+disabled while Original is shown; moving one while a favorite is shown loads
+that favorite into Now first. **✓ Use this** logs `UITUNINGLAB_DONE`, writes
+Application Support `<bundle-id>/.ui-tuning-lab/result.json`, copies
+`land <name>`, and collapses the panel to a `✓ Sent:` bar whose Change button
+reopens it. The coordinator owns the `UITuningLabCandidates` store beside the
+draft, so favorites and `basedOn` survive closing the panel; in the default
+candidate they live in memory and in the log, and a name is never reused within
+a run. The hint is pinned below the controls. To reopen a session, seed the
+store's `initial:` array; each seeded favorite logs its own
+`UITUNINGLAB_CANDIDATE` line. The default candidate saves no favorites. Every
 lab type carries the `UITuningLab` prefix and lives in a file wrapped in
 `#if DEBUG`, so `source-gates` can find it and Release builds compile it out.
 
@@ -111,15 +113,16 @@ import SwiftUI
 /// panel can always restore the draft.
 @MainActor
 final class UITuningLabState: ObservableObject {
-    @Published var stashedDraft: ToolbarStyle?  // set while the baseline or a candidate is shown
-    @Published var comparing: String?           // the candidate Compare shows, nil for the draft
+    @Published var stashedDraft: ToolbarStyle?  // Now, while another chip is shown
+    @Published var shown = "now"                // the chip shown: now, original, or a favorite's name
+    @Published var sent: String?                // the last pick; set, the panel is one bar
 }
 
 @MainActor
 final class UITuningLabCoordinator: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private let lab = UITuningLabState()
-    // Candidates and basedOn live beside the draft and outlive the panel. To
+    // Favorites and basedOn live beside the draft and outlive the panel. To
     // reopen a session, seed the finalists kept in the project here
     // (references/candidates.md).
     private let candidates = UITuningLabCandidates<ToolbarStyle>(baseline: .appDefault, initial: [])
@@ -157,7 +160,8 @@ final class UITuningLabCoordinator: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         if let draft = lab.stashedDraft { model.style = draft }
         lab.stashedDraft = nil
-        lab.comparing = nil
+        lab.shown = "now"
+        lab.sent = nil
         panel?.delegate = nil
         panel?.contentView = nil
         panel = nil
@@ -202,7 +206,7 @@ import SwiftUI
 struct UITuningLabPanel: View {
     @ObservedObject var model: FeatureSceneModel
     @ObservedObject var lab: UITuningLabState
-    // Owned by the coordinator beside the draft, so candidates and basedOn
+    // Owned by the coordinator beside the draft, so favorites and basedOn
     // survive closing and reopening the panel.
     @ObservedObject var candidates: UITuningLabCandidates<ToolbarStyle>
     let baseline: ToolbarStyle
@@ -212,60 +216,79 @@ struct UITuningLabPanel: View {
     private static let spacious = ToolbarStyle(height: 56, cornerRadius: 16)
 
     var body: some View {
+        if let sent = lab.sent {
+            // ✓ Use this collapses the panel to one bar; Change reopens it.
+            VStack(alignment: .leading) {
+                HStack {
+                    Text("✓ Sent: \(sent)")
+                    Spacer()
+                    Button("Change") { lab.sent = nil }
+                }
+                if let status { Text(status).font(.footnote) }
+            }
+            .padding()
+            .frame(width: 300)
+        } else {
+            panel
+        }
+    }
+
+    private var panel: some View {
         Form {
-            Toggle("Show baseline", isOn: showingBaseline)
-            if !candidates.all.isEmpty {
-                Picker("Compare", selection: comparedCandidate) {
-                    Text("Draft").tag(String?.none)
-                    ForEach(candidates.all) { Text($0.name).tag(Optional($0.name)) }
+            HStack {
+                Text("UI tuning lab").font(.headline)
+                Spacer()
+                Menu {
+                    Button("Reset", action: reset)
+                    Button("Copy values") {
+                        // Copy values always reports Now, whatever chip is shown.
+                        status = uiTuningLabCopyValues(from: baseline, to: lab.stashedDraft ?? model.style)
+                    }
+                } label: {
+                    Text("⋯")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityLabel("More")
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack {
+                    chip("Original", id: "original")
+                    chip("Now", id: "now")
+                    ForEach(candidates.all) { favorite in
+                        HStack(spacing: 2) {
+                            chip(favorite.name, id: favorite.name)
+                            Button("×") { remove(favorite.name) }
+                                .accessibilityLabel("Remove \(favorite.name)")
+                        }
+                    }
                 }
             }
             Group {
                 HStack {
-                    Button("Compact") { model.style = Self.compact; candidates.basedOn = "compact" }
-                    Button("Spacious") { model.style = Self.spacious; candidates.basedOn = "spacious" }
+                    Button("Compact") { edit(Self.compact, basedOn: "compact") }
+                    Button("Spacious") { edit(Self.spacious, basedOn: "spacious") }
                 }
                 LabeledContent("Height", value: "\(Int(model.style.height)) pt")
                     .accessibilityHidden(true)  // the slider reports its own value
-                Slider(value: $model.style.height, in: 28...64, step: 1) { Text("Height") }
+                Slider(value: draft.height, in: 28...64, step: 1) { Text("Height") }
                 LabeledContent("Radius", value: "\(Int(model.style.cornerRadius)) pt")
                     .accessibilityHidden(true)  // the slider reports its own value
-                Slider(value: $model.style.cornerRadius, in: 0...24, step: 1) { Text("Radius") }
-                HStack {
-                    Button("Reset") { model.style = baseline; candidates.basedOn = "baseline" }
-                    Button("Copy values") {
-                        status = uiTuningLabCopyValues(from: baseline, to: model.style)
-                    }
-                }
+                Slider(value: draft.cornerRadius, in: 0...24, step: 1) { Text("Radius") }
             }
-            .disabled(lab.stashedDraft != nil)
+            .disabled(lab.shown == "original")
             HStack {
-                Button("Keep as candidate", action: keep)
-                    .disabled(lab.stashedDraft != nil)
-                // While Compare shows a candidate, Done lands that candidate.
-                Button("Done", action: done)
-                    .disabled(lab.stashedDraft != nil && lab.comparing == nil)
-            }
-            if !candidates.all.isEmpty {
-                Section("Candidates") {
-                    ForEach(candidates.all) { candidate in
-                        HStack {
-                            Text("\(candidate.name), from \(candidate.basedOn)")
-                            Spacer()
-                            Button("Load") { load(candidate) }
-                                .accessibilityLabel("Load \(candidate.name)")
-                                .disabled(lab.stashedDraft != nil)
-                            Button("Remove") { remove(candidate.name) }
-                                .accessibilityLabel("Remove \(candidate.name)")
-                        }
-                    }
-                }
+                Button("★ Keep", action: keep)
+                    .accessibilityLabel("Keep")
+                    .disabled(lab.shown != "now")
+                Button("✓ Use this", action: useThis)
+                    .accessibilityLabel("Use this")
             }
             if let status { Text(status).font(.footnote) }
         }
         // Pinned below the controls, so it shows however long the panel grows.
         .safeAreaInset(edge: .bottom) {
-            Text("Finished? Keep the ones you like, then press Done, or tell the agent \"land b\".")
+            Text("Keep favorites · Use this to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -276,40 +299,54 @@ struct UITuningLabPanel: View {
         .padding()
     }
 
-    /// Shows the baseline in the real feature; turning it off restores the draft.
-    private var showingBaseline: Binding<Bool> {
-        Binding(
-            get: { lab.stashedDraft != nil && lab.comparing == nil },
-            set: { show in
-                lab.comparing = nil
-                if show {
-                    if lab.stashedDraft == nil { lab.stashedDraft = model.style }
-                    model.style = baseline
-                } else if let draft = lab.stashedDraft {
-                    model.style = draft
-                    lab.stashedDraft = nil
-                }
-            }
-        )
+    /// One chip; the highlighted chip is the one the feature shows.
+    private func chip(_ title: String, id: String) -> some View {
+        Button(title) { show(id) }
+            .buttonStyle(.bordered)
+            .tint(lab.shown == id ? .accentColor : .secondary)
+            .accessibilityAddTraits(lab.shown == id ? .isSelected : [])
     }
 
-    /// Shows a candidate in the real feature, sharing the baseline's stash;
-    /// Draft restores the draft.
-    private var comparedCandidate: Binding<String?> {
-        Binding(
-            get: { lab.comparing },
-            set: { name in
-                if let name, let candidate = candidates.named(name) {
-                    if lab.stashedDraft == nil { lab.stashedDraft = model.style }
-                    model.style = candidate.value
-                    lab.comparing = name
-                } else {
-                    if let draft = lab.stashedDraft { model.style = draft }
-                    lab.stashedDraft = nil
-                    lab.comparing = nil
-                }
-            }
-        )
+    /// Shows a chip in the real feature. Now is stashed while another chip is
+    /// shown and restored when Now is tapped or the panel closes.
+    private func show(_ id: String) {
+        if id == "now" {
+            if let draft = lab.stashedDraft { model.style = draft }
+            lab.stashedDraft = nil
+        } else {
+            if lab.stashedDraft == nil { lab.stashedDraft = model.style }
+            model.style = id == "original" ? baseline : candidates.named(id)?.value ?? model.style
+        }
+        lab.shown = id
+    }
+
+    /// The controls edit Now. Moving one while a favorite is shown first loads
+    /// that favorite into Now; the favorite itself does not change.
+    private var draft: Binding<ToolbarStyle> {
+        Binding(get: { model.style }, set: { edit($0) })
+    }
+
+    private func edit(_ value: ToolbarStyle, basedOn preset: String? = nil) {
+        if lab.shown != "now" {
+            candidates.basedOn = lab.shown
+            lab.stashedDraft = nil
+            lab.shown = "now"
+        }
+        model.style = value
+        if let preset { candidates.basedOn = preset }
+    }
+
+    private func reset() {
+        lab.stashedDraft = nil
+        lab.shown = "now"
+        model.style = baseline
+        candidates.basedOn = "baseline"
+    }
+
+    private func remove(_ name: String) {
+        if lab.shown == name { show("now") }
+        candidates.remove(name)
+        status = "Removed \(name)"
     }
 
     private func keep() {
@@ -321,28 +358,11 @@ struct UITuningLabPanel: View {
         }
     }
 
-    private func done() {
-        // The candidate on screen becomes the draft, so it is the winner.
-        var draft = model.style
-        if let name = lab.comparing, let candidate = candidates.named(name) {
-            lab.stashedDraft = nil
-            lab.comparing = nil
-            load(candidate)
-            draft = candidate.value
-        }
-        status = candidates.done(draft)
-    }
-
-    private func load(_ candidate: UITuningLabCandidate<ToolbarStyle>) {
-        model.style = candidate.value
-        candidates.basedOn = candidate.name
-        status = "Loaded \(candidate.name)"
-    }
-
-    private func remove(_ name: String) {
-        if lab.comparing == name { comparedCandidate.wrappedValue = nil }
-        candidates.remove(name)
-        status = "Removed \(name)"
+    /// Picks the chip on screen: a favorite, `original`, or `draft` for Now.
+    private func useThis() {
+        let winner = lab.shown == "now" ? "draft" : lab.shown
+        status = candidates.use(model.style, winner: winner)
+        lab.sent = winner
     }
 }
 #endif
@@ -350,8 +370,9 @@ struct UITuningLabPanel: View {
 
 <!-- copy: assets/swift/UITuningLabValues.swift -->
 `UITuningLabValues.swift`: copy `assets/swift/UITuningLabValues.swift` into the
-app's target unchanged. It holds Copy values, the candidate store, candidate
-names, and the log lines every Swift lab shares, all inside `#if DEBUG`.
+app's target unchanged. It holds Copy values, the favorites store, favorite
+names, Use this with its result file, and the log lines every Swift lab shares,
+all inside `#if DEBUG`.
 
 Each window's `FeatureSceneModel` owns exactly one coordinator; the focused scene
 routes the menu and `Command-Shift-L` shortcut to that coordinator, and the launch
@@ -364,24 +385,24 @@ the archived Release app before approval.
 
 If the user explicitly requests persistence, replace `UITuningLabPanel.swift`
 with this version. The app and coordinator files stay unchanged. Each Keep also
-writes the candidate as a `schemaVersion` 2 profile, and Remove deletes that
-candidate's file and nothing else. Files live under Application Support's
+writes the favorite as a `schemaVersion` 2 profile, and × deletes that
+favorite's file and nothing else. Files live under Application Support's
 `<bundle-id>/.ui-tuning-lab/candidates/`: a non-sandboxed app shares Application
 Support with every other app, so the bundle ID keeps labs apart. Opening the
-panel adds every saved candidate to the list, ordered by `savedAt` (which keeps
-fractional seconds) and then by name, and logs each one; Load applies its
-overrides to the draft, and the baseline stays the declared default, so Reset
-still returns to it. Every stored file name stays taken, even for a file that
-was skipped. A file that does not decode, has another schema or platform, has a
-name that differs from its file or is not kebab-case, or now matches the
-baseline is reported in the status line, skipped, and left untouched.
+panel adds every saved favorite as a chip, ordered by `savedAt` (which keeps
+fractional seconds) and then by name, and logs each one; the baseline stays the
+declared default, so Reset still returns to it. Every stored file name stays
+taken, even for a file that was skipped. A file that does not decode, has
+another schema or platform, has a name that differs from its file or is not
+kebab-case, or now matches the baseline is reported in the status line,
+skipped, and left untouched.
 
 <!-- file: UITuningLabPanel.swift variant=persist -->
 ```swift
 import SwiftUI
 
 #if DEBUG
-/// A kept candidate on disk: `<name>.json` in `directory`, `schemaVersion` 2
+/// A kept favorite on disk: `<name>.json` in `directory`, `schemaVersion` 2
 /// (references/config-schema.md).
 struct UITuningLabProfile: Codable {
     var schemaVersion = 2
@@ -415,7 +436,7 @@ struct UITuningLabProfileMismatch: LocalizedError {
 struct UITuningLabPanel: View {
     @ObservedObject var model: FeatureSceneModel
     @ObservedObject var lab: UITuningLabState
-    // Owned by the coordinator beside the draft, so candidates and basedOn
+    // Owned by the coordinator beside the draft, so favorites and basedOn
     // survive closing and reopening the panel.
     @ObservedObject var candidates: UITuningLabCandidates<ToolbarStyle>
     let baseline: ToolbarStyle
@@ -425,60 +446,79 @@ struct UITuningLabPanel: View {
     private static let spacious = ToolbarStyle(height: 56, cornerRadius: 16)
 
     var body: some View {
+        if let sent = lab.sent {
+            // ✓ Use this collapses the panel to one bar; Change reopens it.
+            VStack(alignment: .leading) {
+                HStack {
+                    Text("✓ Sent: \(sent)")
+                    Spacer()
+                    Button("Change") { lab.sent = nil }
+                }
+                if let status { Text(status).font(.footnote) }
+            }
+            .padding()
+            .frame(width: 300)
+        } else {
+            panel
+        }
+    }
+
+    private var panel: some View {
         Form {
-            Toggle("Show baseline", isOn: showingBaseline)
-            if !candidates.all.isEmpty {
-                Picker("Compare", selection: comparedCandidate) {
-                    Text("Draft").tag(String?.none)
-                    ForEach(candidates.all) { Text($0.name).tag(Optional($0.name)) }
+            HStack {
+                Text("UI tuning lab").font(.headline)
+                Spacer()
+                Menu {
+                    Button("Reset", action: reset)
+                    Button("Copy values") {
+                        // Copy values always reports Now, whatever chip is shown.
+                        status = uiTuningLabCopyValues(from: baseline, to: lab.stashedDraft ?? model.style)
+                    }
+                } label: {
+                    Text("⋯")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityLabel("More")
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack {
+                    chip("Original", id: "original")
+                    chip("Now", id: "now")
+                    ForEach(candidates.all) { favorite in
+                        HStack(spacing: 2) {
+                            chip(favorite.name, id: favorite.name)
+                            Button("×") { remove(favorite.name) }
+                                .accessibilityLabel("Remove \(favorite.name)")
+                        }
+                    }
                 }
             }
             Group {
                 HStack {
-                    Button("Compact") { model.style = Self.compact; candidates.basedOn = "compact" }
-                    Button("Spacious") { model.style = Self.spacious; candidates.basedOn = "spacious" }
+                    Button("Compact") { edit(Self.compact, basedOn: "compact") }
+                    Button("Spacious") { edit(Self.spacious, basedOn: "spacious") }
                 }
                 LabeledContent("Height", value: "\(Int(model.style.height)) pt")
                     .accessibilityHidden(true)  // the slider reports its own value
-                Slider(value: $model.style.height, in: 28...64, step: 1) { Text("Height") }
+                Slider(value: draft.height, in: 28...64, step: 1) { Text("Height") }
                 LabeledContent("Radius", value: "\(Int(model.style.cornerRadius)) pt")
                     .accessibilityHidden(true)  // the slider reports its own value
-                Slider(value: $model.style.cornerRadius, in: 0...24, step: 1) { Text("Radius") }
-                HStack {
-                    Button("Reset") { model.style = baseline; candidates.basedOn = "baseline" }
-                    Button("Copy values") {
-                        status = uiTuningLabCopyValues(from: baseline, to: model.style)
-                    }
-                }
+                Slider(value: draft.cornerRadius, in: 0...24, step: 1) { Text("Radius") }
             }
-            .disabled(lab.stashedDraft != nil)
+            .disabled(lab.shown == "original")
             HStack {
-                Button("Keep as candidate", action: keep)
-                    .disabled(lab.stashedDraft != nil)
-                // While Compare shows a candidate, Done lands that candidate.
-                Button("Done", action: done)
-                    .disabled(lab.stashedDraft != nil && lab.comparing == nil)
-            }
-            if !candidates.all.isEmpty {
-                Section("Candidates") {
-                    ForEach(candidates.all) { candidate in
-                        HStack {
-                            Text("\(candidate.name), from \(candidate.basedOn)")
-                            Spacer()
-                            Button("Load") { load(candidate) }
-                                .accessibilityLabel("Load \(candidate.name)")
-                                .disabled(lab.stashedDraft != nil)
-                            Button("Remove") { remove(candidate.name) }
-                                .accessibilityLabel("Remove \(candidate.name)")
-                        }
-                    }
-                }
+                Button("★ Keep", action: keep)
+                    .accessibilityLabel("Keep")
+                    .disabled(lab.shown != "now")
+                Button("✓ Use this", action: useThis)
+                    .accessibilityLabel("Use this")
             }
             if let status { Text(status).font(.footnote) }
         }
         // Pinned below the controls, so it shows however long the panel grows.
         .safeAreaInset(edge: .bottom) {
-            Text("Finished? Keep the ones you like, then press Done, or tell the agent \"land b\".")
+            Text("Keep favorites · Use this to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -490,40 +530,62 @@ struct UITuningLabPanel: View {
         .onAppear(perform: loadSaved)
     }
 
-    /// Shows the baseline in the real feature; turning it off restores the draft.
-    private var showingBaseline: Binding<Bool> {
-        Binding(
-            get: { lab.stashedDraft != nil && lab.comparing == nil },
-            set: { show in
-                lab.comparing = nil
-                if show {
-                    if lab.stashedDraft == nil { lab.stashedDraft = model.style }
-                    model.style = baseline
-                } else if let draft = lab.stashedDraft {
-                    model.style = draft
-                    lab.stashedDraft = nil
-                }
-            }
-        )
+    /// One chip; the highlighted chip is the one the feature shows.
+    private func chip(_ title: String, id: String) -> some View {
+        Button(title) { show(id) }
+            .buttonStyle(.bordered)
+            .tint(lab.shown == id ? .accentColor : .secondary)
+            .accessibilityAddTraits(lab.shown == id ? .isSelected : [])
     }
 
-    /// Shows a candidate in the real feature, sharing the baseline's stash;
-    /// Draft restores the draft.
-    private var comparedCandidate: Binding<String?> {
-        Binding(
-            get: { lab.comparing },
-            set: { name in
-                if let name, let candidate = candidates.named(name) {
-                    if lab.stashedDraft == nil { lab.stashedDraft = model.style }
-                    model.style = candidate.value
-                    lab.comparing = name
-                } else {
-                    if let draft = lab.stashedDraft { model.style = draft }
-                    lab.stashedDraft = nil
-                    lab.comparing = nil
-                }
+    /// Shows a chip in the real feature. Now is stashed while another chip is
+    /// shown and restored when Now is tapped or the panel closes.
+    private func show(_ id: String) {
+        if id == "now" {
+            if let draft = lab.stashedDraft { model.style = draft }
+            lab.stashedDraft = nil
+        } else {
+            if lab.stashedDraft == nil { lab.stashedDraft = model.style }
+            model.style = id == "original" ? baseline : candidates.named(id)?.value ?? model.style
+        }
+        lab.shown = id
+    }
+
+    /// The controls edit Now. Moving one while a favorite is shown first loads
+    /// that favorite into Now; the favorite itself does not change.
+    private var draft: Binding<ToolbarStyle> {
+        Binding(get: { model.style }, set: { edit($0) })
+    }
+
+    private func edit(_ value: ToolbarStyle, basedOn preset: String? = nil) {
+        if lab.shown != "now" {
+            candidates.basedOn = lab.shown
+            lab.stashedDraft = nil
+            lab.shown = "now"
+        }
+        model.style = value
+        if let preset { candidates.basedOn = preset }
+    }
+
+    private func reset() {
+        lab.stashedDraft = nil
+        lab.shown = "now"
+        model.style = baseline
+        candidates.basedOn = "baseline"
+    }
+
+    private func remove(_ name: String) {
+        if lab.shown == name { show("now") }
+        candidates.remove(name)
+        let file = UITuningLabProfile.fileURL(name)
+        do {
+            if FileManager.default.fileExists(atPath: file.path) {
+                try FileManager.default.removeItem(at: file)
             }
-        )
+            status = "Removed \(name)"
+        } catch {
+            status = "Removed \(name), file not deleted: \(error.localizedDescription)"
+        }
     }
 
     private func keep() {
@@ -535,36 +597,11 @@ struct UITuningLabPanel: View {
         }
     }
 
-    private func done() {
-        // The candidate on screen becomes the draft, so it is the winner.
-        var draft = model.style
-        if let name = lab.comparing, let candidate = candidates.named(name) {
-            lab.stashedDraft = nil
-            lab.comparing = nil
-            load(candidate)
-            draft = candidate.value
-        }
-        status = candidates.done(draft)
-    }
-
-    private func load(_ candidate: UITuningLabCandidate<ToolbarStyle>) {
-        model.style = candidate.value
-        candidates.basedOn = candidate.name
-        status = "Loaded \(candidate.name)"
-    }
-
-    private func remove(_ name: String) {
-        if lab.comparing == name { comparedCandidate.wrappedValue = nil }
-        candidates.remove(name)
-        let file = UITuningLabProfile.fileURL(name)
-        do {
-            if FileManager.default.fileExists(atPath: file.path) {
-                try FileManager.default.removeItem(at: file)
-            }
-            status = "Removed \(name)"
-        } catch {
-            status = "Removed \(name), file not deleted: \(error.localizedDescription)"
-        }
+    /// Picks the chip on screen: a favorite, `original`, or `draft` for Now.
+    private func useThis() {
+        let winner = lab.shown == "now" ? "draft" : lab.shown
+        status = candidates.use(model.style, winner: winner)
+        lab.sent = winner
     }
 
     /// Writes one new candidate atomically, refusing a name storage already holds.
@@ -642,4 +679,4 @@ struct UITuningLabPanel: View {
 
 Keep atomically writes `<name>.json` after checking that the file does not
 exist. A write failure refuses the Keep: the status line shows the error, and the
-candidate is neither added nor logged.
+favorite is neither added nor logged.

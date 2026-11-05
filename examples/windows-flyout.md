@@ -16,15 +16,17 @@ Activation (`references/activation.md`):
   during inspection that the app does not already use it.
 - **Visible fallback:** the Tune button itself, with an accessible name.
 
-The page owns the `UITuningLabFlyout` instance, so candidates, `basedOn`, and
-the Compare stash survive closing the flyout. The default lab is ephemeral:
-candidates live in memory and the debug output only, and a name is never reused
-within a process. Show baseline and Compare share one stash and are exclusive;
-while either shows something other than the draft, presets, sliders, Reset,
-Copy values, Keep, and Load are disabled. Done is disabled only while Show
-baseline is on; while Compare shows a candidate, Done loads it first. Closing
-restores the draft. The finish hint is a grid row below the `ScrollViewer`, so
-it stays visible.
+The page owns the `UITuningLabFlyout` instance, so favorites, `basedOn`, and
+the stashed Now survive closing the flyout. The default lab is ephemeral:
+favorites live in memory and the debug output only, and a name is never reused
+within a process. The chip row under the header shows Original, Now, or a
+favorite in the real feature; Now is stashed meanwhile and restored when Now is
+clicked or the flyout closes. While Original is shown the presets and sliders
+are disabled; moving one while a favorite is shown loads that favorite into Now
+first. **★ Keep** adds Now to the favorites, **✓ Use this** picks the shown chip
+and shrinks the flyout to the result bar, and the **⋯** menu holds Reset and
+Copy values. The hint is a grid row below the `ScrollViewer`, so it stays
+visible.
 
 ## Host change
 
@@ -173,24 +175,26 @@ internal sealed class UITuningLabFlyout
     private readonly Func<CardConfig> getDraft;
     private readonly Action<CardConfig> setDraft;
     private readonly AppBarButton tuneButton;
-    // Candidates the lab opens with. Empty by default; a later session seeds the
+    // Favorites the lab opens with. Empty by default; a later session seeds the
     // finalists kept in the project here (references/candidates.md).
     private readonly List<UITuningLabCandidate> candidates = new();
-    private readonly HashSet<string> issued = new();
+    // Every name issued, removed ones included, plus the names a favorite never takes.
+    private readonly HashSet<string> issued = new() { "draft", "now", "original", "baseline" };
     private readonly HashSet<string> logged = new();
     private string basedOn = "baseline";
-    private string shown = "draft"; // "draft", "baseline", or a candidate's name
-    private CardConfig? stash;
+    private string? lastPreset;
+    private string shown = "draft"; // the shown chip: "draft" (Now), "original", or a favorite's name
+    private CardConfig? stash; // Now, while another chip is shown
+    private string? result; // the last pick; while set, the flyout is the result bar
     private Flyout? flyout;
     private bool allowClose;
     private bool refreshing;
     // Controls exist only while the flyout is open.
-    private ToggleSwitch? baselineSwitch;
+    private Grid? panel;
+    private StackPanel? resultBar, chips, draftControls;
+    private TextBlock? resultText, status;
     private Slider? radiusSlider, spacingSlider;
-    private StackPanel? draftControls, candidateList;
-    private RadioButtons? compare;
-    private Button? doneButton;
-    private TextBlock? status;
+    private Button? keepButton;
 
     public UITuningLabFlyout(Page page, Grid root, CommandBar? toolbar, Func<CardConfig> getDraft, Action<CardConfig> setDraft)
     {
@@ -258,19 +262,36 @@ internal sealed class UITuningLabFlyout
 
     private static void Log(string tag, object payload) => Debug.WriteLine($"{tag} {Json(payload)}");
 
-    // 1 -> a, 26 -> z, 27 -> aa (bijective base 26).
-    private static string CandidateName(int index)
-    {
-        var name = "";
-        for (var n = index; n > 0; n /= 26) { n -= 1; name = (char)('a' + n % 26) + name; }
-        return name;
-    }
-
     private static void CopyText(string text)
     {
         var package = new DataPackage();
         package.SetText(text);
         Clipboard.SetContent(package);
+    }
+
+    // Packaged: the app's LocalFolder. Unpackaged: %LOCALAPPDATA%\<app-name>.
+    private static string LabDirectory()
+    {
+        string root;
+        try { root = Windows.Storage.ApplicationData.Current.LocalFolder.Path; }
+        catch (Exception) // unpackaged: no package identity (InvalidOperationException or COMException)
+        {
+            root = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExampleApp");
+        }
+        return System.IO.Path.Combine(root, ".ui-tuning-lab");
+    }
+
+    // Temporary file, then a replacing move: a reader never sees half a pick.
+    private static void WriteResult(SortedDictionary<string, object?> done)
+    {
+        var dir = System.IO.Directory.CreateDirectory(LabDirectory()).FullName;
+        var target = System.IO.Path.Combine(dir, "result.json");
+        var temp = target + ".tmp";
+        System.IO.File.WriteAllText(temp, Json(new SortedDictionary<string, object?>(done)
+        {
+            ["savedAt"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+        }));
+        System.IO.File.Move(temp, target, overwrite: true);
     }
 
     public void Open()
@@ -306,84 +327,96 @@ internal sealed class UITuningLabFlyout
         if (flyout != null) OnClosed(null, EventArgs.Empty);
     }
 
-    // Restores the draft and releases the flyout and every control it held.
+    // Restores Now and releases the flyout and every control it held.
     private void OnClosed(object? sender, object e)
     {
         Show("draft");
         if (flyout != null) { flyout.Closed -= OnClosed; flyout.Content = null; }
         flyout = null;
-        baselineSwitch = null; radiusSlider = spacingSlider = null;
-        draftControls = candidateList = null; compare = null; doneButton = null; status = null;
+        panel = null; resultBar = chips = draftControls = null; resultText = status = null;
+        radiusSlider = spacingSlider = null; keepButton = null;
         tuneButton.Focus(FocusState.Programmatic);
     }
 
     private UIElement BuildContent()
     {
         refreshing = true; // Refresh clears it once the controls hold the draft
-        var body = new StackPanel { Spacing = 8 };
         var closeButton = new Button { Content = "Close" };
         closeButton.Click += (_, _) => Close();
+        var more = new Button { Content = "⋯" };
+        AutomationProperties.SetName(more, "More");
+        var resetItem = new MenuFlyoutItem { Text = "Reset" };
+        resetItem.Click += (_, _) => { lastPreset = null; Edit(Baseline, "baseline"); };
+        var copyItem = new MenuFlyoutItem { Text = "Copy values" };
+        copyItem.Click += (_, _) => CopyValues();
+        more.Flyout = new MenuFlyout { Items = { resetItem, copyItem } };
         var title = new TextBlock { Text = "UI tuning lab", Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"] };
         AutomationProperties.SetHeadingLevel(title, AutomationHeadingLevel.Level1);
-        var header = new Grid { ColumnDefinitions = { new() { Width = new(1, GridUnitType.Star) }, new() } };
+        var header = new Grid { ColumnDefinitions = { new() { Width = new(1, GridUnitType.Star) }, new() { Width = GridLength.Auto }, new() { Width = GridLength.Auto } } };
         header.Children.Add(title);
-        Grid.SetColumn(closeButton, 1);
+        Grid.SetColumn(more, 1);
+        header.Children.Add(more);
+        Grid.SetColumn(closeButton, 2);
         header.Children.Add(closeButton);
-        body.Children.Add(header);
 
-        baselineSwitch = new ToggleSwitch { Header = "Show baseline" };
-        baselineSwitch.Toggled += (sender, _) =>
+        // The chips: Original, Now, then each favorite. Refresh fills them.
+        chips = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        var chipScroller = new ScrollViewer
         {
-            if (!refreshing) Show(((ToggleSwitch)sender).IsOn ? "baseline" : "draft");
+            Content = chips, HorizontalScrollMode = ScrollMode.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
         };
-        body.Children.Add(baselineSwitch);
 
+        var body = new StackPanel { Spacing = 8 };
         draftControls = new StackPanel { Spacing = 8 };
         var presetRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         foreach (var (key, label, value) in Presets)
         {
             var b = new Button { Content = label };
-            b.Click += (_, _) => { setDraft(value); basedOn = key; Refresh(); };
+            b.Click += (_, _) => { lastPreset = key; Edit(value, key); };
             presetRow.Children.Add(b);
         }
         draftControls.Children.Add(presetRow);
         radiusSlider = AddSlider(draftControls, "Corner radius", 32, v => getDraft() with { CornerRadius = v });
         spacingSlider = AddSlider(draftControls, "Spacing", 24, v => getDraft() with { Spacing = v });
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        actions.Children.Add(MakeButton("Reset", () => { setDraft(Baseline); basedOn = "baseline"; }));
-        actions.Children.Add(MakeButton("Copy values", CopyValues));
-        actions.Children.Add(MakeButton("Keep as candidate", Keep));
-        draftControls.Children.Add(actions);
         body.Children.Add(draftControls);
-
-        candidateList = new StackPanel { Spacing = 4 };
-        compare = new RadioButtons { Header = "Compare" };
-        compare.SelectionChanged += (sender, _) =>
-        {
-            if (refreshing || ((RadioButtons)sender).SelectedItem is not RadioButton { Tag: string target }) return;
-            // Show rebuilds compare.Items; do it after this event, not inside it.
-            tuneButton.DispatcherQueue.TryEnqueue(() => { if (flyout != null) Show(target); });
-        };
-        body.Children.Add(candidateList);
-        body.Children.Add(compare);
-        doneButton = MakeButton("Done", Done);
-        body.Children.Add(doneButton);
         status = new TextBlock { TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         body.Children.Add(status);
 
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 0) };
+        keepButton = MakeButton("★ Keep", Keep);
+        actions.Children.Add(keepButton);
+        actions.Children.Add(MakeButton("✓ Use this", UseThis));
+        // Pinned below the scrolling controls, visible however long the panel grows.
         var hint = new TextBlock
         {
-            Text = "Finished? Keep the ones you like, then press Done, or tell the agent \"land b\".",
+            Text = "Keep favorites · Use this to finish",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
         };
-        var root = new Grid { Width = 320, MaxHeight = 560, RowDefinitions = { new() { Height = new(1, GridUnitType.Star) }, new() } };
-        root.Children.Add(new ScrollViewer { Content = body });
-        // Pinned below the scrolling controls, visible however long the panel grows.
-        Grid.SetRow(hint, 1);
-        root.Children.Add(hint);
-        root.PreviewKeyDown += (_, e) => { if (e.Key == VirtualKey.Escape) { e.Handled = true; Close(); } };
-        return root;
+
+        panel = new Grid
+        {
+            Width = 320, MaxHeight = 560,
+            RowDefinitions = { new() { Height = GridLength.Auto }, new() { Height = GridLength.Auto },
+                new() { Height = new(1, GridUnitType.Star) }, new() { Height = GridLength.Auto }, new() { Height = GridLength.Auto } },
+        };
+        var scroller = new ScrollViewer { Content = body };
+        FrameworkElement[] rows = { header, chipScroller, scroller, actions, hint };
+        for (var i = 0; i < rows.Length; i++) { Grid.SetRow(rows[i], i); panel.Children.Add(rows[i]); }
+
+        // After ✓ Use this the flyout is one bar; Change reopens the panel.
+        resultText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetLiveSetting(resultText, AutomationLiveSetting.Polite);
+        resultBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        resultBar.Children.Add(resultText);
+        resultBar.Children.Add(MakeButton("Change", () => result = null));
+
+        var content = new Grid();
+        content.Children.Add(panel);
+        content.Children.Add(resultBar);
+        content.PreviewKeyDown += (_, e) => { if (e.Key == VirtualKey.Escape) { e.Handled = true; Close(); } };
+        return content;
     }
 
     private Slider AddSlider(Panel parent, string label, double max, Func<double, CardConfig> edit)
@@ -395,7 +428,7 @@ internal sealed class UITuningLabFlyout
         slider.ValueChanged += (_, e) =>
         {
             readout.Text = $"{e.NewValue:0}";
-            if (!refreshing && shown == "draft") setDraft(edit(Math.Round(e.NewValue)));
+            if (!refreshing && shown != "original") Edit(edit(Math.Round(e.NewValue)));
         };
         parent.Children.Add(slider);
         parent.Children.Add(readout);
@@ -409,42 +442,48 @@ internal sealed class UITuningLabFlyout
         return button;
     }
 
-    // Brings every control in line with the draft, the candidates, and what is shown.
+    // Brings every control in line with Now, the favorites, and the shown chip.
     private void Refresh()
     {
         if (flyout == null) return;
         refreshing = true;
         var draft = getDraft();
-        baselineSwitch!.IsOn = shown == "baseline";
+        var editable = shown != "original"; // never edit the baseline
+        panel!.Visibility = result == null ? Visibility.Visible : Visibility.Collapsed;
+        resultBar!.Visibility = result == null ? Visibility.Collapsed : Visibility.Visible;
+        resultText!.Text = $"✓ Sent: {result}";
         radiusSlider!.Value = draft.CornerRadius;
         spacingSlider!.Value = draft.Spacing;
-        draftControls!.IsHitTestVisible = shown == "draft";
-        foreach (var control in draftControls.Children.OfType<Control>()) control.IsEnabled = shown == "draft";
+        foreach (var control in draftControls!.Children.OfType<Control>()) control.IsEnabled = editable;
         foreach (var row in draftControls.Children.OfType<StackPanel>())
-            foreach (var control in row.Children.OfType<Control>()) control.IsEnabled = shown == "draft";
-        candidateList!.Children.Clear();
-        compare!.Items.Clear();
+            foreach (var control in row.Children.OfType<Control>()) control.IsEnabled = editable;
+        keepButton!.IsEnabled = shown == "draft";
+        chips!.Children.Clear();
+        AddChip("Original", "original");
+        AddChip("Now", "draft");
         foreach (var c in candidates)
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            row.Children.Add(new TextBlock { Text = $"{c.Name} from {c.BasedOn}", VerticalAlignment = VerticalAlignment.Center });
-            var load = MakeButton("Load", () => Load(c));
-            load.IsEnabled = shown == "draft";
-            AutomationProperties.SetName(load, $"Load {c.Name}");
-            var remove = MakeButton("Remove", () => Remove(c.Name));
-            AutomationProperties.SetName(remove, $"Remove {c.Name}");
-            row.Children.Add(load);
-            row.Children.Add(remove);
-            candidateList.Children.Add(row);
+            var name = c.Name;
+            AddChip(name, name);
+            var remove = new Button { Content = "×" };
+            AutomationProperties.SetName(remove, $"Remove {name}");
+            remove.Click += (_, _) => Later(() => Remove(name));
+            chips.Children.Add(remove);
         }
-        compare.Visibility = candidates.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var target in candidates.Select(c => c.Name).Prepend("draft"))
-            compare.Items.Add(new RadioButton { Content = target == "draft" ? "Draft" : target, Tag = target });
-        compare.SelectedIndex = shown == "baseline" ? -1 : candidates.FindIndex(c => c.Name == shown) + 1;
-        doneButton!.IsEnabled = shown != "baseline";
         refreshing = false;
     }
 
+    private void AddChip(string label, string target)
+    {
+        var chip = new ToggleButton { Content = label, IsChecked = shown == target };
+        chip.Click += (_, _) => Later(() => Show(target));
+        chips!.Children.Add(chip);
+    }
+
+    // The chips are rebuilt by Refresh; do that after the click, not inside it.
+    private void Later(Action action) => tuneButton.DispatcherQueue.TryEnqueue(() => { if (flyout != null) action(); });
+
+    // Clicking a chip shows it in the real feature.
     private void Show(string target)
     {
         if (target == "draft")
@@ -462,27 +501,43 @@ internal sealed class UITuningLabFlyout
         Refresh();
     }
 
-    private void SetStatus(string text) { if (status != null) status.Text = text; }
-
-    private void CopyValues()
+    // Every control edits Now. Moved while a favorite is shown, it loads that
+    // favorite into Now first; the favorite itself does not change.
+    private void Edit(CardConfig next, string? from = null)
     {
-        var json = Json(Changed(getDraft()));
-        Log("UITUNINGLAB_VALUES", Changed(getDraft()));
-        CopyText(json);
-        SetStatus(json == "{}" ? "No changes from baseline" : $"Copied {json}");
+        var chipChanged = shown != "draft";
+        basedOn = from ?? (shown == "draft" ? basedOn : shown);
+        stash = null;
+        shown = "draft";
+        setDraft(next);
+        if (chipChanged || from != null) Refresh();
     }
 
-    // Returns the new candidate, or null with a status. The persist variant
-    // writes the candidate before calling Commit.
+    private void SetStatus(string text) { if (status != null) status.Text = text; }
+
+    // Always reports Now, whichever chip is shown.
+    private void CopyValues()
+    {
+        var values = Changed(stash ?? getDraft());
+        var json = Json(values);
+        Log("UITUNINGLAB_VALUES", values);
+        CopyText(json);
+        SetStatus(json == "{}" ? "No changes from Original" : $"Copied {json}");
+    }
+
+    // Returns the new favorite, or null with a status. Keep is enabled only while
+    // Now is shown, so getDraft() is Now. The persist variant writes the favorite
+    // before calling Commit.
     private UITuningLabCandidate? PrepareKeep()
     {
         var values = Changed(getDraft());
-        if (values.Count == 0) { SetStatus("Matches the baseline; nothing to keep"); return null; }
+        if (values.Count == 0) { SetStatus("Same as Original"); return null; }
         var same = candidates.Find(c => Json(c.Values) == Json(values));
         if (same != null) { SetStatus($"Same as {same.Name}"); return null; }
-        var i = 1;
-        while (issued.Contains(CandidateName(i))) i++;
-        return new UITuningLabCandidate(CandidateName(i), basedOn, values);
+        var stem = lastPreset ?? "tweak";
+        var name = stem;
+        for (var i = 2; issued.Contains(name); i++) name = $"{stem}-{i}";
+        return new UITuningLabCandidate(name, basedOn, values);
     }
 
     private void Commit(UITuningLabCandidate candidate)
@@ -496,51 +551,43 @@ internal sealed class UITuningLabFlyout
 
     private void Keep() { if (PrepareKeep() is { } c) Commit(c); }
 
-    private void Load(UITuningLabCandidate candidate)
-    {
-        stash = null;
-        setDraft(ApplyValues(candidate.Values));
-        basedOn = candidate.Name;
-        shown = "draft";
-    }
-
     private void Remove(string name)
     {
+        if (shown == name) Show("draft");
         candidates.RemoveAll(c => c.Name == name);
         Log("UITUNINGLAB_CANDIDATE_REMOVED", new SortedDictionary<string, object?> { ["name"] = name });
-        if (shown == name) Show("draft");
+        Refresh();
     }
 
-    // Like Copy values, and it tells the agent the session is over. While Compare
-    // shows a candidate, that candidate becomes the draft first: it is the winner.
-    private void Done()
+    // Picks the shown chip and finishes. Picking again replaces the result.
+    private void UseThis()
     {
         var picked = candidates.Find(c => c.Name == shown);
-        if (picked != null) Load(picked);
-        var values = Changed(picked != null ? ApplyValues(picked.Values) : getDraft());
-        var winner = candidates.Find(c => Json(c.Values) == Json(values));
-        Log("UITUNINGLAB_DONE", new SortedDictionary<string, object?>
+        var winner = picked?.Name ?? (shown == "original" ? "original" : "draft");
+        var values = picked?.Values ?? (shown == "original" ? new SortedDictionary<string, double>() : Changed(getDraft()));
+        var done = new SortedDictionary<string, object?>
         {
             ["candidates"] = candidates.Select(c => c.AsJson()).ToList(),
             ["values"] = values,
-            ["winner"] = winner?.Name,
-        });
-        var json = Json(values);
-        CopyText(json);
-        SetStatus($"Done. Copied {json}");
+            ["winner"] = winner,
+        };
+        Log("UITUNINGLAB_DONE", done);
+        try { WriteResult(done); } catch (Exception e) { SetStatus($"Result file failed: {e.Message}"); }
+        CopyText($"land {winner}");
+        result = winner;
     }
 }
 #endif
 ```
 
-## Reading the lines and waiting for Done
+## Reading the lines and waiting for the pick
 
 `Debug.WriteLine` goes to the Visual Studio Output window when a debugger is
 attached, and to `OutputDebugString`, which Sysinternals DebugView captures.
 Follow `references/platform-handoff.md`: start
 `Dbgview.exe /accepteula /l <file>` before launching the app, read with
-`Select-String -Path <file> -Pattern UITUNINGLAB_`, and wait for Done by
-polling the same file. Anchor the wait to this session: record how many lines
+`Select-String -Path <file> -Pattern UITUNINGLAB_`, and wait for
+`UITUNINGLAB_DONE` by polling the same file. Anchor the wait to this session: record how many lines
 the log holds when the lab opens and match only lines after that, so a Done
 from an earlier session never ends the wait. (Starting a fresh DebugView log
 file per session works too.)
@@ -552,6 +599,12 @@ while (-not ($line = Get-Content $file | Select-Object -Skip $start |
         Select-String -SimpleMatch UITUNINGLAB_DONE | Select-Object -First 1)) { Start-Sleep 3 }
 $line.Line
 ```
+
+When no log was captured, read the result file ✓ Use this writes:
+`Get-Content "$env:LOCALAPPDATA\Packages\<package-family-name>\LocalState\.ui-tuning-lab\result.json"`
+for a packaged app (its `LocalFolder`), or
+`Get-Content "$env:LOCALAPPDATA\<app-name>\.ui-tuning-lab\result.json"` unpackaged.
+The `ExampleApp` folder name in `LabDirectory()` stands for the app's name.
 
 Launch for the agent path: an unpackaged app with
 `.\App.exe --ui-tuning-lab-open`; a packaged app through its execution alias
@@ -578,16 +631,7 @@ unpackaged apps `%LOCALAPPDATA%\<app-name>\.ui-tuning-lab\candidates\<name>.json
 Add to the class, inside `#if DEBUG`:
 
 ```csharp
-private static string CandidateDirectory()
-{
-    string root;
-    try { root = Windows.Storage.ApplicationData.Current.LocalFolder.Path; }
-    catch (InvalidOperationException) // unpackaged: no package identity
-    {
-        root = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExampleApp");
-    }
-    return System.IO.Path.Combine(root, ".ui-tuning-lab", "candidates");
-}
+private static string CandidateDirectory() => System.IO.Path.Combine(LabDirectory(), "candidates");
 
 // Atomic and never over an existing file: File.Move without overwrite throws if the target exists.
 private static void WriteCandidate(UITuningLabCandidate c, CardConfig overrides)

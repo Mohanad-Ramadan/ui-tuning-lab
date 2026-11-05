@@ -48,10 +48,10 @@ Before building a panel, look for one the project already has:
 | React Native `DevSettings.addMenuItem` or Flipper plugins | the existing developer menu |
 
 Reuse changes only the control surface. The four guarantees, the naming rule, a
-baseline, Copy values, Keep as candidate, Compare, Done with its finish hint
+baseline, the chips, ★ Keep, ✓ Use this with its hint, Copy values
 (`references/candidates.md`), and landing still apply. When the tool cannot host
-one of them (Storybook renders outside the running app, so Compare there is not
-the real feature), add it as a plain button beside the library's panel or say
+one of them (Storybook renders outside the running app, so its chips would not
+show the real feature), add it as a plain button beside the library's panel or say
 in the report what is missing, and a third-party panel
 must be imported only from the gated lab module so it drops out of production.
 If the existing tool cannot capture a baseline or unmount cleanly, build the

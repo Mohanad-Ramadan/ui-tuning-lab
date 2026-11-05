@@ -27,13 +27,16 @@ native changes in `AppDelegate` or `MainActivity` that also ship. A Metro-time
 variable is inlined only into a development bundle, and only inside a module the
 release bundle never contains, so nothing of it reaches Release.
 
-The lab component stays mounted while the screen is, so candidates, `basedOn`,
-and the Compare stash survive closing the panel. The default lab is ephemeral:
-candidates live in React state and the log, and a name is never reused within a
-JavaScript runtime. Show baseline and Compare share one stash and are
-exclusive; the draft controls are disabled while either shows something other
-than the draft, Done is disabled only while Show baseline is on, and closing
-restores the draft.
+The lab component stays mounted while the screen is, so favorites, `basedOn`,
+and the stashed Now survive closing the panel. The default lab is ephemeral:
+favorites live in React state and the log, and a name is never reused within a
+JavaScript runtime. The chip row under the header shows Original, Now, or a
+favorite in the real feature; Now is stashed meanwhile and restored when Now is
+tapped or the panel closes. While Original is shown the presets and steppers
+are disabled; moving one while a favorite is shown loads that favorite into Now
+first. **★ Keep** adds Now to the favorites, **✓ Use this** picks the shown chip
+and shrinks the panel to the result bar, and the **⋯** button opens Reset and
+Copy values.
 
 ## Host change
 
@@ -92,7 +95,7 @@ export function FeatureScreen() {
 
 ```tsx
 import { useEffect, useRef, useState } from "react";
-import { DevSettings, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { DevSettings, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { appDefault, CardFeature } from "./CardFeature";
 import type { CardConfig } from "./CardFeature";
 import type { TuningLabHostProps } from "./FeatureScreen";
@@ -148,23 +151,12 @@ function sortedJson(value: unknown): string {
 function log(tag: string, payload: unknown) {
   if (__DEV__) console.info(`${tag} ${sortedJson(payload)}`);
 }
-// 1 -> a, 26 -> z, 27 -> aa (bijective base 26).
-function candidateName(index: number): string {
-  let name = "";
-  for (let n = index; n > 0; n = Math.floor(n / 26)) {
-    n -= 1;
-    name = String.fromCharCode(97 + (n % 26)) + name;
-  }
-  return name;
-}
-
-function Button({ title, onPress, disabled, label, role = "button", checked }: {
-  title: string; onPress: () => void; disabled?: boolean; label?: string;
-  role?: "button" | "radio"; checked?: boolean;
+function Button({ title, onPress, disabled, label, selected }: {
+  title: string; onPress: () => void; disabled?: boolean; label?: string; selected?: boolean;
 }) {
-  return <Pressable onPress={onPress} disabled={disabled} accessibilityRole={role}
-    accessibilityLabel={label ?? title} accessibilityState={{ disabled, checked }}
-    style={[styles.button, checked && styles.checked, disabled && { opacity: 0.4 }]}>
+  return <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button"
+    accessibilityLabel={label ?? title} accessibilityState={{ disabled, selected }}
+    style={[styles.button, selected && styles.selected, disabled && { opacity: 0.4 }]}>
     <Text>{title}</Text>
   </Pressable>;
 }
@@ -189,14 +181,20 @@ function Stepper({ label, value, max, disabled, onChange }: {
 
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
   const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [candidates, setCandidates] = useState(initialCandidates);
-  const issued = useRef(new Set(initialCandidates.map(c => c.name)));
+  // Every name issued, removed ones included, plus the names a favorite never takes.
+  const issued = useRef(new Set(["draft", "now", "original", "baseline", ...initialCandidates.map(c => c.name)]));
   const logged = useRef(new Set<string>());
   const [basedOn, setBasedOn] = useState("baseline");
+  const lastPreset = useRef<string | null>(null);
+  // The shown chip: "draft" (Now), "original", or a favorite's name.
   const [shown, setShown] = useState("draft");
-  const stashedDraft = useRef<CardConfig | null>(null);
-  const editing = shown === "draft";
+  // The last pick; while set, the panel is the result bar.
+  const [result, setResult] = useState<string | null>(null);
+  const stashedDraft = useRef<CardConfig | null>(null); // Now, while another chip is shown
+  const editable = shown !== "original"; // never edit the baseline
 
   // In an effect rather than a state initializer: StrictMode runs initializers
   // twice, and the second call would see the request already consumed.
@@ -216,6 +214,7 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     }
   }, [open, candidates]);
 
+  // Tapping a chip shows it in the real feature.
   function show(target: string) {
     if (target === "draft") {
       if (stashedDraft.current) setConfig(stashedDraft.current);
@@ -227,25 +226,37 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     }
     setShown(target);
   }
-  function close() { show("draft"); setOpen(false); }
-  function applyPreset(name: keyof typeof presets) { setConfig({ ...presets[name] }); setBasedOn(name); }
-  function reset() { setConfig({ ...baseline }); setBasedOn("baseline"); }
-  // No clipboard module in core React Native: the values are logged and shown as
-  // selectable text. Call the app's clipboard module here if it already has one.
+  function close() { show("draft"); setMenuOpen(false); setOpen(false); }
+  // Every control edits Now. Moved while a favorite is shown, it loads that
+  // favorite into Now first; the favorite itself does not change.
+  function edit(next: CardConfig, from?: string) {
+    stashedDraft.current = null;
+    setBasedOn(from ?? (shown === "draft" ? basedOn : shown));
+    setConfig(next);
+    setShown("draft");
+  }
+  function applyPreset(name: keyof typeof presets) { lastPreset.current = name; edit({ ...presets[name] }, name); }
+  function reset() { lastPreset.current = null; edit({ ...baseline }, "baseline"); setMenuOpen(false); }
+  // Always reports Now. No clipboard module in core React Native: the values are
+  // logged and shown as selectable text. Call the app's clipboard module here if
+  // it already has one.
   function copyValues() {
-    const values = changedValues(baseline, config);
+    const values = changedValues(baseline, stashedDraft.current ?? config);
     log("UITUNINGLAB_VALUES", values);
     const text = sortedJson(values);
-    setStatus(text === "{}" ? "No changes from baseline" : `Logged ${text}`);
+    setStatus(text === "{}" ? "No changes from Original" : `Logged ${text}`);
+    setMenuOpen(false);
   }
+  // Keep is enabled only while Now is shown, so config is Now.
   function prepareKeep(): Candidate | null {
     const values = changedValues(baseline, config);
-    if (Object.keys(values).length === 0) { setStatus("Matches the baseline; nothing to keep"); return null; }
+    if (Object.keys(values).length === 0) { setStatus("Same as Original"); return null; }
     const same = candidates.find(c => sortedJson(c.values) === sortedJson(values));
     if (same) { setStatus(`Same as ${same.name}`); return null; }
-    let i = 1;
-    while (issued.current.has(candidateName(i))) i++;
-    return { name: candidateName(i), basedOn, values };
+    const stem = lastPreset.current ?? "tweak";
+    let name = stem;
+    for (let i = 2; issued.current.has(name); i++) name = `${stem}-${i}`;
+    return { name, basedOn, values };
   }
   function commit(candidate: Candidate) {
     setCandidates(list => [...list, candidate]);
@@ -255,30 +266,27 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     setStatus(`Kept as ${candidate.name}`);
   }
   function keep() { const c = prepareKeep(); if (c) commit(c); }
-  function load(candidate: Candidate) {
-    stashedDraft.current = null;
-    setConfig({ ...baseline, ...candidate.values });
-    setBasedOn(candidate.name);
-    setShown("draft");
-  }
   function remove(name: string) {
+    if (shown === name) show("draft");
     setCandidates(list => list.filter(c => c.name !== name));
     log("UITUNINGLAB_CANDIDATE_REMOVED", { name });
-    if (shown === name) show("draft");
   }
-  // Like Copy values, and it tells the agent the session is over. While Compare
-  // shows a candidate, that candidate becomes the draft first: it is the winner.
-  function done() {
+  // ✓ Use this: picks the shown chip and finishes. Picking again replaces the
+  // result. Not named useThis, which React's lint rules would treat as a hook.
+  function pick() {
     const picked = candidates.find(c => c.name === shown);
-    if (picked) load(picked);
-    const values = changedValues(baseline, picked ? { ...baseline, ...picked.values } : config);
-    const winner = candidates.find(c => sortedJson(c.values) === sortedJson(values));
-    const payload = { candidates, values, winner: winner?.name ?? null };
+    const winner = picked?.name ?? (shown === "original" ? "original" : "draft");
+    const values: Partial<CardConfig> = picked?.values ?? (shown === "original" ? {} : changedValues(baseline, config));
+    const done = { candidates, values, winner };
     // Logcat cuts entries near 4 KB. When the Done line may be cut, repeat each
-    // candidate on its own line first, so the agent can rebuild the list.
-    if (sortedJson(payload).length > 3500) for (const c of candidates) log("UITUNINGLAB_CANDIDATE", c);
-    log("UITUNINGLAB_DONE", payload);
-    setStatus(`Done. Logged ${sortedJson(values)}`);
+    // favorite on its own line first, so the agent can rebuild the list.
+    if (sortedJson(done).length > 3500) for (const c of candidates) log("UITUNINGLAB_CANDIDATE", c);
+    log("UITUNINGLAB_DONE", done);
+    // The result file needs AsyncStorage; without it the log and the land code
+    // carry the pick ("The result file", below). With a clipboard module in the
+    // app, copy `land ${winner}` here.
+    setMenuOpen(false);
+    setResult(winner);
   }
 
   return <View style={{ flex: 1 }}>
@@ -287,49 +295,47 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
       {!open && <View style={styles.pill}>
         <Button title="Tune" label="Open UI tuning lab" onPress={() => { setStatus(null); setOpen(true); }} />
       </View>}
-      {open && <View style={styles.panel} accessibilityLabel="UI tuning lab">
-        <ScrollView style={{ flexGrow: 0 }}>
+      {open && result !== null && <View style={[styles.pill, styles.bar]}>
+        <Text accessibilityLiveRegion="polite">✓ Sent: {result}</Text>
+        <Text selectable style={{ color: "#555" }}>land {result}</Text>
+        <Button title="Change" onPress={() => setResult(null)} />
+      </View>}
+      {open && result === null && <View style={styles.panel} accessibilityLabel="UI tuning lab">
+        <View style={styles.row}>
+          <Text accessibilityRole="header" style={{ flex: 1, fontWeight: "600" }}>UI tuning lab</Text>
+          <Button title="⋯" label="More" selected={menuOpen} onPress={() => setMenuOpen(m => !m)} />
+          <Button title="Close" onPress={close} />
+        </View>
+        {menuOpen && <View style={styles.row}>
+          <Button title="Reset" onPress={reset} />
+          <Button title="Copy values" onPress={copyValues} />
+        </View>}
+        {/* The chips: Original, Now, then each favorite. Highlighted = shown. */}
+        <View style={styles.row}>
+          <Button title="Original" selected={shown === "original"} onPress={() => show("original")} />
+          <Button title="Now" selected={shown === "draft"} onPress={() => show("draft")} />
+          {candidates.map(c => <View key={c.name} style={styles.chip}>
+            <Button title={c.name} selected={shown === c.name} onPress={() => show(c.name)} />
+            <Button title="×" label={`Remove ${c.name}`} onPress={() => remove(c.name)} />
+          </View>)}
+        </View>
+        <ScrollView style={{ flexGrow: 0, flexShrink: 1 }}>
           <View style={styles.row}>
-            <Text accessibilityRole="header" style={{ flex: 1, fontWeight: "600" }}>UI tuning lab</Text>
-            <Button title="Close" onPress={close} />
+            <Button title="Compact" disabled={!editable} onPress={() => applyPreset("compact")} />
+            <Button title="Relaxed" disabled={!editable} onPress={() => applyPreset("relaxed")} />
           </View>
-          <View style={styles.row}>
-            <Text style={{ flex: 1 }}>Show baseline</Text>
-            <Switch accessibilityLabel="Show baseline" value={shown === "baseline"}
-              onValueChange={on => show(on ? "baseline" : "draft")} />
-          </View>
-          <View style={styles.row}>
-            <Button title="Compact" disabled={!editing} onPress={() => applyPreset("compact")} />
-            <Button title="Relaxed" disabled={!editing} onPress={() => applyPreset("relaxed")} />
-          </View>
-          <Stepper label="Radius" value={config.radius} max={32} disabled={!editing}
-            onChange={radius => setConfig(c => ({ ...c, radius }))} />
-          <Stepper label="Gap" value={config.gap} max={24} disabled={!editing}
-            onChange={gap => setConfig(c => ({ ...c, gap }))} />
-          <View style={styles.row}>
-            <Button title="Reset" disabled={!editing} onPress={reset} />
-            <Button title="Copy values" disabled={!editing} onPress={copyValues} />
-            <Button title="Keep as candidate" disabled={!editing} onPress={keep} />
-          </View>
-          {candidates.length > 0 && <>
-            {candidates.map(c => <View key={c.name} style={styles.row}>
-              <Text style={{ flex: 1 }}>{c.name} from {c.basedOn}</Text>
-              <Button title="Load" label={`Load ${c.name}`} disabled={!editing} onPress={() => load(c)} />
-              <Button title="Remove" label={`Remove ${c.name}`} onPress={() => remove(c.name)} />
-            </View>)}
-            <Text>Compare</Text>
-            <View style={styles.row} accessibilityRole="radiogroup">
-              {["draft", ...candidates.map(c => c.name)].map(target =>
-                <Button key={target} role="radio" checked={shown === target}
-                  title={target === "draft" ? "Draft" : target} onPress={() => show(target)} />)}
-            </View>
-          </>}
-          <Button title="Done" disabled={shown === "baseline"} onPress={done} />
+          <Stepper label="Radius" value={config.radius} max={32} disabled={!editable}
+            onChange={radius => edit({ ...config, radius })} />
+          <Stepper label="Gap" value={config.gap} max={24} disabled={!editable}
+            onChange={gap => edit({ ...config, gap })} />
           {status && <Text selectable accessibilityLiveRegion="polite">{status}</Text>}
         </ScrollView>
-        {/* Pinned below the scrolling controls, visible however long the panel grows. */}
-        <Text style={{ paddingTop: 8 }}>
-          Finished? Keep the ones you like, then press Done, or tell the agent "land b".</Text>
+        <View style={styles.row}>
+          <Button title="★ Keep" disabled={shown !== "draft"} onPress={keep} />
+          <Button title="✓ Use this" onPress={pick} />
+        </View>
+        {/* Pinned below the controls, visible however long the panel grows. */}
+        <Text style={{ paddingTop: 8 }}>Keep favorites · Use this to finish</Text>
       </View>}
     </View>
   </View>;
@@ -345,11 +351,16 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginVertical: 4 },
   button: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: "#999" },
-  checked: { backgroundColor: "#cde" },
+  selected: { backgroundColor: "#cde" },
+  chip: { flexDirection: "row", gap: 2 },
+  bar: {
+    flexDirection: "row", alignItems: "center", gap: 8, padding: 8, borderRadius: 20,
+    backgroundColor: "white", elevation: 8, shadowOpacity: 0.2, shadowRadius: 8,
+  },
 });
 ```
 
-## Reading the lines and waiting for Done
+## Reading the lines and waiting for the pick
 
 `console.info` lines reach logcat under `ReactNativeJS` on Android and the
 unified log on the iOS Simulator, as well as React Native DevTools' console.
@@ -357,12 +368,16 @@ Use the commands in `references/platform-handoff.md`: `adb logcat -d -s ReactNat
 and the Android wait loop with `TAG=ReactNativeJS`, or the Simulator
 `log show` command without the subsystem clause.
 
-Logcat truncates an entry near 4 KB, so a Done line with many candidates can be
-cut. When its JSON exceeds about 3,500 characters, the lab logs every
-candidate on its own `UITUNINGLAB_CANDIDATE` line right before Done; if the Done
-line does not parse, rebuild the list from those lines
-(`references/candidates.md`, "Log lines") and take the draft's values from a
-fresh Copy values.
+Logcat truncates an entry near 4 KB, so a Done line with many favorites can be
+cut. When its JSON exceeds about 3,500 characters, the lab logs every favorite
+on its own `UITUNINGLAB_CANDIDATE` line right before Done; if the Done line does
+not parse, rebuild the list from those lines (`references/candidates.md`, "Log
+lines") and take Now's values from a fresh Copy values.
+
+Core React Native has no clipboard module, so the result bar shows the
+`land <name>` code as selectable text; when the app already has a clipboard
+module (`expo-clipboard`, `@react-native-clipboard/clipboard`), copy it in
+`pick()` as well.
 
 Agent opening, in order of preference:
 
@@ -389,6 +404,27 @@ Removal at landing: delete `FeatureScreen.ui-tuning-lab.tsx` and the
 `TuningLabHost` block, and point the screen back at
 `<CardFeature config={appDefault} />`, which now holds the winner. Reload the
 app so the menu item disappears.
+
+## The result file, only when the app has AsyncStorage
+
+Only when the app already depends on `@react-native-async-storage/async-storage`;
+otherwise skip this and rely on the log and the land code. ✓ Use this then
+also stores the Done object plus `savedAt` under `uiTuningLab.result`, replacing
+the last pick; AsyncStorage writes one key atomically.
+
+```tsx
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+function writeResult(done: object) {
+  return AsyncStorage.setItem("uiTuningLab.result", sortedJson({ ...done, savedAt: new Date().toISOString() }));
+}
+```
+
+In `pick()`, right after `log("UITUNINGLAB_DONE", done)`:
+``writeResult(done).catch(e => setStatus(`Result file failed: ${String(e)}`));``.
+The status shows after Change. Read the key in React Native DevTools'
+console with `AsyncStorage.getItem("uiTuningLab.result")` when the module is
+reachable there; otherwise the log holds the same line.
 
 ## Persistence variant, only when requested
 
