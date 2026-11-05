@@ -140,7 +140,9 @@ landing, say the lab is in place and awaiting a winner. Keep static
 lint, hands-on checks, and release-artifact inspection separate, and never mark an
 unrun check as passed. For each activation path the agent could not exercise
 (shake in the Simulator, a gesture, a hardware shortcut), give the user the
-exact steps to try it.
+exact steps to try it. Name the current keys, read from the host the user is
+looking at, never from memory: some hosts hide shake behind a shortcut only
+(`references/activation.md`, "Tell the user how to shake").
 
 Before landing, open the report with **How to try it**: where the pill or
 command is (which corner, which menu), then three to five numbered steps from

@@ -150,13 +150,14 @@ private extension UIView {
 ```
 
 Attach it with `.background { UITuningLabShakeReader(...).frame(width: 0, height: 0) }`
-so it occupies no layout, and keep the fallback on screen. In the Simulator,
-document Device > Shake (⌃⌘Z); the agent cannot shake (`simctl` has no shake
-command), which is why the launch argument exists. Shake therefore stays
-unverified by the agent: the report must say so and give the user the exact
-check, for example "In Simulator, choose Device > Shake (⌃⌘Z) on the
-Who's Watching screen; the lab should open." Never report shake as working
-without the user's confirmation.
+so it occupies no layout, and keep the fallback on screen. `simctl` has no
+shake command, which is why the launch argument exists. Unless the agent's own
+simulator tool shook the device, shake stays unverified by the agent: the report
+must say so and give the user the exact check with the keys read from the host
+they are looking at (`references/activation.md`, "Tell the user how to shake"),
+for example "Press <the keys you found>, or choose Device > Shake, on the Who's
+Watching screen; the lab should open." Never report shake as working without
+the user's confirmation or the agent's own shake.
 
 - Confirm in a screenshot that the visible fallback is on screen and that tapping
   it opens the lab. `source-gates` cannot see a control that never renders.

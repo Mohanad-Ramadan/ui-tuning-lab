@@ -64,6 +64,8 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
   with `-UITuningLabOpen 1`), every chosen human path, and the visible fallback. With
   a text input focused, shake still reaches the system's undo and does not open
   the lab. After the lab closes, the human path works again without a relaunch.
+  Record shake as agent-tested only when the agent's own simulator tool shook
+  the device; otherwise it is user-tested, with the keys the report gave.
   VoiceOver or Switch Control can reach the fallback. Opening by the agent path
   alone proves nothing about the fallback: confirm it is visible and on top (on
   web, `document.elementFromPoint` at the pill's center returns the pill or its

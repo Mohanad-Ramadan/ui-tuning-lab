@@ -275,7 +275,8 @@ private extension UIView {
 
 The shared launch argument opens the lab once on launch; the pill replaces the
 toolbar button as the visible fallback, and the shim re-arms it after close. In
-the Simulator, Device > Shake (⌃⌘Z) exercises the human path; `xcrun simctl
+the Simulator, Device > Shake exercises the human path (give the user the
+current keys, `references/activation.md`); `xcrun simctl
 launch --terminate-running-process booted <bundle-id> -UITuningLabOpen 1`
 exercises the agent path.
 

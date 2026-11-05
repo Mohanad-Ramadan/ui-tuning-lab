@@ -91,7 +91,8 @@ be combined with a free alternative from its row when the user picks both.
 
 ### iOS and iPadOS
 
-- Shake, when free. In the Simulator, Device > Shake (⌃⌘Z).
+- Shake, when free. The agent triggers it itself when its simulator tool can,
+  and otherwise tells the user the current keys ("Tell the user how to shake").
 - A toolbar Tune button.
 - A long-press on the active tab.
 - A small floating pill with explicit colors, pinned to the full screen rather
@@ -151,6 +152,35 @@ launch (worked through in the matching example):
   permanent chrome for discoverability.
 - Shake is never the only path. The visible fallback is required.
 
+## Tell the user how to shake
+
+Keyboard shortcuts belong to Simulator.app and to whatever agent app shows the
+device, and both can change them in an update or a user remap. This skill never
+records them as facts. Work them out when you write **How to try it**:
+
+1. **Your own tools first.** If your simulator tool has a shake action, use it,
+   confirm the lab opens, and report shake as tested by the agent. The user then
+   only needs the steps below to try it themselves.
+2. **Where is the user looking?** The Simulator.app window, or a simulator panel
+   inside the agent app (Claude Code, Codex, an IDE). Ask when you cannot tell.
+3. **Find the current control there, and name the keys.** Many hosts have no
+   shake button and expose it only as a keyboard shortcut, so the user cannot
+   find it alone: always give the keys you found, not only a menu name.
+   - Simulator.app: the shortcut on its Device > Shake menu item. A user remap
+     overrides it: check `defaults read com.apple.iphonesimulator
+     NSUserKeyEquivalents` and `defaults read -g NSUserKeyEquivalents` for a
+     `Shake` entry, and give that one when present.
+   - An agent's panel: the shortcut its current help, keybindings file, or
+     settings list for shake. If it has a shake button, name where it is too.
+4. **Say how sure you are.** When you could not read the keys from the host
+   itself (only from memory or older docs), say so: "should be ⌃⌘Z; if not,
+   use Device > Shake". Always end with the visible fallback (the pill, or the
+   agent path), so a moved shortcut never strands the user.
+
+The same rule applies to any human path the agent cannot trigger itself
+(long-press, a hardware key on a device): name the gesture or the current keys
+as read from the host, then the fallback.
+
 ## Agent path rules
 
 - **Honor the request once.** Consume it the first time it is read, so a
@@ -168,8 +198,10 @@ launch (worked through in the matching example):
   panel when the first window appears; keep the `#if DEBUG` menu command and key
   equivalent as the human path and visible fallback. Launch with
   `open <App>.app --args -UITuningLabOpen 1`.
-- The agent cannot shake: `simctl` has no shake command, and UI scripting needs
-  focus and accessibility permissions. Do not make the agent depend on it.
+- `simctl` has no shake command, and UI scripting needs focus and accessibility
+  permissions. Never make the agent depend on shake to open the lab; when its
+  simulator tool can shake, it also uses that to test the shake path
+  ("Tell the user how to shake").
 - Release inspection must confirm the launch argument, its handler, and its
   strings are gone.
 

@@ -25,6 +25,11 @@
   `UITUNINGLAB_DONE` or `UITUNINGLAB_VALUES` line, over a one-hour log window.
 - Candidate names are never reused within a run, and a persisted lab never
   overwrites a stored entry, readable or not.
+- Shake keys are no longer written into the skill. When writing **How to try
+  it**, the agent shakes with its own simulator tool if it can, and otherwise
+  reads the current keys from the host the user is looking at (Simulator.app's
+  menu and any `NSUserKeyEquivalents` remap, or the agent panel's own
+  shortcuts) and names them, with the visible fallback last.
 
 ### Other platforms
 
