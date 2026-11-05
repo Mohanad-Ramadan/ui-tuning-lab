@@ -82,6 +82,8 @@ native panel instead and say why.
   MUI) make everything outside the open modal inert, the lab included. Give
   the lab root `pointer-events: auto` and render it in the top layer
   (`popover="manual"`) so it stays usable over any app modal that does open.
+  Alternative designs follow the same rule: a Design picker in the panel, never
+  chips or tabs inserted into the screen (`references/design-variants.md`).
 - **Keep the panel beside the feature and open while it is used.** Pin it to an
   edge or corner, never centered over the feature, and do not light-dismiss it:
   clicking or scrolling the feature is part of tuning. Close it with an explicit

@@ -12,6 +12,10 @@
     "should_trigger": true
   },
   {
+    "query": "the prayer times list on the home screen of our Flutter app doesn't look great. come up with 3 better designs and let me flip between them in the running app against the current one so I can pick",
+    "should_trigger": true
+  },
+  {
     "query": "not sure what spacing works for this list on iPad, let me try a few options side by side against what we have now",
     "should_trigger": true
   },

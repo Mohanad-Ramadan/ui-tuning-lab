@@ -66,9 +66,44 @@ $start = (Get-Content $log).Count
 do { Start-Sleep 3; $line = Select-String -Path $log -Pattern UITUNINGLAB_DONE |
   Where-Object LineNumber -gt $start | Select-Object -First 1 } until ($line)
 $line.Line
-``` The
-web has nothing to poll from outside the browser: read the console when the
+```
+
+The web has nothing to poll from outside the browser: read the console when the
 user next writes.
+
+## No local toolchain
+
+Some projects build only in CI or a cloud device service (a GitHub Actions
+workflow that uploads to Appetize, Codemagic, Bitrise, Xcode Cloud, Expo EAS),
+and the SDK (`flutter`, `xcodebuild`, `gradle`) is missing here. That changes
+how the lab is checked and handed off, never what the lab contains: build the
+whole lab anyway.
+
+- **Say so up front.** Mention it in the setup prompt next to the activation
+  question: the lab will reach the user through that pipeline, the agent cannot
+  compile or run it, and pushing is what starts a build. Pushing or triggering a
+  workflow is outward-facing: ask first.
+- **Write code that survives a first compile you cannot see.** Use only APIs and
+  helpers the project already uses (read their definitions; do not guess
+  extension names or constructor arguments), keep the lab in one or two files,
+  and re-read every changed file for imports and brackets before handing off.
+  Run whatever static check does exist here (a linter, `verify.sh
+  source-gates`, the manual gate check below). Report the code as not compiled.
+- **Activation.** The agent path usually cannot be set on a remote build (no
+  `--dart-define`, no launch argument). Offer the visible pill plus the chosen
+  human path, and set the agent flag only in the pipeline's debug job when the
+  user agrees.
+- **Done reaches the agent through chat.** There is no log to poll. Done and
+  Copy values already copy the values; the finish hint and the **How to try
+  it** steps tell the user to paste them, or simply say "land b". Many device
+  services show the device log in their page: say the user can copy the
+  `UITUNINGLAB_DONE` line from there too. Do not start a background wait.
+- **Release check in the pipeline.** The release-artifact search below needs a
+  release build. Ask whether to add it to the workflow (a release build plus
+  the string search for the three markers), or list it as not run.
+- **First build fails.** When the user reports compile errors from the
+  pipeline, fix them from the log they paste or the workflow output you can
+  read (`gh run view --log-failed`), then ask before pushing again.
 
 ## Where persisted candidates live
 

@@ -18,6 +18,7 @@ a list of fields is fine; keep each one labelled.
 | Easing | Presets (ease-in-out, ease-out, linear, spring) plus a custom cubic-bézier only if requested | |
 | Text length | Sample copy: short, typical, long, overflowing | Tests truncation and wrapping without editing strings. |
 | UI state | Forced state picker: empty, loading, error, success | Drive the feature's real state, never a mock view. |
+| Alternative design | **Design** picker at the top of the panel: Original first, then one option per variant | A `design` string in the draft; see `references/design-variants.md`. Never in the feature's layout. |
 
 ## Required in every lab
 

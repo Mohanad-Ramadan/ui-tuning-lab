@@ -1,5 +1,29 @@
 # Changelog — ui-tuning-lab
 
+## 1.3.0 — unreleased
+
+Fixes from a Flutter session where the agent read "unvalidated adaptation" as
+"unsupported", skipped the panel, and put design chips into the screen.
+
+- `SKILL.md` gains "Every platform gets the whole lab": unvalidated means not
+  yet proven, never unsupported. Android, Flutter, React Native, Windows, and
+  stacks with no example get the full panel, handoff, and activation, adapted
+  from the nearest example.
+- New `references/design-variants.md`: alternative designs ("three better
+  versions of this list") are a **Design** picker in the panel, with the
+  original as the baseline and `design` as a value in Copy values, candidates,
+  Compare, and Done. Landing moves the winning variant's code into the
+  production widget. Never chips or tabs inserted into the screen. The trigger
+  description now covers this request.
+- `references/platform-handoff.md` gains "No local toolchain" for apps that
+  build only in CI or a cloud device service: build the whole lab, ask before
+  pushing, hand Done over through chat, and run the release search in the
+  pipeline or report it as not run. Inspection now checks whether the
+  toolchain runs here.
+- `examples/flutter-overlay.md` shows design variants and the remote-build
+  handoff.
+- Fixed a broken code fence in `references/platform-handoff.md`.
+
 ## 1.2.0 — unreleased
 
 - New `references/candidates.md`. Every lab, ephemeral ones included, has

@@ -391,6 +391,101 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
 }
 ```
 
+## Design variants, when the user asks for alternative designs
+
+`references/design-variants.md` is the rule; this is the Flutter shape. The
+variants are builders in the lab file that take the same real inputs as the
+feature, so `feature_screen.dart` does not change beyond the host change above.
+For a feature fed by a bloc or provider, give the lab host a `variantInputs`
+parameter (the state and callbacks the feature already reads) and build the
+variants from it, still inside the host's `kDebugMode` branch.
+
+Changes to `lib/feature_screen.ui-tuning-lab.dart`:
+
+```dart
+// Each variant renders the feature's real data with the draft style. The
+// original stays the production widget, so it has no entry here. The titles
+// below stand in for the feature's real inputs (variantInputs, bloc state).
+typedef _DesignBuilder = Widget Function(BuildContext context, CardStyle style);
+final Map<String, _DesignBuilder> _designs = {
+  'grid': (context, style) => GridView.count(
+        crossAxisCount: 2, shrinkWrap: true, padding: const EdgeInsets.all(16),
+        mainAxisSpacing: style.spacing, crossAxisSpacing: style.spacing,
+        children: [
+          for (final title in const ['First card', 'Second card'])
+            Card(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(style.cornerRadius)),
+                child: Center(child: Text(title))),
+        ]),
+};
+const _designLabels = {'original': 'Original', 'grid': 'Grid'};
+
+// The design joins the values: present only when it differs from 'original'.
+Map<String, Object> _changedWith(String design, CardStyle draft) =>
+    {if (design != 'original') 'design': design, ..._changed(draft)};
+String _designOf(Map<String, Object> v) => v['design'] as String? ?? 'original';
+CardStyle _styleOf(Map<String, Object> v) => _apply({
+      for (final e in v.entries) if (e.value is num) e.key: (e.value as num).toDouble(),
+    });
+```
+
+In the host state:
+
+- Add `String design = 'original';` and `String? stashDesign;` beside `stash`.
+- `_Candidate.values` becomes `Map<String, Object>`; `prepareKeep` and
+  `copyValues` use `_changedWith(design, draft)` instead of `_changed(draft)`.
+- Presets carry a design: `Map<String, ({String design, CardStyle style})>`,
+  and `applyPreset` sets both.
+- `reset()` also sets `design = 'original'`.
+
+`show`, `load`, and `done` move the design with the style:
+
+```dart
+void show(String target) {
+  if (target == 'draft') {
+    if (stash != null) widget.onChanged(stash!);
+    design = stashDesign ?? design;
+    stash = null;
+    stashDesign = null;
+  } else {
+    stash ??= draft;
+    stashDesign ??= design;
+    final c = candidates.where((c) => c.name == target).firstOrNull;
+    design = c == null ? 'original' : _designOf(c.values);
+    widget.onChanged(c == null ? _baseline : _styleOf(c.values));
+  }
+  update(() => shown = target);
+}
+
+void load(_Candidate c) {
+  stash = null;
+  stashDesign = null;
+  design = _designOf(c.values);
+  widget.onChanged(_styleOf(c.values));
+  update(() { basedOn = c.name; shown = 'draft'; });
+}
+
+// In done(): take the values from the picked candidate itself, never from
+// widget.style, which updates only after the parent rebuilds.
+final values = picked != null ? picked.values : _changedWith(design, draft);
+```
+- `build` renders the variant in place of the feature:
+  `final body = _designs[design]?.call(context, draft) ?? widget.child;` and
+  uses `body` where it used `widget.child`.
+- The panel's first row, under the title, is the Design picker:
+
+```dart
+const Text('Design'),
+Wrap(spacing: 8, children: [
+  for (final key in _designLabels.keys)
+    ChoiceChip(label: Text(_designLabels[key]!), selected: design == key,
+        onSelected: editing ? (_) => update(() => design = key) : null),
+]),
+```
+
+Landing a design other than `original` moves its builder's body into
+`CardFeature.build` with the winning values in `CardStyle.appDefault`, then
+removes the lab as usual.
+
 ## Reading the lines and waiting for Done
 
 `debugPrint` lines reach `flutter run` / `flutter logs`, logcat under the
@@ -402,6 +497,11 @@ its output redirected to a file, polling that file with
 `grep -m1 UITUNINGLAB_DONE <file>` in the same `until` loop works on every
 platform. Logcat truncates a line near 4 KB; a Done line with many candidates
 can exceed it, so ask the user to press Done again or read `flutter run` output.
+
+When the app builds only in CI or a cloud device service and `flutter` is not
+installed here, follow "No local toolchain" in `references/platform-handoff.md`:
+the lab is the same, Done reaches the agent as a pasted value or "land b", and
+the release search runs in the pipeline or is reported as not run.
 
 ## Teardown
 
@@ -491,7 +591,9 @@ Future<(List<_Candidate>, List<String>)> _uiTuningLabReadAll(Set<String> reserve
 ```
 
 Wiring: `keep()` becomes `final c = prepareKeep(); if (c == null) return; try { await _uiTuningLabWrite(c, draft); commit(c); } catch (e) { update(() => status = 'Keep failed: $e'); }`,
-so a failed write refuses the Keep. `remove()` deletes
+so a failed write refuses the Keep. In a design-variant lab, write
+`{..._asMap(overrides), 'design': design}` as `overrides` and read `design`
+back with `_designOf`, so a saved candidate reopens on its design. `remove()` deletes
 `<dir>/<name>.json` first and stops with a status on failure. `open()` awaits
 `_uiTuningLabReadAll(issued)`, adds found candidates not already listed, shows
 the problems in `status`, then logs unlogged candidates. Pull a file with

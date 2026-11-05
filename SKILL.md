@@ -1,10 +1,10 @@
 ---
 name: ui-tuning-lab
-description: "Add a temporary, development-only control panel beside a real screen so you can tweak animation, spacing, colors, layout, or UI states live in a development build, compare variants against the original, and write the winning values back into code. Use when the user wants to tune, tweak, or try variants of something visible by eye, add sliders or knobs to adjust it while the app runs, or dial in an animation or layout by feel. Web (React), iOS, and macOS (SwiftUI), with unvalidated adaptations for Android (Compose), Flutter, React Native, and Windows (WinUI)."
+description: "Add a temporary, development-only control panel beside a real screen so you can tweak animation, spacing, colors, layout, or UI states live in a development build, compare variants against the original, and write the winning values back into code. Use when the user wants to tune, tweak, or try variants of something visible by eye, add sliders or knobs to adjust it while the app runs, or dial in an animation or layout by feel, or wants several alternative designs of a screen or component to flip between in the running app and pick one. Web (React), iOS, and macOS (SwiftUI), with unvalidated adaptations for Android (Compose), Flutter, React Native, and Windows (WinUI); any other UI stack is adapted from the nearest example."
 license: MIT
 metadata:
   author: "Mohanad Ramadan"
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # UI Tuning Lab
@@ -27,12 +27,32 @@ A good lab feels like this:
   the real feature, and **Done** tells the agent the session is over. A footer
   hint says how to finish, so the user never has to guess.
 
+## Every platform gets the whole lab
+
+"Unvalidated adaptation" means this skill has not proven the example in a real
+app yet; it never means the platform is unsupported. On Android, Flutter, React
+Native, Windows, or a stack with no example at all, build the same lab: the
+panel, presets, direct controls, Show baseline, Reset, Copy values, Keep as
+candidate, Compare, Done, the finish hint, and the three activation paths.
+Start from the platform's example, or the nearest one when there is none, and
+keep every guarantee in the safety checklist. Never replace the lab with a row
+of buttons in the screen, and never drop controls because the platform is new;
+if a piece truly cannot be built, say which and why in the report.
+
+When the user asks for alternative designs ("three better versions of this
+list"), the variants are part of the lab, not a substitute for it: a **Design**
+picker in the panel, with the original as the baseline
+(`references/design-variants.md`).
+
 ## Workflow
 
 1. **Inspect.** Find the platform, build system, the feature's configuration
    model, the development gate, the native transient surface, the activation
    surface, and test commands. Reuse an existing debug menu or panel library
-   when the project has one (`references/setup-protocol.md`).
+   when the project has one (`references/setup-protocol.md`). Check whether the
+   toolchain runs here (`which flutter`, `xcodebuild -version`, `adb`, `node`);
+   when the app only builds in CI or a cloud device service, follow
+   "No local toolchain" in `references/platform-handoff.md`.
 2. **Decide quietly.** Infer target, scope, container, gate, activation, and
    persistence; persistence is off unless the user asked to save. Ask at most one
    focused setup question, only when the answer changes the implementation.
@@ -59,7 +79,10 @@ A good lab feels like this:
    hands-on check listed as not run. You can still run the release-artifact
    checks yourself: build, search the output, serve it, and try activation
    paths. Wait for Done with a background poll of the platform's log where
-   one exists (`references/platform-handoff.md`, "Wait for Done").
+   one exists (`references/platform-handoff.md`, "Wait for Done"). When the app
+   builds only in CI or a cloud device service, the lab still ships complete;
+   ask before pushing, and Done reaches you through chat
+   (`references/platform-handoff.md`, "No local toolchain").
 5. **Land the winner.** Take the candidate or values the user names in chat,
    else the newest `UITUNINGLAB_DONE` or `UITUNINGLAB_VALUES` line
    (`references/landing-protocol.md`, step 1), write the values into the
@@ -116,6 +139,8 @@ a save would overwrite a production key.
 - `references/ios-hosting.md`: iOS panels, activation, Xcode targets, and UIKit or
   hybrid apps.
 - `references/control-mapping.md`: which control for which value; required controls.
+- `references/design-variants.md`: alternative designs of a feature as a
+  Design picker in the lab, and landing the winning design's code.
 - `references/candidates.md`: Keep as candidate, Compare, Done, the finish hint,
   waiting for Done, and keeping finalists for a later session.
 - `references/platform-handoff.md`: per platform, how lab lines are logged and
@@ -147,7 +172,8 @@ looking at, never from memory: some hosts hide shake behind a shortcut only
 Before landing, open the report with **How to try it**: where the pill or
 command is (which corner, which menu), then three to five numbered steps from
 opening the lab to pressing **Done**: try presets, Keep as candidate for each
-finalist, Compare them, then Done (or say "land b"). Say whether the agent is
-waiting for Done on its own or needs a message. Name every
+finalist, Compare them, then Done (or say "land b"). With design variants, the
+first step is picking each design in the panel's Design picker. Say whether the
+agent is waiting for Done on its own or needs a message. Name every
 choice the user makes inside the lab (pick a theme, switch mode) and anything
 that still lives elsewhere in the app, so nothing about the setup is a surprise.

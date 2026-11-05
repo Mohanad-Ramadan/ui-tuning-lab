@@ -46,7 +46,7 @@ Template: `assets/profile.template.json`, a candidate. The examples'
 | `platform` | string | `ios`, `macos`, `web`, `visionos`, `android`, `flutter`, `react-native`, `windows`, `linux`, or `harmonyos`; Flutter and React Native use the framework value (`references/platform-handoff.md`) |
 | `container` | string | the host surface used when saving |
 | `scope` | string array | non-empty |
-| `overrides` | object | non-empty; the full draft configuration at save time |
+| `overrides` | object | non-empty; the full draft configuration at save time, including `design` for a design-variant lab (`references/design-variants.md`) |
 | `notes` | string | may be empty |
 | `basedOn` | string | candidates only; kebab-case: the preset it started from, `baseline`, or another candidate's name |
 | `savedAt` | string | candidates only; ISO-8601 UTC, for example `2026-11-04T14:23:24Z` |
