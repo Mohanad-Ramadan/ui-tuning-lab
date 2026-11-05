@@ -2,6 +2,30 @@
 
 ## 1.3.0 — unreleased
 
+### Leaner package
+
+- Maintainer notes are gone from what the agent reads: no "unvalidated / not
+  compiled" banners, "Assumptions" sections became direct **Version notes**,
+  and the stub examples, `profiles/`, `validation/`, and the changelog no
+  longer ship.
+- The Swift values and candidates file shared by every Swift example is one
+  asset, `assets/swift/UITuningLabValues.swift`, copied unchanged.
+- Long references open with a Contents list; duplicated log tables, wait
+  scripts, and activation memory now live in one place. The description is in
+  third person.
+
+### From the Flutter rerun
+
+- The pill and panel pin to the screen, separate from the wrap around the
+  feature; the Flutter example uses one always-shown `OverlayPortal`.
+- Phones dock the panel full width at the bottom (at most 45% tall); the lab
+  hides while its tab or route is offstage; right-to-left apps keep their
+  direction.
+- Each design's knobs start from that design's declared defaults; Original
+  stays untunable when the user asked only for new designs.
+- A CI workflow with build or launch inputs carries the agent path.
+- The activation question is skipped when the pill is the only human path.
+
 Fixes from a Flutter session where the agent read "unvalidated adaptation" as
 "unsupported", skipped the panel, and put design chips into the screen.
 
@@ -23,6 +47,10 @@ Fixes from a Flutter session where the agent read "unvalidated adaptation" as
 - `examples/flutter-overlay.md` shows design variants and the remote-build
   handoff.
 - Fixed a broken code fence in `references/platform-handoff.md`.
+- Receipts in `validation/` are evidence, not a release gate: publishing no
+  longer waits for every platform receipt to pass. The one check required
+  before every release is the release-artifact search proving no lab code
+  ships. README status now describes platforms in plain terms.
 
 ## 1.2.0 — unreleased
 

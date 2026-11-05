@@ -31,4 +31,4 @@ storage writer is present. All other applicable checks remain required.
 
 ## Limitations and result
 
-No pilot has been run. PENDING blocks verified status and publication.
+No pilot has been run yet.

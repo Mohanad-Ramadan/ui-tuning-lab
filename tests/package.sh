@@ -14,14 +14,14 @@ not_ok() { printf 'not ok - %s\n' "$1"; failures=$((failures + 1)); }
 sh "$ROOT/tools/package.sh" "$WORK" >/dev/null
 PACKAGE="$WORK/ui-tuning-lab"
 
-for forbidden in tests tools pilots evals .omc .git validation/evidence; do
+for forbidden in tests tools pilots evals .omc .git validation profiles CHANGELOG.md; do
   if [ -e "$PACKAGE/$forbidden" ]; then not_ok "package excludes $forbidden"; else ok "package excludes $forbidden"; fi
 done
 
 # Paths named in shipped Markdown must resolve inside the package. Receipts may
 # cite validation evidence, which stays in the repository by design.
 missing=$(sed 's|<skill-dir>/||g' "$PACKAGE"/SKILL.md "$PACKAGE"/README.md "$PACKAGE"/references/*.md \
-    "$PACKAGE"/examples/*.md "$PACKAGE"/profiles/*.md "$PACKAGE"/validation/*.md |
+    "$PACKAGE"/examples/*.md |
   grep -oE '`(references|examples|assets|profiles|scripts|validation)/[A-Za-z0-9_./-]+' |
   tr -d '`' | grep -v '^validation/evidence/' | sort -u | while read -r path; do
     [ -e "$PACKAGE/$path" ] || echo "$path"

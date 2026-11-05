@@ -11,21 +11,14 @@ PACKAGE="$OUT/ui-tuning-lab"
 SHIPPED='SKILL.md
 README.md
 LICENSE.txt
-CHANGELOG.md
 VERSION
 assets
 examples
-profiles
 references
-scripts
-validation/README.md
-validation/receipt-template.md
-validation/ios.md
-validation/macos.md
-validation/web.md'
+scripts'
 
 rm -rf "$PACKAGE" "$OUT/ui-tuning-lab-$VERSION.zip"
-mkdir -p "$PACKAGE/validation"
+mkdir -p "$PACKAGE"
 printf '%s\n' "$SHIPPED" | while read -r path; do
   case "$path" in
     */*) cp -R "$ROOT/$path" "$PACKAGE/$path" ;;

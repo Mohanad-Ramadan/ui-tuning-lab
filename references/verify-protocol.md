@@ -2,6 +2,12 @@
 
 Keep three kinds of evidence distinct:
 
+## Contents
+
+- Static checks
+- Hands-on checks
+- Release-artifact inspection
+
 1. **Static checks** validate reusable configuration and recognize a limited set
    of Swift/web source gates.
 2. **Hands-on checks** exercise behavior, accessibility, inputs, and teardown in
@@ -127,11 +133,8 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
   removed, the landing protocol's source check and build are enough.
 
 Record the exact commands, artifact identity, observations, and evidence links in
-the target project's task report or a receipt copied from
-`validation/receipt-template.md` into that project. Do not update the installed
-skill's receipts during ordinary app work; the bundled platform receipts are
-reserved for pilots validating this skill itself.
+the task report.
 
-Failed or unrun applicable checks remain blocking. Storage checks may be marked
+Report a failed or unrun check as failed or not run, never as passed. Storage checks may be marked
 `N/A: persistence not requested` only with evidence that the lab has no storage
 action or storage writer. All other required checks still need evidence.

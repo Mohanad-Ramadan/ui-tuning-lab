@@ -37,7 +37,14 @@ accessibility, right-to-left, light and dark).
    across the lab (a preset may set `design` and its values together, such as
    `timeline-compact`), plus the few knobs that matter for each design
    (spacing, radius, emphasis color, row height). Controls that do not apply to
-   the selected design are hidden or disabled.
+   the selected design are hidden or disabled. Each design's knobs start from
+   that design's own defaults, declared next to it in the lab file; the
+   original's knobs start from its real defaults, which means lifting its
+   constants into state as usual. When the original hard-codes values and the
+   user asked only for new designs, leave Original untunable (its knobs
+   disabled) rather than editing production code. Copy values reports each
+   knob against the selected design's defaults, and landing writes the winning
+   design with those defaults plus the changed values.
 6. **Everything else is unchanged.** Show baseline renders `original` with the
    baseline values; Reset returns to it; Copy values reports only what differs
    (`{"design":"strip","cardRadius":16}`); Keep as candidate records the design

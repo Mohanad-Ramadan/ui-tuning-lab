@@ -35,4 +35,4 @@ All files are in `validation/evidence/web/`.
 - **Devices and assistive technology:** no physical phone or tablet, no VoiceOver or NVDA session.
 - **Pilot scope:** one ephemeral lab with three numeric fields, no motion, no persistence.
 
-PENDING blocks verified status and publication. To finish: run `tests/pilot-web/check.mjs` where Firefox launches, open the pilot lab in Safari on macOS and iOS, and complete one VoiceOver pass over the panel.
+Still open: run `tests/pilot-web/check.mjs` where Firefox launches, open the pilot lab in Safari on macOS and iOS, and complete one VoiceOver pass over the panel.

@@ -13,6 +13,12 @@ extract_example() {
   mkdir -p "$out"
   extract_pass "$md" "$out" default || return
   [ "$variant" = default ] || extract_pass "$md" "$out" "$variant" || return
+  # <!-- copy: assets/<path> --> adds a shared asset file, as users copy it.
+  root=$(CDPATH= cd -- "$(dirname "$md")/.." && pwd)
+  for src in $(sed -n 's/^<!-- copy: \([^ ]*\) -->$/\1/p' "$md"); do
+    [ -f "$root/$src" ] || { echo "$md: missing asset $src" >&2; return 2; }
+    cp "$root/$src" "$out/"
+  done
 }
 
 # Malformed tags fail loudly (exit 2) so a variant can never pass vacuously.

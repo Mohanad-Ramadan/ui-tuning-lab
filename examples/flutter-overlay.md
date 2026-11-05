@@ -1,21 +1,17 @@
-# Unvalidated adaptation — Flutter overlay
-
-> **Unvalidated adaptation — not compiled in this repository.** No Flutter or
-> Dart toolchain runs here, so none of this code has been analyzed, run, or
-> inspected in a release build. Treat it as a starting point and complete the
-> full protocol (`references/verify-protocol.md`) in the target app before
-> relying on it. Places where an API was assumed rather than checked are listed
-> under "Assumptions to validate".
+# Flutter overlay
 
 The feature and the lab share one `CardStyle` held by the screen's state. The
 baseline is the declared default, `CardStyle.appDefault`. All lab code lives in
 `feature_screen.ui-tuning-lab.dart`; the host references it only inside
 `if (kDebugMode)`, a compile-time constant, so release AOT builds tree-shake it.
-The panel is shown in the app's `Overlay` through an `OverlayPortal`, the
-declarative form of an `OverlayEntry`: its child is built as part of the host's
-own build, so it follows every draft change without `markNeedsBuild` calls, and
-while hidden it is not built at all (the `maintainState: false` behavior). It is
-not opaque, so the feature outside the panel stays visible and touchable.
+The host wraps only the feature, but the pill and panel live in the app's
+`Overlay` through an `OverlayPortal`, the declarative form of an
+`OverlayEntry`, so they pin to the screen corner even when the feature sits
+inside a scroll view. The overlay child is built as part of the host's own
+build, so it follows every draft change without `markNeedsBuild` calls. While
+the lab is closed it builds only the pill; the panel is not built at all (the
+`maintainState: false` behavior). It is not opaque, so the feature outside the
+panel stays visible and touchable.
 
 Activation (`references/activation.md`):
 
@@ -204,6 +200,7 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   String? status;
   // Hidden means the panel is not built: nothing of it stays in the tree.
   final portal = OverlayPortalController();
+  bool isOpen = false;
 
   CardStyle get draft => widget.style;
 
@@ -211,9 +208,12 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   void initState() {
     super.initState();
     issued.addAll(candidates.map((c) => c.name));
-    if (uiTuningLabConsumeRequest()) {
-      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) open(); });
-    }
+    final requested = uiTuningLabConsumeRequest();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      portal.show(); // the pill; the panel is built only while isOpen
+      if (requested) open();
+    });
   }
 
   // The panel is built by this state's build, so setState alone redraws it,
@@ -221,16 +221,14 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   void update(VoidCallback change) => setState(change);
 
   void open() {
-    if (portal.isShowing) return;
+    if (isOpen) return;
     for (final c in candidates) { if (logged.add(c.name)) _log('UITUNINGLAB_CANDIDATE', c.toJson()); }
-    portal.show();
-    update(() => status = null);
+    update(() { isOpen = true; status = null; });
   }
 
   void close() {
     show('draft');
-    portal.hide();
-    update(() {});
+    update(() => isOpen = false);
   }
 
   void show(String target) {
@@ -307,15 +305,16 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
 
   @override
   Widget build(BuildContext context) {
-    // Wrap the screen body, not a content-sized widget, so the pill sits in the
-    // screen corner inspection found free.
-    return OverlayPortal(controller: portal, overlayChildBuilder: panel, child: Stack(fit: StackFit.expand, children: [
-      widget.child,
-      if (!portal.isShowing)
-        Positioned(right: 16, bottom: 16, child: Semantics(
+    // The host wraps only the feature; the overlay pins the pill and panel to
+    // the screen. TickerMode is off while the screen is an offstage tab
+    // (IndexedStack) or a covered route, so the lab hides with it.
+    return OverlayPortal(controller: portal, child: widget.child, overlayChildBuilder: (overlayContext) {
+      if (!TickerMode.of(overlayContext)) return const SizedBox.shrink();
+      if (isOpen) return panel(overlayContext);
+      return Positioned(right: 16, bottom: 16, child: SafeArea(child: Semantics(
           label: 'Open UI tuning lab', button: true, excludeSemantics: true,
-          child: FilledButton(onPressed: open, child: const Text('Tune')))),
-    ]));
+          child: FilledButton(onPressed: open, child: const Text('Tune')))));
+    });
   }
 
   Widget slider(String label, double value, double max, bool editing, ValueChanged<double> onChanged) {
@@ -329,10 +328,15 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
 
   Widget panel(BuildContext overlayContext) {
     final editing = shown == 'draft';
+    final size = MediaQuery.sizeOf(overlayContext);
+    // Phones: a full-width panel docked to the bottom, at most 45% tall, so the
+    // feature stays visible above it. Wider screens: a 320-wide corner panel.
+    final compact = size.width < 600;
     return Positioned(
-      right: 16, bottom: 72, width: 320,
+      left: compact ? 0 : null, right: compact ? 0 : 16, bottom: compact ? 0 : 72,
+      width: compact ? null : 320,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(overlayContext).height - 120),
+        constraints: BoxConstraints(maxHeight: compact ? size.height * 0.45 : size.height - 120),
         child: Material(
           elevation: 8, borderRadius: BorderRadius.circular(12),
           child: Padding(
@@ -435,6 +439,13 @@ In the host state:
   `copyValues` use `_changedWith(design, draft)` instead of `_changed(draft)`.
 - Presets carry a design: `Map<String, ({String design, CardStyle style})>`,
   and `applyPreset` sets both.
+- Fields that are not numbers (a bool toggle, a string choice) go in the same
+  map: `_changed` compares with `!=`, `_sortedJson` already prints them, and
+  `_styleOf` reads them back with `v['goldAccent'] as bool?`.
+- A variant reads the feature's real state the way the feature does: for a
+  bloc, `context.watch<HomeBloc>().state` inside the builder works, since a
+  variant renders where the feature did. The panel, in the overlay, inherits
+  from the host's location too.
 - `reset()` also sets `design = 'original'`.
 
 `show`, `load`, and `done` move the design with the style:
@@ -505,9 +516,10 @@ the release search runs in the pipeline or is reported as not run.
 
 ## Teardown
 
-Close calls `portal.hide()`, which stops building the panel, so nothing of it
-stays in the tree. If the screen goes away with the lab open, the
-`OverlayPortal` leaves the tree with the host and takes the panel with it. The lab registers no
+Close sets `isOpen` to false, which stops building the panel, so nothing of it
+stays in the tree; only the pill remains. If the screen goes away, the
+`OverlayPortal` leaves the tree with the host and takes the pill and panel with
+it. The lab registers no
 listeners, timers, or streams. Confirm in Flutter DevTools' widget inspector
 that no `UI tuning lab` subtree remains after closing.
 
@@ -616,16 +628,13 @@ pass (`references/platform-handoff.md`, "Gates the source linter cannot see"):
    `flutter build ios --release` and search `App.framework/App` the same way.
 3. A release build made with `--dart-define=UITUNINGLAB_OPEN=true` opens nothing.
 
-## Assumptions to validate
+## Version notes
 
-- That the AOT compiler tree-shakes the statically imported lab file when its
-  only reference is under `if (kDebugMode)`. The release search above is the
-  evidence; if it finds strings, move the import behind a conditional import or
-  a separate debug entry point (`lib/main_debug.dart`).
-- A hot restart re-runs `main` and resets `_uiTuningLabLaunchConsumed`, so the
-  lab reopens while the `--dart-define` is set; hot reload does not.
-- `OverlayPortal` (Flutter 3.10+) and a `Positioned` overlay child,
-  `Iterable.firstOrNull` (Dart 3), records in the persistence variant (Dart 3),
-  and `File.create(exclusive: true)` (Dart 2.19+).
-- Whether `debugPrint` output appears in the iOS Simulator unified log for the
-  app's Flutter version; `flutter logs` is the fallback.
+- Needs Flutter 3.10+ (`OverlayPortal`) and Dart 3 (`firstOrNull`, records in
+  the persistence variant).
+- If the release search finds lab strings, move the import behind a
+  conditional import or a separate debug entry point (`lib/main_debug.dart`).
+- A hot restart re-runs `main`, so the lab reopens while the `--dart-define` is
+  set; hot reload does not.
+- If `debugPrint` lines do not reach the iOS Simulator unified log, read
+  `flutter logs`.

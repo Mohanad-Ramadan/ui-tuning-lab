@@ -6,6 +6,14 @@ finalists where both the user and the agent can see them, **Done** tells the
 agent the session is over, and **Compare** flips between the finalists in the
 real feature.
 
+## Contents
+
+- The panel
+- Log lines
+- Waiting for Done
+- Persistence
+- Keeping finalists for later
+
 Every lab has all three, ephemeral labs included: candidates live in memory and
 in the log, so nothing is written to storage unless persistence was requested.
 
@@ -79,30 +87,12 @@ same name, ask the user to press Done rather than guessing.
 
 ## Waiting for Done
 
-After opening the lab for the user on Apple platforms, the agent can wait for
-Done instead of waiting for a message. Start a background command that exits on
-the first Done line after it starts, and say so in **How to try it**. Poll
-`log show` rather than piping `log stream` into `grep -m1`: a stream keeps
-running after grep exits, so that pipeline never finishes. Call it as
-`/usr/bin/log`: in zsh, a bare `log` is a shell builtin.
-
-```sh
-# macOS. For the iOS Simulator, replace `/usr/bin/log show` with `xcrun simctl spawn booted log show`.
-start=$(date '+%Y-%m-%d %H:%M:%S')
-until line=$(/usr/bin/log show --start "$start" --style compact \
-    --predicate 'subsystem == "ui-tuning-lab" AND eventMessage CONTAINS "UITUNINGLAB_DONE"' |
-    grep -m1 UITUNINGLAB_DONE); do sleep 3; done
-printf '%s\n' "$line"
-```
-
-Other platforms (Android, Flutter, React Native, Windows) have their own
-emit, read, and wait commands in `references/platform-handoff.md`.
-
-When it exits, its output is the Done line itself: start landing from it. If the
-user writes before pressing Done, stop the command and follow their message. The
-web has no console stream the agent can wait on: read the console when the user
-next writes, which the hint already asks them to do. Without a background
-runner, the hint is the whole mechanism.
+Where the platform has a log the agent can read, wait for Done in the
+background instead of waiting for a message, and say so in **How to try it**.
+The command for each platform is in `references/platform-handoff.md`, "Wait for
+Done". When it exits, its output is the Done line: land from it. If the user
+writes first, stop it and follow their message. On the web, and when the app
+builds only remotely, the finish hint is the whole mechanism.
 
 ## Persistence
 

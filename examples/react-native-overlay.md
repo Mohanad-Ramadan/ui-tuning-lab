@@ -1,11 +1,4 @@
-# Unvalidated adaptation — React Native overlay
-
-> **Unvalidated adaptation — not compiled in this repository.** No React Native,
-> Metro, or device toolchain runs here, so none of this code has been
-> type-checked, bundled, or run. Treat it as a starting point and complete the
-> full protocol (`references/verify-protocol.md`) in the target app before
-> relying on it. Places where an API was assumed rather than checked are listed
-> under "Assumptions to validate".
+# React Native overlay
 
 The feature and the lab share one config state. All lab code lives in
 `FeatureScreen.ui-tuning-lab.tsx`; the host loads it with `require()` inside
@@ -473,20 +466,14 @@ Record the evidence for each step (`references/platform-handoff.md`):
 3. A release build's developer menu does not exist, so the human path is gone;
    confirm the pill is absent.
 
-## Assumptions to validate
+## Version notes
 
-- That Metro's release transform folds `if (__DEV__)` before collecting
-  dependencies, so the required module is not in the bundle. The bundle search
-  is the evidence.
-- `DevSettings.addMenuItem` has no removal API, and its behavior when the same
-  title is added twice; the global flag avoids the second call. Expo Go and
-  `expo-dev-client` use their own developer menu, where this item may not
-  appear; there, `expo-dev-menu`'s `registerDevMenuItems` is the equivalent.
-- `process.env.EXPO_PUBLIC_*` is inlined by Expo's Babel preset; in bare React
-  Native without an inlining plugin it is `undefined`, which leaves the lab
-  closed rather than failing.
-- Evaluating `uiTuningLabOpen()` over the debugger WebSocket from a script; the
-  `/json/list` endpoint and `Runtime.evaluate` are the Chrome DevTools Protocol
-  surface Metro's inspector proxy exposes, but this was not exercised.
-- `accessibilityRole="radiogroup"` and the adjustable stepper's increment and
-  decrement actions with TalkBack and VoiceOver.
+- Expo Go and `expo-dev-client` have their own developer menu: register the
+  item with `expo-dev-menu`'s `registerDevMenuItems` instead of
+  `DevSettings.addMenuItem`, which has no removal API (the global flag keeps it
+  from being added twice).
+- `process.env.EXPO_PUBLIC_*` is inlined only by Expo's Babel preset. In bare
+  React Native without an inlining plugin it is `undefined`, so the lab stays
+  closed.
+- If the release bundle search finds lab strings, Metro did not fold
+  `if (__DEV__)`: load the lab from a separate development entry file instead.

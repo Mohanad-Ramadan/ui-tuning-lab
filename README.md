@@ -37,17 +37,18 @@ sh <skill-dir>/scripts/verify.sh config path/to/lab.json
 sh <skill-dir>/scripts/verify.sh profile path/to/saved-profile.json
 ```
 
-Source lint cannot prove production absence. Approval requires inspecting the
-compiled archive or production bundle (`references/verify-protocol.md`).
+Source lint cannot prove production absence. Inspect the compiled archive or
+production bundle too (`references/verify-protocol.md`).
 `source-gates` exits `3` with `N/A:` when the path contains no supported Swift or
 web files, or no lab reference. That is deliberately distinct from PASS.
 
 ## Status
 
-iOS, macOS, and web guidance is **candidate**. A platform becomes validated only
-when its receipt in `validation/` records PASS against one commit. Android,
-Windows, Flutter, React Native, visionOS, Linux, and HarmonyOS are unvalidated
-adaptation notes.
+Used in real apps on web (React), iOS, and macOS (SwiftUI), with a recorded web
+pilot in `validation/`. Android (Compose), Flutter, React Native, and Windows
+(WinUI) are newer adaptations whose examples have not been compiled here yet;
+visionOS, Linux, and HarmonyOS are adapted from the nearest example. Issues and
+pull requests from any platform are welcome: that is how the newer ones mature.
 
 ## License
 
@@ -68,6 +69,6 @@ sh tools/package.sh     # builds dist/ui-tuning-lab/ and dist/ui-tuning-lab-<ver
 `tests/compile.sh` exits `3` with `SKIP` when a toolchain is missing. The web
 pilot lives in `pilots/web-vite/`, its cross-engine checks in
 `tests/pilot-web/check.mjs`, and evals in `evals/`. The package contains
-`SKILL.md`, `references/`, `examples/`, `assets/`, `profiles/`, `scripts/`, the
-validation receipts, and the license; tests, tools, pilots, evals, and
-validation evidence stay here.
+`SKILL.md`, `README.md`, `references/`, `examples/`, `assets/`, `scripts/`, and
+the license; the changelog, validation receipts, tests, tools, pilots, and evals
+stay here.

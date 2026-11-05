@@ -4,6 +4,14 @@ Read this when the lab runs on iPhone or iPad, or the app is UIKit or a mix of
 UIKit and SwiftUI. The SwiftUI examples assume a `NavigationStack` toolbar and a
 popover; many real apps have neither.
 
+## Contents
+
+- The panel on iPhone: a short sheet with tabs
+- Activation: agent path, human path, fallback
+- UIKit hosts
+- New files must join the Xcode target
+- `#if DEBUG` inside a view builder
+
 ## The panel on iPhone: a short sheet with tabs
 
 A popover becomes a sheet on compact width, and a long `Form` sheet covers the

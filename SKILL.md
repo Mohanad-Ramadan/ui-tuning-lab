@@ -1,6 +1,6 @@
 ---
 name: ui-tuning-lab
-description: "Add a temporary, development-only control panel beside a real screen so you can tweak animation, spacing, colors, layout, or UI states live in a development build, compare variants against the original, and write the winning values back into code. Use when the user wants to tune, tweak, or try variants of something visible by eye, add sliders or knobs to adjust it while the app runs, or dial in an animation or layout by feel, or wants several alternative designs of a screen or component to flip between in the running app and pick one. Web (React), iOS, and macOS (SwiftUI), with unvalidated adaptations for Android (Compose), Flutter, React Native, and Windows (WinUI); any other UI stack is adapted from the nearest example."
+description: "Adds a temporary, development-only control panel beside a real screen in the running app, with sliders, presets, a flip back to the original, and side-by-side candidates, then writes the winning values or design back into code. Use when the user wants to tune, tweak, or dial in animation, spacing, colors, layout, or UI states by eye; add live sliders or knobs to a running app; or try several alternative designs of a screen or component and pick one. Works with web (React), iOS and macOS (SwiftUI), Android (Compose), Flutter, React Native, Windows (WinUI), and other UI stacks."
 license: MIT
 metadata:
   author: "Mohanad Ramadan"
@@ -29,9 +29,8 @@ A good lab feels like this:
 
 ## Every platform gets the whole lab
 
-"Unvalidated adaptation" means this skill has not proven the example in a real
-app yet; it never means the platform is unsupported. On Android, Flutter, React
-Native, Windows, or a stack with no example at all, build the same lab: the
+Every UI stack gets the same lab. On Android, Flutter, React Native, Windows,
+or a stack with no example at all, build: the
 panel, presets, direct controls, Show baseline, Reset, Copy values, Keep as
 candidate, Compare, Done, the finish hint, and the three activation paths.
 Start from the platform's example, or the nearest one when there is none, and
@@ -57,7 +56,8 @@ picker in the panel, with the original as the baseline
    persistence; persistence is off unless the user asked to save. Ask at most one
    focused setup question, only when the answer changes the implementation.
    Always ask how the lab should open, letting the user pick more than one human
-   path, unless the request or a fitting remembered `activation` already says;
+   path, unless the request or a fitting remembered `activation` already says,
+   or the visible pill is the only human path inspection found;
    it does not use up the setup question, and both go in one prompt
    (`references/activation.md`).
 3. **Build the lab.** Start from the matching file in `examples/`. Choose
@@ -120,9 +120,9 @@ module (presets, a diff function) need no marker: the file itself is gated.
 | **Explicit persistence.** Nothing is written unless the user asked; candidates in an ephemeral lab live only in memory and the log; saves go only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | No storage writer in an ephemeral lab; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
 | **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
 
-`source-gates` is advisory lint: a PASS cannot prove release absence or that every
-symbol was marked. `N/A` is never a pass; while building a lab it usually means the
-naming rule was skipped. Validate a reusable lab definition with
+`source-gates` is a lint: a PASS does not prove the release build is clean, so
+still search the release build. `N/A` means it found no lab code it can read; for
+Swift or web code that usually means the naming rule was skipped. Validate a reusable lab definition with
 `sh <skill-dir>/scripts/verify.sh config .ui-tuning-lab/lab.json`.
 
 Stop and report instead of proceeding when the development gate cannot be
@@ -151,9 +151,7 @@ a save would overwrite a production key.
 - `references/verify-protocol.md`: static, hands-on, and release-artifact checks.
 - `references/edge-cases.md`: rotation, focus, hot reload, corrupt saved data.
 - `references/container-tuning.md`: only when tuning the host container itself.
-- `examples/`: starting points, not evidence that the user's app passed
-  validation. Each platform stays a candidate until its receipt in `validation/`
-  passes.
+- `examples/`: worked starting points per platform; adapt them to the app.
 
 ## Report
 

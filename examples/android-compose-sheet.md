@@ -1,11 +1,4 @@
-# Unvalidated adaptation — Android Jetpack Compose panel
-
-> **Unvalidated adaptation — not compiled in this repository.** No Kotlin or
-> Android toolchain runs here, so none of this code has been built, run, or
-> inspected in a Release APK. Treat it as a starting point and complete the full
-> protocol (`references/verify-protocol.md`) in the target app before relying
-> on it. Places where an API was assumed rather than checked are listed under
-> "Assumptions to validate".
+# Android — Jetpack Compose panel
 
 The feature and the lab share one `CardStyle` held by the screen. The baseline is
 the declared default, `CardStyle.appDefault`, never the value on screen when the
@@ -609,14 +602,11 @@ pass. Check by hand and record the evidence (`references/platform-handoff.md`,
 3. `adb shell am start -S -n <pkg>/<activity> --ez UITuningLabOpen true` on a
    Release install opens nothing.
 
-## Assumptions to validate
+## Version notes
 
-- `LocalConfiguration.screenHeightDp` for the height cap; on Compose 1.7+ the
-  window size from `LocalWindowInfo` is the newer equivalent.
-- `LocalClipboardManager` is deprecated in recent Compose releases in favour of
-  `LocalClipboard` (suspend `setClipEntry`); adapt to the app's Compose version.
-- `BuildConfig.DEBUG` requires `buildFeatures { buildConfig = true }` on AGP 8+.
+- Height cap: `LocalConfiguration.screenHeightDp`; on Compose 1.7+ use the
+  window size from `LocalWindowInfo`.
+- Recent Compose deprecates `LocalClipboardManager`; there, use
+  `LocalClipboard` and its suspend `setClipEntry`.
+- `BuildConfig.DEBUG` needs `buildFeatures { buildConfig = true }` on AGP 8+.
 - `Files.move` and `Instant` need API 26, or core library desugaring.
-- `Intent.removeExtra` on `activity.intent` is assumed not to survive into a
-  recreated activity's intent; the process-level `handled` flag covers that
-  case either way.

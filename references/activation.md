@@ -1,9 +1,19 @@
 # Activation: How the Lab Opens
 
-Activation is how the human and the agent open the lab. It is part of the lab's
-design, not an afterthought. Read this before building the panel. This is lab
-activation, not the skill's trigger: whether the skill loads for a request is a
-separate description-and-evaluation concern.
+How the human and the agent open the lab. Read this before building the panel.
+
+## Contents
+
+- The three paths
+- Inspect before choosing
+- Ask how the lab opens
+- Screen cases
+- Platform candidates
+- Shake rules
+- Tell the user how to shake
+- Agent path rules
+- Remember the choice
+- Verify
 
 ## The three paths
 
@@ -41,8 +51,10 @@ is ambiguous, ask instead of guessing.
 ## Ask how the lab opens
 
 Always ask "How should the lab open?" Skip it only when the user's request
-already names the human path, or a remembered `activation` in
-`.ui-tuning-lab/lab.json` still fits the screen. An existing debug menu or a
+already names the human path, a remembered `activation` in
+`.ui-tuning-lab/lab.json` still fits the screen, or inspection finds no human
+path besides the visible pill (no free shake, debug menu, toolbar, or
+shortcut); then say in the report that the pill is the way in. An existing debug menu or a
 clear toolbar convention does not skip the question; it becomes the
 recommendation.
 
@@ -119,8 +131,7 @@ be combined with a free alternative from its row when the user picks both.
 
 ### Other platforms
 
-Android, Windows, Flutter, and React Native are unvalidated adaptations. Reuse
-the platform's developer menu, keep the fallback visible, and keep every handler
+Reuse the platform's developer menu, keep the fallback visible, and keep every handler
 behind the platform gate. React Native already owns shake through its developer
 menu; do not add a second shake listener. Agent paths, each honored once per
 launch (worked through in the matching example):
@@ -155,8 +166,8 @@ launch (worked through in the matching example):
 ## Tell the user how to shake
 
 Keyboard shortcuts belong to Simulator.app and to whatever agent app shows the
-device, and both can change them in an update or a user remap. This skill never
-records them as facts. Work them out when you write **How to try it**:
+device, and both can change them in an update or a user remap. Work them out
+when you write **How to try it**:
 
 1. **Your own tools first.** If your simulator tool has a shake action, use it,
    confirm the lab opens, and report shake as tested by the agent. The user then

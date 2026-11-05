@@ -4,6 +4,12 @@ Inspect before asking. Read the app entry point, build configuration, feature
 configuration model, presentation conventions, persistence layer, and nearby
 tests. Record these working choices:
 
+## Contents
+
+- Reuse an existing control surface
+- Wire the host
+- Proceed or ask
+
 - target: feature unless the request explicitly names the container;
 - scope: only the animation, layout, appearance, or visible logic requested;
 - container: the existing platform-native transient surface nearest the feature;
@@ -57,6 +63,10 @@ native panel instead and say why.
   feature component is rendered. When the feature is one child of a larger screen
   (a card list under a heading), replace only that child with the host and keep
   its siblings untouched; the examples' whole-screen hosts are the simple case.
+  The pill and panel are not part of that wrap: pin them to the screen or
+  window (the web top layer, an iOS overlay, Flutter's `Overlay`, a Compose
+  root box), so they stay in the corner even when the feature sits inside a
+  scroll view.
 - **Constants become state.** When the feature reads a constant directly (for
   example `<CardList config={cardDefaults} />`), lift it into state in the
   nearest parent, initialised from that constant, so the lab has something to
@@ -89,6 +99,17 @@ native panel instead and say why.
   clicking or scrolling the feature is part of tuning. Close it with an explicit
   Close button and Escape. Give it the app's font and `color-scheme` so it stays
   readable in dark mode; styling it beyond that is optional.
+- **Phones.** On compact width (under about 600 points or dp), a corner panel
+  covers the feature. Dock the panel full width at the bottom, at most about 45%
+  of the screen tall, and leave the feature scrollable above it (on iOS, the
+  short sheet in `references/ios-hosting.md`).
+- **Tabs and routes.** When the screen is one tab of a tab bar or one route of a
+  stack, show the pill and panel only while that screen is visible, and keep
+  the draft while it is hidden.
+- **Right-to-left apps.** The feature keeps the app's locale and direction;
+  never change them for the lab. The panel's own labels may stay in English and
+  left-to-right. Pick the pill's corner after mirroring, so it does not cover
+  the feature's leading edge.
 
 When the feature is one child of a screen, the web host looks like this
 (`HomeScreen.ui-tuning-lab.tsx` holds the lab; `TuningLabHost` is set inside the
@@ -107,28 +128,6 @@ DEV gate exactly as in `examples/web-floating-panel.md`):
 
 The lab module imports the host's props type with `import type`. That import is
 erased at build time, so the two modules never import each other at runtime.
-
-## Remember the activation
-
-Record activation in `.ui-tuning-lab/lab.json` only when the user asks to
-remember it, or when a reusable configuration already exists and the user
-confirms. Use stable tokens, not prose:
-
-```json
-"activation": {
-  "human": "shake",
-  "agent": "-UITuningLabOpen 1",
-  "fallback": "pill"
-}
-```
-
-If no configuration exists and the user wants memory, create one from
-`assets/labconfig.template.json` with the inferred target, scope, container,
-baseline, and variants, then say the lab is now reusable. When the user picked
-several human paths, store them as an array: `"human": ["shake", "toolbar-tune"]`. Read the stored
-activation during setup; if it conflicts with the current screen, report the
-conflict and ask before replacing it. Never write activation to a saved profile:
-`verify.sh profile` rejects extra fields.
 
 ## Proceed or ask
 

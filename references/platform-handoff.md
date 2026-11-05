@@ -5,9 +5,13 @@ waits for Done, and where a persisted lab keeps its candidates. The lines
 themselves are the same everywhere (`references/candidates.md`): one tag, a
 space, then one sorted-key JSON object, on a single line.
 
-Status follows `references/surface-matrix.md`: Web, iOS, and macOS rows are
-candidates exercised by this skill's examples; every other row is an
-unvalidated adaptation until a receipt in the target app proves it.
+## Contents
+
+- Emit and read
+- Wait for Done
+- No local toolchain
+- Where persisted candidates live
+- Gates the source linter cannot see
 
 ## Emit and read
 
@@ -89,10 +93,12 @@ whole lab anyway.
   and re-read every changed file for imports and brackets before handing off.
   Run whatever static check does exist here (a linter, `verify.sh
   source-gates`, the manual gate check below). Report the code as not compiled.
-- **Activation.** The agent path usually cannot be set on a remote build (no
-  `--dart-define`, no launch argument). Offer the visible pill plus the chosen
-  human path, and set the agent flag only in the pipeline's debug job when the
-  user agrees.
+- **Activation.** Read the workflow first. When it takes build or launch
+  inputs (a `workflow_dispatch` input for `--dart-define`, launch arguments,
+  or environment variables), the agent path works through it: pass the open
+  flag when you trigger a run. Otherwise offer the visible pill plus the chosen
+  human path, and add the flag to the pipeline's debug job only when the user
+  agrees.
 - **Done reaches the agent through chat.** There is no log to poll. Done and
   Copy values already copy the values; the finish hint and the **How to try
   it** steps tell the user to paste them, or simply say "land b". Many device

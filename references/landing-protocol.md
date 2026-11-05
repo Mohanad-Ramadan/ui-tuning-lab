@@ -4,6 +4,13 @@ A tuning session is finished when the chosen values live in the feature's real
 defaults, not when the lab looks right. Land the winner as soon as the user picks
 one ("keep this", "ship these values", "that's the one").
 
+## Contents
+
+- 1. Get the values
+- 2. Write them into the defaults
+- 3. Remove or keep the lab
+- 4. Confirm
+
 ## 1. Get the values
 
 Every lab has a **Copy values** action. It copies a JSON object containing only
@@ -25,15 +32,8 @@ presses Done (`references/candidates.md`). Use, in order:
    `null` and there is at least one candidate, ask which to land, listing the
    draft's `values` and every candidate with its `basedOn` and `values`.
 
-Read the lines yourself rather than asking for a paste. The table covers the
-validated platforms; Android, Flutter, React Native, Windows, and the rest are in
-`references/platform-handoff.md`:
-
-| Platform | Where to read it |
-|---|---|
-| Web | the browser console, for example the built-in browser's console messages filtered by `UITUNINGLAB_` |
-| iOS Simulator | `xcrun simctl spawn booted log show --last 1h --style compact --predicate 'subsystem == "ui-tuning-lab" AND eventMessage CONTAINS "UITUNINGLAB_"'` |
-| macOS (`/usr/bin/log`, since zsh has a `log` builtin) | `/usr/bin/log show --last 1h --style compact --predicate 'subsystem == "ui-tuning-lab" AND eventMessage CONTAINS "UITUNINGLAB_"'` |
+Read the lines yourself rather than asking for a paste, with the platform's
+command in `references/platform-handoff.md`, "Emit and read".
 
 If no line is available, ask the user to press Copy values and paste the result.
 `{}` means the draft matches the baseline, so there is nothing to land. `null`

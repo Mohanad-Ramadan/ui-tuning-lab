@@ -1,11 +1,4 @@
-# Unvalidated adaptation — Windows (WinUI 3) flyout
-
-> **Unvalidated adaptation — not compiled in this repository.** No .NET or
-> Windows App SDK toolchain runs here, so none of this code has been built,
-> run, or inspected in a Release build. Treat it as a starting point and
-> complete the full protocol (`references/verify-protocol.md`) in the target app
-> before relying on it. Places where an API was assumed rather than checked are
-> listed under "Assumptions to validate".
+# Windows (WinUI 3) flyout
 
 The feature and the lab share one `CardConfig` held by the page. The baseline is
 the declared default, `CardConfig.AppDefault`. All lab code lives in
@@ -680,24 +673,14 @@ pass (`references/platform-handoff.md`, "Gates the source linter cannot see"):
 3. A Release build launched with `--ui-tuning-lab-open` opens nothing, shows no
    Tune button, and ignores `Ctrl+Shift+L`.
 
-## Assumptions to validate
+## Version notes
 
-- That cancelling `Flyout.Closing` plus `OverlayInputPassThroughElement` keeps
-  the flyout open while the feature receives clicks. If light dismiss still
-  swallows the first click, use a `Popup` with `IsLightDismissEnabled = false`
-  anchored to the button, with the same content and teardown.
-- That `PreviewKeyDown` on the flyout content sees Escape before the flyout's
-  own handling, so Escape still closes it while Closing is cancelled otherwise.
-- `Environment.GetCommandLineArgs()` for a packaged app launched through its
-  execution alias; packaged activation may instead deliver arguments through
-  `AppInstance.GetCurrent().GetActivatedEventArgs()`.
-- `Debug.WriteLine` reaching DebugView without a debugger attached in a .NET 8
-  Debug build; if it does not, attach the Visual Studio debugger and read the
-  Output window.
-- The `CardBackgroundFillColorDefaultBrush` resource key, and `RadioButtons`
-  with `RadioButton` items rebuilt while the selection guard is set.
-- `DependencyObject.DispatcherQueue.TryEnqueue` to defer the Compare rebuild
-  out of `SelectionChanged`, and whether `Flyout.Hide()` on an unloading page
-  still raises `Closed` (`Release()` covers both cases).
-- `Select-String` over a binary assembly as a release search; `strings` from
-  Sysinternals is an alternative.
+- If light dismiss still swallows the first click on the feature, use a `Popup`
+  with `IsLightDismissEnabled = false` anchored to the button, with the same
+  content and teardown.
+- A packaged app launched through its execution alias may receive arguments
+  through `AppInstance.GetCurrent().GetActivatedEventArgs()` rather than
+  `Environment.GetCommandLineArgs()`; read both.
+- If DebugView shows nothing without a debugger attached, attach the Visual
+  Studio debugger and read the Output window.
+- For the release search, Sysinternals `strings` works too.
