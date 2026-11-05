@@ -26,6 +26,26 @@
 - Candidate names are never reused within a run, and a persisted lab never
   overwrites a stored entry, readable or not.
 
+### Other platforms
+
+- New `references/platform-handoff.md`: for every platform, how lab lines are
+  logged and read, how to wait for Done (`adb logcat -d -T` polling on
+  Android), where persisted candidates live, and manual gate checks for Kotlin,
+  Dart, and C#, which `source-gates` cannot read.
+- Unvalidated adaptation examples for Android (Compose), Flutter, React Native,
+  and Windows (WinUI 3), each with the full activation triad and handoff.
+  Nothing in them is compiled in this repository.
+- Saved profiles accept `visionos`, `android`, `flutter`, `react-native`,
+  `windows`, `linux`, and `harmonyos`; Flutter and React Native use the
+  framework value so a candidate moves between devices.
+- Reusing a panel library keeps Keep as candidate, Compare, and Done, or the
+  report says which one the library cannot host.
+- `source-gates` accepts React Native's `if (__DEV__) {` around a `require()`
+  of the lab module, rejects `import()` under that gate (web bundlers do not
+  inline `__DEV__`), and fails a file that defines or assigns `__DEV__`.
+- Release searches look for the `UITUNINGLAB_` and `ui-tuning-lab` strings as
+  well as the class marker, since minifiers rename identifiers.
+
 ## 1.1.0 — unreleased
 
 - New `references/activation.md`: every lab has an agent path, a human fast path,

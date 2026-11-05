@@ -59,7 +59,7 @@ These files are not in the installed package.
 
 ```sh
 sh tests/verify.sh      # linter and validator fixtures
-sh tests/examples.sh    # every example variant linted, plus gate-stripped mutants
+sh tests/examples.sh    # every iOS, macOS, and web example variant linted, plus gate-stripped mutants, and the React Native host
 sh tests/compile.sh     # Swift (iOS, macOS; DEBUG and Release) and TypeScript typecheck
 sh tests/package.sh     # the package is self-contained
 sh tools/package.sh     # builds dist/ui-tuning-lab/ and dist/ui-tuning-lab-<version>.zip

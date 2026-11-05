@@ -1,10 +1,7 @@
-# Unvalidated adaptation — Android drawer
+# Moved — Android
 
-Conditional `ModalBottomSheet` removed from composition on hide.
-This repository does not contain validation evidence for this adaptation. Confirm
-open, variants, reset, explicit save, dismissal, accessibility, teardown, and
-Release artifact absence in the target app before relying on it.
-
-Key points: `if (showSheet) { ModalBottomSheet(...) }`,
-`rememberModalBottomSheetState`, `BuildConfig.DEBUG` gate, shake or
-dev-drawer entry. Never a persistent scaffold for the lab.
+The Android guidance now lives in `examples/android-compose-sheet.md`: a
+Jetpack Compose non-modal panel lab in the `debug` source set, with the
+intent-extra agent path, a visible Tune pill, candidates, Compare, Done, and
+the manual gate check. It is an unvalidated adaptation, not compiled in this
+repository. This file stays so existing links keep working.

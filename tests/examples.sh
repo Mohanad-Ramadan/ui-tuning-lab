@@ -270,6 +270,19 @@ for example in $EXAMPLES; do
   done
 done
 
+# The React Native adaptation is not compiled here, but its host is TypeScript,
+# so the linter can check that the lab module loads only under __DEV__.
+rn="$WORK/react-native-overlay"
+mkdir -p "$rn"
+awk -v d="$rn" '/^```(tsx|ts)$/ { inside = 1; n++; out = d "/block" n ".tsx"; next } /^```$/ { inside = 0 } inside { print > out }' \
+  "$ROOT/examples/react-native-overlay.md"
+rn_host=$(grep -l 'require("./' "$rn"/*.tsx 2>/dev/null | head -1)
+if [ -n "$rn_host" ] && "$VERIFY" source-gates "$rn_host" >/dev/null 2>&1; then
+  ok "react-native-overlay.md host passes source-gates"
+else
+  not_ok "react-native-overlay.md host passes source-gates"
+fi
+
 if grep -rn 'variantLab' "$ROOT/SKILL.md" "$ROOT/examples" "$ROOT/references" "$ROOT/validation" >/dev/null; then
   not_ok 'no legacy variantLab namespace remains'
 else

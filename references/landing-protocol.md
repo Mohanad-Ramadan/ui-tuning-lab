@@ -25,7 +25,9 @@ presses Done (`references/candidates.md`). Use, in order:
    `null` and there is at least one candidate, ask which to land, listing the
    draft's `values` and every candidate with its `basedOn` and `values`.
 
-Read the lines yourself rather than asking for a paste:
+Read the lines yourself rather than asking for a paste. The table covers the
+validated platforms; Android, Flutter, React Native, Windows, and the rest are in
+`references/platform-handoff.md`:
 
 | Platform | Where to read it |
 |---|---|

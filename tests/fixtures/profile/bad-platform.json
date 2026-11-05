@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "default",
-  "platform": "android",
+  "platform": "tvos",
   "container": "FeatureScreen.popover",
   "scope": [
     "appearance",

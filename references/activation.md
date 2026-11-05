@@ -121,7 +121,15 @@ be combined with a free alternative from its row when the user picks both.
 Android, Windows, Flutter, and React Native are unvalidated adaptations. Reuse
 the platform's developer menu, keep the fallback visible, and keep every handler
 behind the platform gate. React Native already owns shake through its developer
-menu; do not add a second shake listener.
+menu; do not add a second shake listener. Agent paths, each honored once per
+launch (worked through in the matching example):
+
+| Platform | Agent path |
+|---|---|
+| Android | `adb shell am start -S -n <package>/<activity> --ez UITuningLabOpen true` (`examples/android-compose-sheet.md`) |
+| Flutter | `flutter run --dart-define=UITUNINGLAB_OPEN=true` (`examples/flutter-overlay.md`) |
+| React Native | `EXPO_PUBLIC_UITUNINGLAB_OPEN=1` when Metro starts (Expo), or the development-only global `uiTuningLabOpen()` (`examples/react-native-overlay.md`); never a URL scheme |
+| Windows | the `--ui-tuning-lab-open` command-line argument (`examples/windows-flyout.md`) |
 
 ## Shake rules
 

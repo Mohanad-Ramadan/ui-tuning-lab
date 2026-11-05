@@ -112,7 +112,7 @@ validate_profile() {
       (.savedAt | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"))
     end) and
     (.name | kebab) and
-    (.platform == "ios" or .platform == "macos" or .platform == "web") and
+    (.platform | IN("ios", "macos", "web", "visionos", "android", "flutter", "react-native", "windows", "linux", "harmonyos")) and
     (.container | type == "string" and length > 0) and
     (.scope | type == "array" and length > 0 and all(.[]; type == "string" and length > 0)) and
     (.overrides | type == "object" and length > 0) and
@@ -180,7 +180,13 @@ lint_web() {
     }
     function dev_condition(s) {
       return (s ~ /^if[[:space:]]*\([[:space:]]*import\.meta\.env\.DEV[[:space:]]*\)$/ ||
+              rn_condition(s) ||
               s ~ ("^if[[:space:]]*\\([[:space:]]*process\\.env\\.NODE_ENV[[:space:]]*!==?[[:space:]]*(\"production\"|" squote "production" squote ")[[:space:]]*\\)$"))
+    }
+    # React Native (Metro) inlines __DEV__; web bundlers do not, so a __DEV__
+    # gate counts only around require(), never around import().
+    function rn_condition(s) {
+      return (s ~ /^if[[:space:]]*\([[:space:]]*__DEV__[[:space:]]*\)$/)
     }
     function brace_in_quote(s, q,    n,a,i) {
       n = split(s, a, q)
@@ -205,10 +211,15 @@ lint_web() {
         if (raw ~ lab) { print FILENAME ":" FNR ": lab reference inside multi-line template literal"; violations = 1 }
         next
       }
+      # A file that defines or assigns __DEV__ makes every __DEV__ gate meaningless.
+      if (raw ~ /(const|let|var)[[:space:]]+__DEV__([^A-Za-z0-9_$]|$)/ || raw ~ /__DEV__[[:space:]]*=([^=]|$)/) {
+        print FILENAME ":" FNR ": __DEV__ is defined or assigned here"
+        violations = 1
+      }
       if (pending_gate) {
         if (text == "") next
         if (text == "{") {
-          depth++; if (safe_depth == 0) safe_depth = depth; pending_gate = 0; next
+          depth++; if (safe_depth == 0) { safe_depth = depth; safe_rn = pending_rn }; pending_gate = 0; next
         }
         print FILENAME ":" FNR ": ambiguous development guard; expected { on the next line"
         violations = 1; pending_gate = 0; safe_depth = 0
@@ -217,9 +228,9 @@ lint_web() {
       inline_gate = 0
       if (text ~ /\{[[:space:]]*$/) {
         condition = text; sub(/\{[[:space:]]*$/, "", condition); condition = trim(condition)
-        inline_gate = dev_condition(condition)
+        inline_gate = dev_condition(condition); inline_rn = rn_condition(condition)
       } else if (dev_condition(text)) {
-        pending_gate = 1; next
+        pending_gate = 1; pending_rn = rn_condition(text); next
       }
 
       comment_at = index(raw, "//")
@@ -239,7 +250,7 @@ lint_web() {
         character = substr(raw, i, 1)
         if (character == "{") {
           depth++
-          if (inline_gate && safe_depth == 0) safe_depth = depth
+          if (inline_gate && safe_depth == 0) { safe_depth = depth; safe_rn = inline_rn }
           inline_gate = 0
         } else if (character == "}") {
           depth--
@@ -248,6 +259,11 @@ lint_web() {
         }
         if (substr(raw, i) ~ ("^(" lab ")") && safe_depth == 0) {
           print FILENAME ":" FNR ":" raw
+          violations = 1
+          break
+        }
+        if (substr(raw, i) ~ ("^(" lab ")") && safe_depth > 0 && safe_rn && raw ~ /import[[:space:]]*\(/) {
+          print FILENAME ":" FNR ": __DEV__ gates require(), not import(): " raw
           violations = 1
           break
         }

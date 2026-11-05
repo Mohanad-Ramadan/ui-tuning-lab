@@ -1,6 +1,6 @@
 ---
 name: ui-tuning-lab
-description: "Add a temporary, development-only control panel beside a real screen so you can tweak animation, spacing, colors, layout, or UI states live in a development build, compare variants against the original, and write the winning values back into code. Use when the user wants to tune, tweak, or try variants of something visible by eye, add sliders or knobs to adjust it while the app runs, or dial in an animation or layout by feel. Web (React), iOS, and macOS (SwiftUI)."
+description: "Add a temporary, development-only control panel beside a real screen so you can tweak animation, spacing, colors, layout, or UI states live in a development build, compare variants against the original, and write the winning values back into code. Use when the user wants to tune, tweak, or try variants of something visible by eye, add sliders or knobs to adjust it while the app runs, or dial in an animation or layout by feel. Web (React), iOS, and macOS (SwiftUI), with unvalidated adaptations for Android (Compose), Flutter, React Native, and Windows (WinUI)."
 license: MIT
 metadata:
   author: "Mohanad Ramadan"
@@ -58,8 +58,8 @@ A good lab feels like this:
    user is not available, stop here and report the lab as built, with every
    hands-on check listed as not run. You can still run the release-artifact
    checks yourself: build, search the output, serve it, and try activation
-   paths. On Apple platforms, wait for Done with a background log watch
-   (`references/candidates.md`, "Waiting for Done").
+   paths. Wait for Done with a background poll of the platform's log where
+   one exists (`references/platform-handoff.md`, "Wait for Done").
 5. **Land the winner.** Take the candidate or values the user names in chat,
    else the newest `UITUNINGLAB_DONE` or `UITUNINGLAB_VALUES` line
    (`references/landing-protocol.md`, step 1), write the values into the
@@ -80,8 +80,9 @@ module (presets, a diff function) need no marker: the file itself is gated.
   state too (`showUITuningLab`, `uiTuningLabBaseline`).
 - **Web:** keep lab code in `*.ui-tuning-lab.tsx` modules. Load them only with a
   dynamic `import()` by relative path inside `if (import.meta.env.DEV) {` (Vite)
-  or `if (process.env.NODE_ENV !== "production") {` (webpack, Next.js). A static
-  import fails the linter. The host variable (`TuningLabHost`) stays
+  or `if (process.env.NODE_ENV !== "production") {` (webpack, Next.js), or with
+  `require()` inside `if (__DEV__) {` (React Native). A static import fails the
+  linter. The host variable (`TuningLabHost`) stays
   unmarked because it is declared outside the gate.
 
 ## Safety checklist
@@ -90,7 +91,7 @@ module (presets, a diff function) need no marker: the file itself is gated.
 
 | Guarantee | How it is checked |
 |---|---|
-| **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files, and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
+| **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files (for Kotlin, Dart, and C#, which it cannot read, the manual gate check in `references/platform-handoff.md` instead), and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
 | **Activatable only in development.** The lab opens through the documented agent path, the chosen human path, and a visible fallback; none survives Release. | Hands-on: every documented path opens the lab, a focused text field keeps shake-to-undo, and the fallback is reachable. Release archive: launch arguments, URL schemes, shake selectors, notification names, key commands, and fallback labels are absent or inert (`references/verify-protocol.md`). |
 | **Reversible.** Reset restores the baseline (the declared default) exactly, behavior included. | Hands-on: open, change everything, close, reopen, Reset, and compare with the unmodified app. |
 | **Explicit persistence.** Nothing is written unless the user asked; candidates in an ephemeral lab live only in memory and the log; saves go only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | No storage writer in an ephemeral lab; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
@@ -117,6 +118,9 @@ a save would overwrite a production key.
 - `references/control-mapping.md`: which control for which value; required controls.
 - `references/candidates.md`: Keep as candidate, Compare, Done, the finish hint,
   waiting for Done, and keeping finalists for a later session.
+- `references/platform-handoff.md`: per platform, how lab lines are logged and
+  read, how to wait for Done, where candidates are stored, and manual gate
+  checks for languages the linter cannot read.
 - `references/landing-protocol.md`: reading values, writing defaults, removal.
 - `references/config-schema.md`: `lab.json`, candidates, and saved profiles.
 - `references/verify-protocol.md`: static, hands-on, and release-artifact checks.

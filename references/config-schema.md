@@ -43,7 +43,7 @@ Template: `assets/profile.template.json`, a candidate. The examples'
 |---|---|---|
 | `schemaVersion` | integer | `2` for a candidate; `1` for a legacy single save, which has none of the candidate-only fields |
 | `name` | string | kebab-case |
-| `platform` | string | `ios`, `macos`, or `web` |
+| `platform` | string | `ios`, `macos`, `web`, `visionos`, `android`, `flutter`, `react-native`, `windows`, `linux`, or `harmonyos`; Flutter and React Native use the framework value (`references/platform-handoff.md`) |
 | `container` | string | the host surface used when saving |
 | `scope` | string array | non-empty |
 | `overrides` | object | non-empty; the full draft configuration at save time |

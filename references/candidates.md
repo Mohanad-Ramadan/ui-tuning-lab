@@ -95,6 +95,9 @@ until line=$(/usr/bin/log show --start "$start" --style compact \
 printf '%s\n' "$line"
 ```
 
+Other platforms (Android, Flutter, React Native, Windows) have their own
+emit, read, and wait commands in `references/platform-handoff.md`.
+
 When it exits, its output is the Done line itself: start landing from it. If the
 user writes before pressing Done, stop the command and follow their message. The
 web has no console stream the agent can wait on: read the console when the user
@@ -112,6 +115,7 @@ name, and loads them into the list when it opens:
 | iOS | Application Support `.ui-tuning-lab/candidates/<name>.json` in the app container |
 | macOS | Application Support `<bundle-id>/.ui-tuning-lab/candidates/<name>.json`; a non-sandboxed app shares Application Support with every other app, so the bundle ID keeps labs apart |
 | Web | `uiTuningLab.candidates.<name>` in `localStorage` |
+| Other platforms | `references/platform-handoff.md`, "Where persisted candidates live" |
 
 `savedAt` keeps fractional seconds, so two quick Keeps load in the order they
 were made. Remove deletes that candidate's file or key and nothing else. A
