@@ -10,31 +10,33 @@ Every lab in this example provides:
 
 - **Replay**: re-creates the card (a bumped `id` / `key`) so its entrance runs again.
 - **Speed**: 1×, 0.5×, 0.25×, or 0.1×, applied by stretching the rendered duration.
-- **Chips**: Original (the declared default), Now (the draft), and each favorite;
-  tapping one renders it in the real card and replays it. The controls are
-  disabled while Original is shown, and moving one while a favorite is shown
-  loads that favorite into Now first.
+- **Chips**: Shipped (the declared default), each pin, and, last, the draft
+  chip ("Shipped + edits", "snappy + edits"), which appears only while the draft
+  holds unpinned changes; tapping one renders it in the real card and replays
+  it. The controls are disabled while Shipped is shown, and moving one while a
+  pin is shown copies that pin into the draft first.
 - **Reduced motion**: the feature keeps its own reduced animation, and the lab says
   when that is what you are seeing.
 - **⋯ menu**: Reset, and Copy values, which copies the draft fields that differ
   from the baseline and logs them as one `UITUNINGLAB_VALUES {...}` line for
   landing (`references/landing-protocol.md`). Speed and the chip shown are
   preview settings and are never included.
-- **★ Keep** and **✓ Use this**: Keep adds Now to the favorites; Use this picks
-  the chip shown, logs `UITUNINGLAB_DONE`, stores the result, copies
-  `land <name>`, and collapses the panel to a `✓ Sent:` bar with Change and
-  Replay, as in `references/candidates.md`. The hint
-  *Keep favorites · Use this to finish* is pinned below the controls.
+- **Pin** and **Choose**: Pin pins the draft, and is disabled while the draft
+  matches Shipped or a pin; Choose picks the chip shown, logs
+  `UITUNINGLAB_DONE`, stores the result, copies `land <name>`, and collapses the
+  panel to a `Chosen:` bar with Change and Replay, as in
+  `references/candidates.md`. The hint *Pin looks to compare · Choose to
+  finish* is pinned below the controls.
 
 ## SwiftUI (iOS 17+)
 
-The toolbar Tune button is the human path and visible fallback; the DEBUG-only
+The toolbar Entrance Lab button is the human path and visible fallback; the DEBUG-only
 `-UITuningLabOpen` launch argument is the agent path, read through
 `UITuningLabLaunch` (`references/activation.md`). The host owns the
-`UITuningLabCandidates` store beside the draft, so favorites and `basedOn`
+`UITuningLabCandidates` store beside the draft, so pins and `basedOn`
 survive closing the popover, and a name is never reused within a run; seed its
-`initial:` array to reopen a session. A chip other than Now renders through
-`rendered(draft:baseline:)` while the draft stays in `motion`. Use this writes
+`initial:` array to reopen a session. A chip other than the draft renders through
+`rendered(draft:baseline:)` while the draft stays in `motion`. Choose writes
 Application Support `.ui-tuning-lab/result.json`. Closing the lab shows the
 draft at real time again.
 
@@ -80,7 +82,7 @@ struct EntranceScreen: View {
     @State private var showUITuningLab = false
     @State private var uiTuningLab = UITuningLabMotionState()
     @State private var uiTuningLabDetent = PresentationDetent.medium
-    // Favorites and basedOn live beside the draft and outlive the popover. To
+    // Pins and basedOn live beside the draft and outlive the popover. To
     // reopen a session, seed the finalists kept in the project here
     // (references/candidates.md).
     @StateObject private var uiTuningLabCandidates =
@@ -93,7 +95,7 @@ struct EntranceScreen: View {
             .id(uiTuningLab.replayToken)
             .frame(maxHeight: .infinity, alignment: .top)
             .toolbar {
-                Button("Tune", action: openUITuningLab)
+                Button("Entrance Lab", action: openUITuningLab)
                     .disabled(showUITuningLab)
             }
             .popover(isPresented: $showUITuningLab) {
@@ -115,7 +117,7 @@ struct EntranceScreen: View {
                 // token so closing does not re-create the card.
                 if !open {
                     uiTuningLab.speed = 1
-                    uiTuningLab.shown = "now"
+                    uiTuningLab.shown = "draft"
                     uiTuningLab.showing = nil
                 }
             }
@@ -168,8 +170,8 @@ import SwiftUI
 struct UITuningLabMotionState {
     var replayToken = 0
     var speed = 1.0              // 1 = real time; smaller values slow the preview
-    var shown = "now"            // the chip shown: now, original, or a favorite's name
-    var showing: EntranceMotion?  // what that chip shows; nil while Now is shown
+    var shown = "draft"          // the chip shown: draft, original (Shipped), or a pin's name
+    var showing: EntranceMotion?  // what that chip shows; nil while the draft is shown
 
     func rendered(draft: EntranceMotion, baseline: EntranceMotion) -> EntranceMotion {
         var motion = showing ?? draft
@@ -181,7 +183,7 @@ struct UITuningLabMotionState {
 struct UITuningLabMotionControls: View {
     @Binding var motion: EntranceMotion
     @Binding var lab: UITuningLabMotionState
-    // Owned by the host beside the draft, so favorites and basedOn survive
+    // Owned by the host beside the draft, so pins and basedOn survive
     // closing and reopening the lab.
     @ObservedObject var candidates: UITuningLabCandidates<EntranceMotion>
     let baseline: EntranceMotion
@@ -195,10 +197,10 @@ struct UITuningLabMotionControls: View {
 
     var body: some View {
         if let sent {
-            // ✓ Use this collapses the lab to one bar; Change reopens it.
+            // Choose collapses the lab to one bar; Change reopens it.
             VStack(alignment: .leading) {
                 HStack {
-                    Text("✓ Sent: \(sent)")
+                    Text("Chosen: \(sent)")
                     Spacer()
                     Button("Change") { self.sent = nil }
                     Button("Replay") { lab.replayToken += 1 }
@@ -221,7 +223,7 @@ struct UITuningLabMotionControls: View {
                 Menu {
                     Button("Reset", action: reset)
                     Button("Copy values") {
-                        // Copy values always reports Now, whatever chip is shown.
+                        // Copy values always reports the draft, whatever chip is shown.
                         status = uiTuningLabCopyValues(from: baseline, to: motion)
                     }
                 } label: {
@@ -232,15 +234,16 @@ struct UITuningLabMotionControls: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack {
-                    chip("Original", id: "original")
-                    chip("Now", id: "now")
-                    ForEach(candidates.all) { favorite in
+                    chip("Shipped", id: "original")
+                    ForEach(candidates.all) { pin in
                         HStack(spacing: 2) {
-                            chip(favorite.name, id: favorite.name)
-                            Button("×") { remove(favorite.name) }
-                                .accessibilityLabel("Remove \(favorite.name)")
+                            chip(pin.name, id: pin.name)
+                            Button("×") { remove(pin.name) }
+                                .accessibilityLabel("Remove \(pin.name)")
                         }
                     }
+                    // The draft chip comes last, and only while the draft holds unpinned changes.
+                    if draftMatch == nil { chip(candidates.draftTitle, id: "draft") }
                 }
             }
             if reduceMotion {
@@ -277,17 +280,16 @@ struct UITuningLabMotionControls: View {
             .pickerStyle(.segmented)
             HStack {
                 Button("Replay") { lab.replayToken += 1 }
-                Button("★ Keep", action: keep)
-                    .accessibilityLabel("Keep")
-                    .disabled(lab.shown != "now")
-                Button("✓ Use this", action: useThis)
-                    .accessibilityLabel("Use this")
+                // Nothing to pin while the draft matches Shipped or a pin.
+                Button("Pin", action: keep)
+                    .disabled(draftMatch != nil)
+                Button("Choose", action: useThis)
             }
             if let status { Text(status).font(.footnote) }
         }
         // Pinned below the scrolling controls, so it shows at every detent.
         .safeAreaInset(edge: .bottom) {
-            Text("Keep favorites · Use this to finish")
+            Text("Pin looks to compare · Choose to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -302,32 +304,42 @@ struct UITuningLabMotionControls: View {
         .buttonStyle(.borderless)
     }
 
+    /// The chip the draft matches (`original` for Shipped, or a pin), or nil
+    /// while it holds unpinned changes and shows its own chip.
+    private var draftMatch: String? { candidates.match(motion) }
+
+    /// The highlighted chip: the one shown, or the one the draft matches.
+    private var current: String { lab.shown == "draft" ? draftMatch ?? "draft" : lab.shown }
+
     /// One chip; the highlighted chip is the one the card shows.
     private func chip(_ title: String, id: String) -> some View {
         Button(title) { show(id) }
             .buttonStyle(.bordered)
-            .tint(lab.shown == id ? .accentColor : .secondary)
-            .accessibilityAddTraits(lab.shown == id ? .isSelected : [])
+            .tint(current == id ? .accentColor : .secondary)
+            .accessibilityAddTraits(current == id ? .isSelected : [])
     }
 
-    /// Shows a chip in the real card. Now stays in `motion` the whole time.
+    /// Shows a chip in the real card. The draft stays in `motion` the whole
+    /// time; tapping the chip the draft matches shows the draft.
     private func show(_ id: String) {
-        lab.showing = id == "now" ? nil : id == "original" ? baseline : candidates.named(id)?.value
-        lab.shown = lab.showing == nil ? "now" : id
+        let target = id == draftMatch ? "draft" : id
+        lab.showing = target == "draft" ? nil : target == "original" ? baseline : candidates.named(target)?.value
+        lab.shown = lab.showing == nil ? "draft" : target
     }
 
-    /// The controls show and edit what is on screen. Moving one while a favorite
-    /// is shown first loads that favorite into Now; the favorite does not change.
+    /// The controls show and edit what is on screen. Moving one while a pin is
+    /// shown first copies that pin into the draft; the pin does not change.
     private var draft: Binding<EntranceMotion> {
         Binding(get: { lab.showing ?? motion }, set: { edit($0) })
     }
 
     private func edit(_ value: EntranceMotion) {
-        if lab.shown != "now" {
-            candidates.basedOn = lab.shown
-            lab.shown = "now"
-            lab.showing = nil
+        // Editing a pin, or a draft that matches one, starts from that look.
+        if let source = lab.shown == "draft" ? draftMatch : lab.shown {
+            candidates.basedOn = source == "original" ? "baseline" : source
         }
+        lab.shown = "draft"
+        lab.showing = nil
         motion = value
     }
 
@@ -344,7 +356,7 @@ struct UITuningLabMotionControls: View {
     }
 
     private func remove(_ name: String) {
-        if lab.shown == name { show("now") }
+        if lab.shown == name { show("draft") }
         candidates.remove(name)
         status = "Removed \(name)"
     }
@@ -352,15 +364,15 @@ struct UITuningLabMotionControls: View {
     private func keep() {
         do {
             let kept = try candidates.keep(motion)
-            status = "Kept \(kept.name)"
+            status = "Pinned \(kept.name)"
         } catch {
             status = error.localizedDescription
         }
     }
 
-    /// Picks the chip on screen: a favorite, `original`, or `draft` for Now.
+    /// Choose picks the highlighted chip: a pin, `original` for Shipped, or `draft`.
     private func useThis() {
-        let winner = lab.shown == "now" ? "draft" : lab.shown
+        let winner = current
         status = candidates.use(lab.showing ?? motion, winner: winner)
         sent = winner
     }
@@ -374,15 +386,15 @@ struct UITuningLabMotionControls: View {
 
 <!-- copy: assets/swift/UITuningLabValues.swift -->
 `UITuningLabValues.swift`: copy `assets/swift/UITuningLabValues.swift` into the
-app's target unchanged. It holds Copy values, the favorites store, favorite
-names, Use this with its result file, and the log lines every Swift lab shares,
+app's target unchanged. It holds Copy values, the pins store, pin names,
+Choose with its result file, and the log lines every Swift lab shares,
 all inside `#if DEBUG`.
 
 ## Web (React)
 
 `springEasing` turns a bounce value into a CSS `linear()` easing so the same spring
 runs through the Web Animations API. `linear()` needs Chromium 113+, Safari 17.2+,
-or Firefox 112+. The Tune button is the human path and visible fallback;
+or Firefox 112+. The Entrance Lab button is the human path and visible fallback;
 `?ui-tuning-lab=1` is the agent path, parsed only inside the DEV-gated lab module
 (`references/activation.md`).
 
@@ -490,13 +502,13 @@ const panelStyle = {
 } as const;
 const triggerStyle = { position: "fixed", insetBlockEnd: 16, insetInlineEnd: 16 } as const;
 
-// A favorite: the fields that differ from the baseline, plus where it started.
+// A pin: the fields that differ from the baseline, plus where it started.
 type Candidate = { name: string; basedOn: string; values: Partial<EntranceMotion> };
-// Favorites the lab opens with. Empty by default; a later session seeds the
+// Pins the lab opens with. Empty by default; a later session seeds the
 // finalists kept in the project here (references/candidates.md).
 const initialCandidates: Candidate[] = [];
 
-// Preset keys are kebab-case: the key is what a favorite records as basedOn.
+// Preset keys are kebab-case: the key is what a pin records as basedOn.
 const presets = {
   snappy: { durationMs: 350, bounce: 0, offsetPx: 24 },
   playful: { durationMs: 900, bounce: 0.45, offsetPx: 64 },
@@ -538,7 +550,7 @@ function sortedJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-// A favorite's name: `stem`, or `stem-2`, `stem-3`, ... when taken. Names are
+// A pin's name: `stem`, or `stem-2`, `stem-3`, ... when taken. Names are
 // never reused in a run, and never a chip or basedOn word.
 function favoriteName(stem: string, issued: Set<string>): string {
   const taken = (name: string) => issued.has(name) || ["draft", "now", "original", "baseline"].includes(name);
@@ -553,18 +565,16 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   useEffect(clearLaunchRequest, []);
   const [replay, setReplay] = useState(0);
   const [speed, setSpeed] = useState(1);
-  // What the card renders: "draft", "baseline", or a candidate's name. The draft
+  // The chip shown: "draft", "original" (Shipped), or a pin's name. The draft
   // stays in `motion` the whole time, so nothing needs stashing.
-  // The chip shown: "now", "original", or a favorite's name. The draft stays in
-  // `motion` the whole time, so nothing needs stashing.
-  const [shown, setShown] = useState("now");
-  // Favorites live in memory and in the log; only Use this writes storage.
+  const [shown, setShown] = useState("draft");
+  // Pins live in memory and in the log; only Choose writes storage.
   const [candidates, setCandidates] = useState(initialCandidates);
   // Every name issued in this run, removed ones included: names are never reused.
   const issued = useRef(new Set(initialCandidates.map(c => c.name)));
-  // Favorites already written to the log, so seeded ones log once.
+  // Pins already written to the log, so seeded ones log once.
   const logged = useRef(new Set<string>());
-  // Where the draft came from: a preset, "baseline", or a favorite's name.
+  // Where the draft came from: a preset, "baseline", or a pin's name.
   const [basedOn, setBasedOn] = useState("baseline");
   // The last pick; while set, the panel is one bar.
   const [sent, setSent] = useState<string | null>(null);
@@ -579,7 +589,7 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   function finishClose() {
     setOpen(false);
     setSpeed(1);
-    setShown("now");
+    setShown("draft");
     setSent(null);
   }
   function closeLab() {
@@ -616,7 +626,15 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   }, [open]);
 
   const shownCandidate = candidates.find(c => c.name === shown);
-  // Seeded favorites log their own line the first time the lab shows them; the
+  // The chip the draft matches ("original" for Shipped, or a pin), or null while
+  // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+  const draftValues = changedValues(baseline, motion);
+  const draftMatch = Object.keys(draftValues).length === 0 ? "original"
+    : candidates.find(c => sortedJson(c.values) === sortedJson(draftValues))?.name ?? null;
+  // The highlighted chip: the one shown, or the one the draft matches.
+  const current = shown === "draft" ? draftMatch ?? "draft" : shown;
+  const draftTitle = `${basedOn === "baseline" ? "Shipped" : basedOn} + edits`;
+  // Seeded pins log their own line the first time the lab shows them; the
   // set also guards StrictMode's repeated effects.
   useEffect(() => {
     if (!open) return;
@@ -634,7 +652,7 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
 
   function openLab() { setStatus(null); setOpen(true); }
   async function copyValues() {
-    // Copy values always reports Now, whatever chip is shown.
+    // Copy values always reports the draft, whatever chip is shown.
     const values = JSON.stringify(changedValues(baseline, motion));
     console.info(`UITUNINGLAB_VALUES ${values}`);
     try {
@@ -644,30 +662,26 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
       setStatus(`Clipboard unavailable; values logged to the console: ${values}`);
     }
   }
-  // The controls show and edit what is on screen. Moving one while a favorite is
-  // shown first loads that favorite into Now; the favorite does not change.
+  // The controls show and edit what is on screen. Moving one while a pin is
+  // shown first copies that pin into the draft; the pin does not change.
+  // Editing a pin, or a draft that matches one, starts from that look.
   function edit(patch: Partial<EntranceMotion>, from?: string) {
-    if (shown === "now") setMotion(m => ({ ...m, ...patch }));
+    if (shown === "draft") setMotion(m => ({ ...m, ...patch }));
     else setMotion({ ...source, ...patch });
-    setBasedOn(from ?? shownCandidate?.name ?? basedOn);
-    setShown("now");
+    const match = shown === "draft" ? draftMatch : shown;
+    setBasedOn(from ?? (match === "original" ? "baseline" : match ?? basedOn));
+    setShown("draft");
   }
   function reset() { edit(baseline, "baseline"); replayNow(); }
   function apply(name: keyof typeof presets) { edit(presets[name], name); replayNow(); }
-  function show(chip: string) { setShown(chip); replayNow(); }
+  // Tapping the chip the draft matches shows the draft itself.
+  function show(chip: string) { setShown(chip === draftMatch ? "draft" : chip); replayNow(); }
+  // Pins the draft. Pin is disabled while the draft matches Shipped or a pin.
   function keep() {
-    const values = changedValues(baseline, motion);
-    if (Object.keys(values).length === 0) {
-      setStatus("Same as Original");
-      return;
-    }
-    const same = candidates.find(c => sortedJson(c.values) === sortedJson(values));
-    if (same) {
-      setStatus(`Same as ${same.name}`);
-      return;
-    }
-    // Named after the last preset, `tweak` from the baseline, or the favorite it
-    // was loaded from without its number.
+    if (draftMatch !== null) return;
+    const values = draftValues;
+    // Named after the last preset, `tweak` from the baseline, or the pin it was
+    // copied from without its number.
     const stem = basedOn === "baseline" ? "tweak"
       : issued.current.has(basedOn) ? basedOn.replace(/-[0-9]+$/, "") : basedOn;
     const candidate: Candidate = { name: favoriteName(stem, issued.current), basedOn, values };
@@ -675,18 +689,18 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     issued.current.add(candidate.name);
     logged.current.add(candidate.name);
     console.info(`UITUNINGLAB_CANDIDATE ${sortedJson(candidate)}`);
-    setStatus(`Kept ${candidate.name}`);
+    setStatus(`Pinned ${candidate.name}`);
   }
   function remove(name: string) {
     setCandidates(list => list.filter(c => c.name !== name));
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
-    if (shown === name) show("now");
+    if (shown === name) show("draft");
   }
-  // Picks the chip on screen and finishes: logs the result, stores it under
+  // Choose picks the highlighted chip and finishes: logs the result, stores it under
   // `uiTuningLab.result` (one setItem replaces it atomically), copies
   // `land <name>`, and collapses the panel to one bar.
   async function useThis() {
-    const winner = shown === "now" ? "draft" : shown;
+    const winner = current;
     const done = { candidates, values: changedValues(baseline, source), winner };
     console.info(`UITUNINGLAB_DONE ${sortedJson(done)}`);
     const notes: string[] = [];
@@ -705,17 +719,17 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     setSent(winner);
   }
 
-  const chipStyle = (chip: string) => ({ fontWeight: shown === chip ? 700 : 400,
-    outline: shown === chip ? "2px solid AccentColor" : undefined });
+  const chipStyle = (chip: string) => ({ fontWeight: current === chip ? 700 : 400,
+    outline: current === chip ? "2px solid AccentColor" : undefined });
 
   return <>
     <EntranceCard key={replay} motion={rendered} />
     <button ref={trigger} type="button" onClick={openLab} disabled={open}
-      style={triggerStyle}>Tune</button>
+      style={triggerStyle}>Entrance Lab</button>
     {open && <div ref={panel} {...popoverManual} style={panelStyle} role="dialog"
       aria-labelledby="ui-tuning-lab-title">
       {sent ? <>
-        <p id="ui-tuning-lab-title" role="status">✓ Sent: {sent}{" "}
+        <p id="ui-tuning-lab-title" role="status">Chosen: {sent}{" "}
           <button type="button" onClick={() => setSent(null)}>Change</button>{" "}
           <button type="button" onClick={replayNow}>Replay</button>
         </p>
@@ -729,11 +743,12 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
         </details>
         <button type="button" onClick={closeLab}>Close</button>
         <div role="group" aria-label="Looks">
-          {["original", "now", ...candidates.map(c => c.name)].map(chip => <span key={chip}>
-            <button type="button" aria-pressed={shown === chip} style={chipStyle(chip)}
+          {["original", ...candidates.map(c => c.name), ...(draftMatch === null ? ["draft"] : [])]
+            .map(chip => <span key={chip}>
+            <button type="button" aria-pressed={current === chip} style={chipStyle(chip)}
               onClick={() => show(chip)}>
-              {chip === "original" ? "Original" : chip === "now" ? "Now" : chip}</button>
-            {chip !== "original" && chip !== "now" && <button type="button"
+              {chip === "original" ? "Shipped" : chip === "draft" ? draftTitle : chip}</button>
+            {chip !== "original" && chip !== "draft" && <button type="button"
               aria-label={`Remove ${chip}`} onClick={() => remove(chip)}>×</button>}{" "}
           </span>)}
         </div>
@@ -763,11 +778,11 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
           {speeds.map(s => <option key={s} value={s}>{s}×</option>)}
         </select></label>
         <button type="button" onClick={replayNow}>Replay</button>
-        <button type="button" aria-label="Keep" disabled={shown !== "now"} onClick={keep}>★ Keep</button>
-        <button type="button" aria-label="Use this" onClick={useThis}>✓ Use this</button>
+        <button type="button" disabled={draftMatch !== null} onClick={keep}>Pin</button>
+        <button type="button" onClick={useThis}>Choose</button>
         {status && <p role="status">{status}</p>}
         <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
-          Keep favorites · Use this to finish</p>
+          Pin looks to compare · Choose to finish</p>
       </>}
     </div>}
   </>;
@@ -778,6 +793,6 @@ Slider changes replay the web card immediately because its animation depends on
 the motion values; SwiftUI replays when a slider is released. Validate on device
 with Reduce Motion on and off, at every speed, and with each chip shown, and
 confirm that closing the lab resets speed and the chip so the feature renders the
-draft at real time. Favorites live in React state and the console log only, and
-`initialCandidates` seeds them when reopening the lab; Use this writes the pick
+draft at real time. Pins live in React state and the console log only, and
+`initialCandidates` seeds them when reopening the lab; Choose writes the pick
 to the `localStorage` key `uiTuningLab.result`.

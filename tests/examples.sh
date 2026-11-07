@@ -37,7 +37,7 @@ for example in $EXAMPLES; do
   if [ -z "$(ls "$dir")" ]; then
     not_ok "$example has no tagged source files"
   # The result file (uiTuningLab.result, .ui-tuning-lab/result.json) is the one
-  # write an ephemeral lab makes; favorites must not reach storage.
+  # write an ephemeral lab makes; pins must not reach storage.
   elif grep -Eq 'UITuningLabProfile|uiTuningLab\.candidates|candidates/|Button\("Save"|>Save</button>|func save\(|function save\(' "$dir"/*; then
     not_ok "$example default source includes persistence"
   else
@@ -113,7 +113,7 @@ ios_shake="$WORK/swiftui-popover-palette-shake"
 require_in "$ios_default/UITuningLabLaunch.swift" 'UserDefaults.standard.bool(forKey: "UITuningLabOpen")' 'iOS default agent path honors the launch argument value'
 require_in "$ios_default/UITuningLabLaunch.swift" 'defer { pending = false }' 'iOS default agent path is consumed once per launch'
 require_in "$ios_default/FeatureScreen.swift" 'if UITuningLabLaunch.consumeRequest() { showUITuningLab = true }' 'iOS default host opens from the agent path'
-require_in "$ios_default/FeatureScreen.swift" 'Button("Tune", action: openUITuningLab)' 'iOS default host keeps a visible fallback'
+require_in "$ios_default/FeatureScreen.swift" 'Button("Card Lab", action: openUITuningLab)' 'iOS default host keeps a visible fallback'
 if grep -q 'UITuningLabShake' "$ios_default"/*; then
   not_ok 'iOS default host is decoupled from shake'
 else
@@ -132,7 +132,7 @@ require_in "$ios_shake/FeatureScreen.swift" '.accessibilityLabel("Open UI tuning
 motion_default="$WORK/animation-spring-default"
 require_in "$motion_default/UITuningLabLaunch.swift" 'UserDefaults.standard.bool(forKey: "UITuningLabOpen")' 'SwiftUI motion default agent path honors the launch argument value'
 require_in "$motion_default/EntranceScreen.swift" 'if UITuningLabLaunch.consumeRequest() { showUITuningLab = true }' 'SwiftUI motion default host opens from the agent path'
-require_in "$motion_default/EntranceScreen.swift" 'Button("Tune", action: openUITuningLab)' 'SwiftUI motion default host keeps a visible fallback'
+require_in "$motion_default/EntranceScreen.swift" 'Button("Entrance Lab", action: openUITuningLab)' 'SwiftUI motion default host keeps a visible fallback'
 
 # macOS pairs the launch argument with the existing menu command and shortcut.
 macos_default="$WORK/macos-panel-minimal-default"
@@ -144,7 +144,7 @@ require_in "$macos_default/UITuningLabCoordinator.swift" '.keyboardShortcut("l",
 for dir in "$WORK/web-floating-panel-default" "$WORK/web-floating-panel-persist"; do
   require_in "$dir/FeatureScreen.ui-tuning-lab.tsx" 'get("ui-tuning-lab") === "1"' "$(basename "$dir") web lab parses the agent query"
   require_in "$dir/FeatureScreen.ui-tuning-lab.tsx" 'useEffect(clearLaunchRequest, []);' "$(basename "$dir") web lab consumes the agent query once"
-  require_in "$dir/FeatureScreen.ui-tuning-lab.tsx" 'style={triggerStyle}>Tune</button>' "$(basename "$dir") web lab keeps a visible fallback"
+  require_in "$dir/FeatureScreen.ui-tuning-lab.tsx" 'style={triggerStyle}>Card Lab</button>' "$(basename "$dir") web lab keeps a visible fallback"
 done
 require_in "$WORK/animation-spring-default/EntranceScreen.ui-tuning-lab.tsx" 'get("ui-tuning-lab") === "1"' 'web motion lab parses the agent query'
 require_in "$WORK/animation-spring-default/EntranceScreen.ui-tuning-lab.tsx" 'useEffect(clearLaunchRequest, []);' 'web motion lab consumes the agent query once'
@@ -253,16 +253,22 @@ for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; d
   fi
 done
 
-# Chips, Keep, Use this, and the result file are in every variant users copy
-# (references/candidates.md), the ephemeral default included.
+# Chips, Pin, Choose, the draft chip, and the result file are in every variant
+# users copy (references/candidates.md), the ephemeral default included.
 for example in $EXAMPLES; do
   for variant in $(example_variants "$ROOT/examples/$example"); do
     dir="$WORK/${example%.md}-$variant"
     label="$example [$variant]"
-    for needle in 'Original' 'Now' '★ Keep' '✓ Use this' 'Keep favorites · Use this to finish' \
-        'Sent: ' 'land ' 'result' 'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE'; do
+    for needle in 'Shipped' ' + edits' 'draftMatch' 'Pin' 'Choose' 'Pin looks to compare · Choose to finish' \
+        'Chosen: ' 'land ' 'result' 'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE'; do
       if grep -rqF "$needle" "$dir"; then ok "$label has $needle"; else not_ok "$label has $needle"; fi
     done
+    # The old labels and glyphs are gone from the panel.
+    if grep -rqE '★|✓|"Now"|>Now<|Use this|"Original"|>Original<' "$dir"; then
+      not_ok "$label has no retired panel labels" "$(grep -rnE '★|✓|"Now"|>Now<|Use this|"Original"|>Original<' "$dir")"
+    else
+      ok "$label has no retired panel labels"
+    fi
   done
 done
 

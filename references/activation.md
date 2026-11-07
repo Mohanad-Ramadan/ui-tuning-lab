@@ -62,7 +62,7 @@ recommendation.
 - Offer up to three alternatives that inspection actually found.
 - Let the user pick more than one. Use a multi-select question when the asking
   tool supports it; otherwise offer the sensible combination as its own option,
-  for example "Shake + toolbar Tune button" when shake is free and the screen has
+  for example "Shake + toolbar Card Lab button" when shake is free and the screen has
   a toolbar.
 - Do not pad the list; two options are fine.
 - Do not offer a candidate that conflicts with the inspection.
@@ -78,7 +78,7 @@ use, so it is asked in addition to the single setup question in
 `references/setup-protocol.md`, never in place of it. When both are needed, put
 them in the same prompt rather than asking twice.
 
-Build every human path the user picks. A visible one, such as a toolbar Tune
+Build every human path the user picks. A visible one, such as a toolbar Card Lab
 button, also serves as the fallback; when every pick is a gesture or a shortcut,
 add the pill.
 
@@ -88,7 +88,7 @@ add the pill.
 |---|---|---|
 | No text input, no motion handling, single lab | Shake | Visible pill · keyboard shortcut · long-press active tab |
 | Search field or form focused | Visible pill or keyboard shortcut | Toolbar · long-press active tab; never shake |
-| NavigationStack with a toolbar | Toolbar Tune button | Shake · visible pill · keyboard shortcut |
+| NavigationStack with a toolbar | Toolbar `<Feature> Lab` button | Shake · visible pill · keyboard shortcut |
 | Tab-bar app | Long-press the active tab | Shake · visible pill · keyboard shortcut |
 | Full-bleed canvas or game | Visible pill and the agent path | Shake if free · keyboard shortcut |
 | Existing debug menu | The existing menu entry | Shake · visible pill |
@@ -105,7 +105,7 @@ be combined with a free alternative from its row when the user picks both.
 
 - Shake, when free. The agent triggers it itself when its simulator tool can,
   and otherwise tells the user the current keys ("Tell the user how to shake").
-- A toolbar Tune button.
+- A toolbar `<Feature> Lab` button, such as **Card Lab**.
 - A long-press on the active tab.
 - A small floating pill with explicit colors, pinned to the full screen rather
   than to a content-sized feature view (`references/ios-hosting.md`).

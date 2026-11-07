@@ -36,27 +36,28 @@ func uiTuningLabCopyValues<Value: Encodable>(from baseline: Value, to draft: Val
     return values == "{}" ? "No changes from baseline" : "Copied \(values)"
 }
 
-/// A favorite kept from Now (references/candidates.md). It lives in memory,
-/// and in storage only when the lab persists it.
+/// A pinned look: a frozen snapshot of the draft (references/candidates.md).
+/// It lives in memory, and in storage only when the lab persists it.
 struct UITuningLabCandidate<Value: Codable>: Identifiable {
     var name: String
-    var basedOn: String  // a preset's kebab-case name, `baseline`, or a favorite's name
+    var basedOn: String  // a preset's kebab-case name, `baseline`, or a pin's name
     var value: Value
     var id: String { name }
 }
 
-/// Why Keep did not add a favorite, worded for the panel's status line.
+/// Why Pin did not add a look, worded for the panel's status line.
 struct UITuningLabNotKept: LocalizedError {
     let errorDescription: String?
 }
 
-/// The favorites, oldest first, owned beside the draft so they survive closing
-/// the lab. Every change logs one line the agent can replay:
+/// The pinned looks, oldest first, owned beside the draft so they survive
+/// closing the lab. Every change logs one line the agent can replay:
 /// `UITUNINGLAB_CANDIDATE {...}` and `UITUNINGLAB_CANDIDATE_REMOVED {...}`.
 @MainActor
 final class UITuningLabCandidates<Value: Codable>: ObservableObject {
     @Published private(set) var all: [UITuningLabCandidate<Value>] = []
-    /// Where Now came from: `baseline` until a preset, Reset, or a loaded favorite changes it.
+    /// Where the draft came from: `baseline` until a preset, Reset, or a pin
+    /// copied into the draft changes it.
     @Published var basedOn = "baseline"
     let baseline: Value
     private var taken: Set<String> = []  // every name issued or reserved this run
@@ -71,13 +72,26 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
         all.first { $0.name == name }
     }
 
-    /// Marks names as used, such as every file in storage, so Keep never issues them.
+    /// The chip the draft already matches: `original` for Shipped, a pin's
+    /// name, or nil when the draft holds unpinned changes. The draft chip is
+    /// shown only while this is nil.
+    func match(_ draft: Value) -> String? {
+        guard let values = try? uiTuningLabChangedValues(from: baseline, to: draft) else { return nil }
+        if values == "{}" { return "original" }
+        return all.first { (try? uiTuningLabChangedValues(from: baseline, to: $0.value)) == values }?.name
+    }
+
+    /// The draft chip's label: where the draft came from, plus edits
+    /// ("Shipped + edits", "compact + edits", "capsule + edits").
+    var draftTitle: String { "\(basedOn == "baseline" ? "Shipped" : basedOn) + edits" }
+
+    /// Marks names as used, such as every file in storage, so Pin never issues them.
     func reserve(_ names: some Sequence<String>) { taken.formUnion(names) }
 
-    /// Keeps Now as a favorite named after what it is: the design key in a
+    /// Pins the draft, named after what it is: the design key in a
     /// design-variant lab, else the last preset, else `tweak`, never a name used
-    /// before in this run. A look that matches Original or a favorite is not kept.
-    /// `store` runs before the favorite is added; if it throws, nothing is added or logged.
+    /// before in this run. A look that matches Shipped or a pin is not pinned.
+    /// `store` runs before the pin is added; if it throws, nothing is added or logged.
     func keep(_ draft: Value, design: String? = nil,
               store: (UITuningLabCandidate<Value>) throws -> Void = { _ in })
         throws -> UITuningLabCandidate<Value> {
@@ -86,15 +100,15 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
             name: uiTuningLabFavoriteName(stem, excluding: taken), basedOn: basedOn, value: draft)
         let line = try checked(candidate)
         do { try store(candidate) } catch {
-            throw UITuningLabNotKept(errorDescription: "Not kept: \(error.localizedDescription)")
+            throw UITuningLabNotKept(errorDescription: "Not pinned: \(error.localizedDescription)")
         }
         add(candidate, line: line)
         return candidate
     }
 
-    /// Adds a seeded or stored favorite and logs it. Returns false, silently,
+    /// Adds a seeded or stored pin and logs it. Returns false, silently,
     /// when the name is already in the list; throws when it now matches the
-    /// baseline or another favorite.
+    /// baseline or another pin.
     @discardableResult
     func adopt(_ candidate: UITuningLabCandidate<Value>) throws -> Bool {
         taken.insert(candidate.name)
@@ -109,7 +123,7 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
         uiTuningLabLogLine("UITUNINGLAB_CANDIDATE_REMOVED", ["name": name])
     }
 
-    /// ✓ Use this. `winner` is the favorite shown, `original`, or `draft`, and
+    /// Choose. `winner` is the pin shown, `original` for Shipped, or `draft`, and
     /// `shown` is the look on screen. Logs `UITUNINGLAB_DONE {...}`, replaces the
     /// result file atomically, and copies `land <winner>`. Returns nil when all
     /// of that worked, otherwise what did not.
@@ -120,7 +134,7 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
             let kept = try all.map { try uiTuningLabCandidateFields($0, baseline: baseline) }
             line = ["candidates": kept, "values": values, "winner": winner]
         } catch {
-            return "Not sent: \(error.localizedDescription)"
+            return "Not chosen: \(error.localizedDescription)"
         }
         uiTuningLabLogLine("UITUNINGLAB_DONE", line)
         let code = "land \(winner)"
@@ -143,8 +157,8 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
         return nil
     }
 
-    /// The name a favorite kept from `basedOn` starts from: `tweak` for the
-    /// baseline, and a favorite's name without its `-2` suffix.
+    /// The name a pin made from `basedOn` starts from: `tweak` for the
+    /// baseline, and a pin's name without its `-2` suffix.
     private func stem(of basedOn: String) -> String {
         if basedOn == "baseline" { return "tweak" }
         guard taken.contains(basedOn),
@@ -152,7 +166,7 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
         return String(basedOn[..<suffix.lowerBound])
     }
 
-    /// The favorite's log line, or why it cannot join the list.
+    /// The pin's log line, or why it cannot join the list.
     private func checked(_ candidate: UITuningLabCandidate<Value>) throws -> [String: Any] {
         let line: [String: Any]
         let values: String
@@ -160,10 +174,10 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
             line = try uiTuningLabCandidateFields(candidate, baseline: baseline)
             values = try uiTuningLabChangedValues(from: baseline, to: candidate.value)
         } catch {
-            throw UITuningLabNotKept(errorDescription: "Not kept: \(error.localizedDescription)")
+            throw UITuningLabNotKept(errorDescription: "Not pinned: \(error.localizedDescription)")
         }
         if values == "{}" {
-            throw UITuningLabNotKept(errorDescription: "Same as Original")
+            throw UITuningLabNotKept(errorDescription: "Same as Shipped")
         }
         if let twin = all.first(where: { (try? uiTuningLabChangedValues(from: baseline, to: $0.value)) == values }) {
             throw UITuningLabNotKept(errorDescription: "Same as \(twin.name)")
@@ -186,7 +200,7 @@ func uiTuningLabFavoriteName(_ stem: String, excluding taken: Set<String>) -> St
     return (2...).lazy.map { "\(stem)-\($0)" }.first { !used.contains($0) }!
 }
 
-/// The pick ✓ Use this writes: Application Support `.ui-tuning-lab/result.json`,
+/// The pick Choose writes: Application Support `.ui-tuning-lab/result.json`,
 /// under the bundle ID on macOS, where every app shares Application Support.
 var uiTuningLabResultURL: URL {
     var directory = URL.applicationSupportDirectory

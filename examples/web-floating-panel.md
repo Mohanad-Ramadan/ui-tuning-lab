@@ -3,27 +3,30 @@
 The feature and controls share one config state. All lab code lives in
 `FeatureScreen.ui-tuning-lab.tsx`; the feature reaches it only through a dynamic
 import inside an `import.meta.env.DEV` block, so production builds drop both the
-branch and the lab chunk. The Tune button is the human path and the visible
+branch and the lab chunk. The Card Lab button is the human path and the visible
 fallback; `?ui-tuning-lab=1` is the agent path, parsed only inside that
 development module (`references/activation.md`). The baseline is the declared
 default, `appDefault`; closing unmounts the popover and its listener.
 
 The panel follows `references/candidates.md`. A chip row under the header shows
-**Original**, **Now**, and each favorite; tapping a chip shows it in the real
+**Shipped**, each pin, and, last, the draft chip, which appears only while the
+draft holds unpinned changes and is labeled after where it came from
+(`Shipped + edits`, `compact + edits`); tapping a chip shows it in the real
 feature, and the highlighted chip is the one shown. The draft is stashed while
-another chip is shown and restored when Now is tapped or the lab closes. The
-controls edit Now and are disabled while Original is shown; moving one while a
-favorite is shown loads that favorite into Now first. **★ Keep** adds Now to the
-favorites, named after the last preset applied or `tweak`. **✓ Use this** picks
-the shown chip: it logs `UITUNINGLAB_DONE`, writes the same object to the
-`localStorage` key `uiTuningLab.result`, copies `land <name>` to the clipboard,
-and shrinks the panel to `✓ Sent: <name>` with **Change** to reopen it. The
-**⋯** menu holds **Reset** and **Copy values**, which logs Now's changed fields
-as one `UITUNINGLAB_VALUES {...}` line (`references/landing-protocol.md`).
+another chip is shown and restored when its chip is tapped or the lab closes.
+The controls edit the draft and are disabled while Shipped is shown; moving one
+while a pin is shown copies that pin into the draft first. **Pin** pins the
+draft, named after the last preset applied or `tweak`, and is disabled while the
+draft matches Shipped or a pin. **Choose** picks the shown chip: it logs
+`UITUNINGLAB_DONE`, writes the same object to the `localStorage` key
+`uiTuningLab.result`, copies `land <name>` to the clipboard, and shrinks the
+panel to `Chosen: <name>` with **Change** to reopen it. The **⋯** menu holds
+**Reset** and **Copy values**, which logs the draft's changed fields as one
+`UITUNINGLAB_VALUES {...}` line (`references/landing-protocol.md`).
 
-The default lab is ephemeral: favorites live in React state and the console log,
-and the result key is its only write. `initialCandidates` seeds the favorites
-when the lab is reopened in a later session.
+The default lab is ephemeral: pins live in React state and the console log,
+and the result key is its only write. `initialCandidates` seeds the pins when
+the lab is reopened in a later session.
 
 <!-- file: CardFeature.tsx -->
 ```tsx
@@ -92,19 +95,19 @@ const panelStyle = {
 const triggerStyle = { position: "fixed", insetBlockEnd: 16, insetInlineEnd: 16 } as const;
 const rowStyle = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, margin: "4px 0" } as const;
 
-// A favorite: the fields that differ from the baseline, plus where it started.
+// A pin: the fields that differ from the baseline, plus where it started.
 type Candidate = { name: string; basedOn: string; values: Partial<CardConfig> };
-// Favorites the lab opens with. Empty by default; a later session seeds the
+// Pins the lab opens with. Empty by default; a later session seeds the
 // finalists kept in the project here (references/candidates.md).
 const initialCandidates: Candidate[] = [];
-// Use this writes the pick here, so it survives quitting the app.
+// Choose writes the pick here, so it survives quitting the app.
 const resultKey = "uiTuningLab.result";
-// Never issued as a favorite's name: "draft" and "baseline" are the Now and
-// Original chips.
+// Never issued as a pin's name: "draft" and "baseline" are the draft and
+// Shipped chips.
 const reservedNames = ["draft", "now", "original", "baseline"];
 
-// Preset keys are kebab-case: the key is what a favorite records as basedOn and
-// is named after.
+// Preset keys are kebab-case: the key is what a pin records as basedOn and is
+// named after.
 const presets = {
   compact: { radius: 4, gap: 4 },
   relaxed: { radius: 24, gap: 16 },
@@ -162,24 +165,33 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
   const changeButton = useRef<HTMLButtonElement>(null);
-  // Favorites live in memory and in the log.
+  // Pins live in memory and in the log.
   const [candidates, setCandidates] = useState(initialCandidates);
   // Every name issued in this run, removed ones included: names are never reused.
   const issued = useRef(new Set([...reservedNames, ...initialCandidates.map(c => c.name)]));
-  // Favorites already written to the log, so seeded ones log once.
+  // Pins already written to the log, so seeded ones log once.
   const logged = useRef(new Set<string>());
-  // Where Now came from: a preset, "baseline", or a favorite's name.
+  // Where the draft came from: a preset, "baseline", or a pin's name.
   const [basedOn, setBasedOn] = useState("baseline");
-  // The last preset applied since the lab opened or Reset; it names favorites.
+  // The last preset applied since the lab opened or Reset; it names pins.
   const lastPreset = useRef<string | null>(null);
-  // The chip the real feature shows: "draft" (Now), "baseline" (Original), or a
-  // favorite's name.
+  // The chip the real feature shows: "draft", "baseline" (Shipped), or a pin's
+  // name.
   const [shown, setShown] = useState("draft");
   // Holds the draft while another chip is shown in the feature.
   const stashedDraft = useRef<CardConfig | null>(null);
-  // The winner after Use this; while set, the panel is the result bar.
+  // The winner after Choose; while set, the panel is the result bar.
   const [sent, setSent] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // The chip the draft matches ("baseline" for Shipped, or a pin), or null while
+  // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+  const draft = stashedDraft.current ?? config;
+  const draftValues = changedValues(baseline, draft);
+  const draftMatch = Object.keys(draftValues).length === 0 ? "baseline"
+    : candidates.find(c => sortedJson(c.values) === sortedJson(draftValues))?.name ?? null;
+  // The highlighted chip: the one shown, or the one the draft matches.
+  const current = shown === "draft" ? draftMatch ?? "draft" : shown;
+  const draftTitle = `${basedOn === "baseline" ? "Shipped" : basedOn} + edits`;
 
   // Read the host's setter through a ref so an unstable setter never re-runs the
   // open effect, which would re-show the panel and steal focus.
@@ -229,10 +241,10 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
-  // Use this moves focus to Change, and Change moves it back to the chips.
+  // Choose moves focus to Change, and Change moves it back to the chips.
   useEffect(() => { (sent ? changeButton : firstControl).current?.focus(); }, [sent]);
 
-  // Seeded favorites log their own line the first time the lab shows them; the
+  // Seeded pins log their own line the first time the lab shows them; the
   // set also guards StrictMode's repeated effects.
   useEffect(() => {
     if (!open) return;
@@ -245,8 +257,9 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
 
   function openLab() { setStatus(null); setOpen(true); }
   // Shows a chip in the real feature. The draft is stashed on the way out and
-  // restored when Now is shown or the lab closes.
-  function show(target: string) {
+  // restored when its chip, or the chip it matches, is shown or the lab closes.
+  function show(chip: string) {
+    const target = chip === draftMatch ? "draft" : chip;
     if (target === "draft") {
       if (stashedDraft.current) setConfig(stashedDraft.current);
       stashedDraft.current = null;
@@ -257,15 +270,14 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     }
     setShown(target);
   }
-  // Controls edit Now. Moving one while a favorite is shown loads that favorite
-  // into Now first; the favorite itself does not change.
+  // Controls edit the draft. Moving one while a pin is shown copies that pin
+  // into the draft first; the pin itself does not change. Editing a pin, or a
+  // draft that matches one, starts from that look.
   function edit(next: (current: CardConfig) => CardConfig) {
-    const favorite = candidates.find(c => c.name === shown);
-    if (favorite) {
-      stashedDraft.current = null;
-      setShown("draft");
-      setBasedOn(favorite.name);
-    }
+    const source = shown === "draft" ? draftMatch : shown;
+    if (shown !== "draft") stashedDraft.current = null;
+    if (source !== null) setBasedOn(source);
+    setShown("draft");
     setConfig(next);
   }
   function applyPreset(name: keyof typeof presets) {
@@ -281,48 +293,41 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     lastPreset.current = null;
     setMenuOpen(false);
   }
-  // Reports Now, whichever chip is shown.
+  // Reports the draft, whichever chip is shown.
   async function copyValues() {
     setMenuOpen(false);
     const values = JSON.stringify(changedValues(baseline, stashedDraft.current ?? config));
     console.info(`UITUNINGLAB_VALUES ${values}`);
     try {
       await navigator.clipboard.writeText(values);
-      setStatus(values === "{}" ? "No changes from Original" : `Copied ${values}`);
+      setStatus(values === "{}" ? "No changes from Shipped" : `Copied ${values}`);
     } catch {
       setStatus(`Clipboard unavailable; values logged to the console: ${values}`);
     }
   }
-  // Adds what Now shows, unless it matches Original or a favorite.
+  // Pins the draft. Pin is disabled while the draft matches Shipped or a pin.
   function keep() {
-    const values = changedValues(baseline, stashedDraft.current ?? config);
-    if (Object.keys(values).length === 0) {
-      setStatus("Same as Original");
-      return;
-    }
-    const same = candidates.find(c => sortedJson(c.values) === sortedJson(values));
-    if (same) {
-      setStatus(`Same as ${same.name}`);
-      return;
-    }
+    if (draftMatch !== null) return;
+    const values = draftValues;
     const name = nextName(lastPreset.current ?? "tweak", issued.current);
     const candidate: Candidate = { name, basedOn, values };
     setCandidates(list => [...list, candidate]);
     issued.current.add(name);
     logged.current.add(name);
     console.info(`UITUNINGLAB_CANDIDATE ${sortedJson(candidate)}`);
-    setStatus(`Kept ${name}`);
+    setStatus(`Pinned ${name}`);
   }
   function remove(name: string) {
     setCandidates(list => list.filter(c => c.name !== name));
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
     if (shown === name) show("draft");
   }
-  // Picks the shown chip and finishes. Picking again replaces the result.
+  // Choose picks the highlighted chip and finishes. Picking again replaces the
+  // result.
   async function pickShown() {
-    const favorite = candidates.find(c => c.name === shown);
-    const winner = favorite ? favorite.name : shown === "baseline" ? "original" : "draft";
-    const values = favorite ? favorite.values : shown === "baseline" ? {} : changedValues(baseline, config);
+    const pin = candidates.find(c => c.name === current);
+    const winner = pin ? pin.name : current === "baseline" ? "original" : "draft";
+    const values = pin ? pin.values : current === "baseline" ? {} : draftValues;
     const result = { candidates, values, winner };
     console.info(`UITUNINGLAB_DONE ${sortedJson(result)}`);
     const problems: string[] = [];
@@ -343,11 +348,11 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   return <>
     <CardFeature config={config} />
     <button ref={trigger} type="button" onClick={openLab} disabled={open}
-      style={triggerStyle}>Tune</button>
+      style={triggerStyle}>Card Lab</button>
     {open && <div ref={panel} {...popoverManual} style={panelStyle} role="dialog"
       aria-labelledby="ui-tuning-lab-title">
       {sent ? <p style={rowStyle}>
-        <strong id="ui-tuning-lab-title">✓ Sent: {sent}</strong>
+        <strong id="ui-tuning-lab-title">Chosen: {sent}</strong>
         <button ref={changeButton} type="button" onClick={() => setSent(null)}>Change</button>
       </p> : <>
         <div style={rowStyle}>
@@ -362,14 +367,14 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
           <button type="button" onClick={copyValues}>Copy values</button>
         </div>}
         <div role="group" aria-label="Shown in the feature" style={rowStyle}>
-          <button type="button" aria-pressed={shown === "baseline"}
-            onClick={() => show("baseline")}>Original</button>
-          <button ref={firstControl} type="button" aria-pressed={shown === "draft"}
-            onClick={() => show("draft")}>Now</button>
+          <button ref={firstControl} type="button" aria-pressed={current === "baseline"}
+            onClick={() => show("baseline")}>Shipped</button>
           {candidates.map(c => <span key={c.name}>
-            <button type="button" aria-pressed={shown === c.name} onClick={() => show(c.name)}>{c.name}</button>
+            <button type="button" aria-pressed={current === c.name} onClick={() => show(c.name)}>{c.name}</button>
             <button type="button" aria-label={`Remove ${c.name}`} onClick={() => remove(c.name)}>×</button>
           </span>)}
+          {draftMatch === null && <button type="button" aria-pressed={current === "draft"}
+            onClick={() => show("draft")}>{draftTitle}</button>}
         </div>
         <fieldset disabled={shown === "baseline"} aria-label="Controls"
           style={{ border: 0, margin: 0, padding: 0 }}>
@@ -387,13 +392,13 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
           </label>
         </fieldset>
         <div style={rowStyle}>
-          <button type="button" onClick={keep}>★ Keep</button>
-          <button type="button" onClick={pickShown}>✓ Use this</button>
+          <button type="button" disabled={draftMatch !== null} onClick={keep}>Pin</button>
+          <button type="button" onClick={pickShown}>Choose</button>
         </div>
       </>}
       {status && <p role="status">{status}</p>}
       {!sent && <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
-        Keep favorites · Use this to finish</p>}
+        Pin looks to compare · Choose to finish</p>}
     </div>}
   </>;
 }
@@ -405,7 +410,7 @@ Popover API support is outside the app's browser baseline, use an accessible
 dialog or conditionally mounted `<details>` while preserving focus and teardown.
 The manual popover stays open while the user clicks, scrolls, and inspects the
 feature; Close and Escape dismiss it, the `toggle` event unmounts it, and cleanup
-restores focus to Tune. The panel is pinned to the corner and the trigger is
+restores focus to Card Lab. The panel is pinned to the corner and the trigger is
 fixed, so neither moves the feature. Chips use `aria-pressed`, and buttons and
 the labelled ranges remain in normal keyboard order. Test Chromium, Safari, and
 Firefox on desktop and mobile layouts, keyboard, screen readers, Close and
@@ -416,7 +421,7 @@ Escape, unmounting, and emitted production assets before approval.
 Only when the user explicitly requests saved profiles, replace
 `FeatureScreen.ui-tuning-lab.tsx` with this version. The feature files stay
 unchanged, and the writer and loader live only in the development-only module.
-★ Keep writes a `schemaVersion: 2` profile under `uiTuningLab.candidates.<name>`,
+Pin writes a `schemaVersion: 2` profile under `uiTuningLab.candidates.<name>`,
 × deletes that key, and opening the lab loads every such key into the chips;
 every stored name is taken, readable or not. The baseline stays the declared
 default, so Reset still returns to it. Unreadable or incompatible entries (wrong
@@ -454,22 +459,22 @@ type UITuningLabProfile = {
   schemaVersion: 2;
   scope: string[];
 };
-// Each favorite is stored under its own key: uiTuningLab.candidates.<name>.
+// Each pin is stored under its own key: uiTuningLab.candidates.<name>.
 const candidateKey = "uiTuningLab.candidates.";
 
-// A favorite: the fields that differ from the baseline, plus where it started.
+// A pin: the fields that differ from the baseline, plus where it started.
 type Candidate = { name: string; basedOn: string; values: Partial<CardConfig> };
-// Favorites the lab opens with, before anything stored is loaded. Empty by
+// Pins the lab opens with, before anything stored is loaded. Empty by
 // default; a later session can seed finalists kept in the project here.
 const initialCandidates: Candidate[] = [];
-// Use this writes the pick here, so it survives quitting the app.
+// Choose writes the pick here, so it survives quitting the app.
 const resultKey = "uiTuningLab.result";
-// Never issued as a favorite's name: "draft" and "baseline" are the Now and
-// Original chips.
+// Never issued as a pin's name: "draft" and "baseline" are the draft and
+// Shipped chips.
 const reservedNames = ["draft", "now", "original", "baseline"];
 
-// Preset keys are kebab-case: the key is what a favorite records as basedOn and
-// is named after.
+// Preset keys are kebab-case: the key is what a pin records as basedOn and is
+// named after.
 const presets = {
   compact: { radius: 4, gap: 4 },
   relaxed: { radius: 24, gap: 16 },
@@ -523,9 +528,9 @@ function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : "unknown error";
 }
 
-// Reads every stored favorite, oldest first. An entry that cannot be used is
+// Reads every stored pin, oldest first. An entry that cannot be used is
 // described in `problems` and left in storage untouched. Every stored name,
-// readable or not, is added to `reserved` so Keep never reuses it.
+// readable or not, is added to `reserved` so Pin never reuses it.
 function readStored(reserved: Set<string>): { found: Candidate[]; problems: string[] } {
   const keys: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -568,24 +573,33 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
   const changeButton = useRef<HTMLButtonElement>(null);
-  // Favorites are mirrored to localStorage, one key each.
+  // Pins are mirrored to localStorage, one key each.
   const [candidates, setCandidates] = useState(initialCandidates);
   // Every name issued in this run, removed ones included: names are never reused.
   const issued = useRef(new Set([...reservedNames, ...initialCandidates.map(c => c.name)]));
-  // Favorites already written to the log, so seeded or stored ones log once.
+  // Pins already written to the log, so seeded or stored ones log once.
   const logged = useRef(new Set<string>());
-  // Where Now came from: a preset, "baseline", or a favorite's name.
+  // Where the draft came from: a preset, "baseline", or a pin's name.
   const [basedOn, setBasedOn] = useState("baseline");
-  // The last preset applied since the lab opened or Reset; it names favorites.
+  // The last preset applied since the lab opened or Reset; it names pins.
   const lastPreset = useRef<string | null>(null);
-  // The chip the real feature shows: "draft" (Now), "baseline" (Original), or a
-  // favorite's name.
+  // The chip the real feature shows: "draft", "baseline" (Shipped), or a pin's
+  // name.
   const [shown, setShown] = useState("draft");
   // Holds the draft while another chip is shown in the feature.
   const stashedDraft = useRef<CardConfig | null>(null);
-  // The winner after Use this; while set, the panel is the result bar.
+  // The winner after Choose; while set, the panel is the result bar.
   const [sent, setSent] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // The chip the draft matches ("baseline" for Shipped, or a pin), or null while
+  // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+  const draft = stashedDraft.current ?? config;
+  const draftValues = changedValues(baseline, draft);
+  const draftMatch = Object.keys(draftValues).length === 0 ? "baseline"
+    : candidates.find(c => sortedJson(c.values) === sortedJson(draftValues))?.name ?? null;
+  // The highlighted chip: the one shown, or the one the draft matches.
+  const current = shown === "draft" ? draftMatch ?? "draft" : shown;
+  const draftTitle = `${basedOn === "baseline" ? "Shipped" : basedOn} + edits`;
 
   // Read the host's setter through a ref so an unstable setter never re-runs the
   // open effect, which would re-show the panel and steal focus.
@@ -635,10 +649,10 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
-  // Use this moves focus to Change, and Change moves it back to the chips.
+  // Choose moves focus to Change, and Change moves it back to the chips.
   useEffect(() => { (sent ? changeButton : firstControl).current?.focus(); }, [sent]);
 
-  // Stored favorites load each time the lab opens; in-memory ones that are not
+  // Stored pins load each time the lab opens; in-memory ones that are not
   // stored (the initial candidates) stay in the list.
   useEffect(() => {
     if (!open) return;
@@ -646,14 +660,14 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
       const { found, problems } = readStored(issued.current);
       setCandidates(list => [...found, ...list.filter(c => !found.some(f => f.name === c.name))]);
       if (problems.length > 0) {
-        setStatus({ text: `Skipped unreadable favorites, left in storage: ${problems.join(", ")}`, error: true });
+        setStatus({ text: `Skipped unreadable pins, left in storage: ${problems.join(", ")}`, error: true });
       }
     } catch (error) {
-      setStatus({ text: `Saved favorites not loaded: ${reasonOf(error)}. Storage was left unchanged.`, error: true });
+      setStatus({ text: `Saved pins not loaded: ${reasonOf(error)}. Storage was left unchanged.`, error: true });
     }
   }, [open]);
 
-  // Seeded and stored favorites log their own line the first time the lab shows them; the
+  // Seeded and stored pins log their own line the first time the lab shows them; the
   // set also guards StrictMode's repeated effects.
   useEffect(() => {
     if (!open) return;
@@ -666,8 +680,9 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
 
   function openLab() { setStatus(null); setOpen(true); }
   // Shows a chip in the real feature. The draft is stashed on the way out and
-  // restored when Now is shown or the lab closes.
-  function show(target: string) {
+  // restored when its chip, or the chip it matches, is shown or the lab closes.
+  function show(chip: string) {
+    const target = chip === draftMatch ? "draft" : chip;
     if (target === "draft") {
       if (stashedDraft.current) setConfig(stashedDraft.current);
       stashedDraft.current = null;
@@ -678,15 +693,14 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     }
     setShown(target);
   }
-  // Controls edit Now. Moving one while a favorite is shown loads that favorite
-  // into Now first; the favorite itself does not change.
+  // Controls edit the draft. Moving one while a pin is shown copies that pin
+  // into the draft first; the pin itself does not change. Editing a pin, or a
+  // draft that matches one, starts from that look.
   function edit(next: (current: CardConfig) => CardConfig) {
-    const favorite = candidates.find(c => c.name === shown);
-    if (favorite) {
-      stashedDraft.current = null;
-      setShown("draft");
-      setBasedOn(favorite.name);
-    }
+    const source = shown === "draft" ? draftMatch : shown;
+    if (shown !== "draft") stashedDraft.current = null;
+    if (source !== null) setBasedOn(source);
+    setShown("draft");
     setConfig(next);
   }
   function applyPreset(name: keyof typeof presets) {
@@ -702,33 +716,24 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     lastPreset.current = null;
     setMenuOpen(false);
   }
-  // Reports Now, whichever chip is shown.
+  // Reports the draft, whichever chip is shown.
   async function copyValues() {
     setMenuOpen(false);
     const values = JSON.stringify(changedValues(baseline, stashedDraft.current ?? config));
     console.info(`UITUNINGLAB_VALUES ${values}`);
     try {
       await navigator.clipboard.writeText(values);
-      setStatus({ text: values === "{}" ? "No changes from Original" : `Copied ${values}` });
+      setStatus({ text: values === "{}" ? "No changes from Shipped" : `Copied ${values}` });
     } catch {
       setStatus({ text: `Clipboard unavailable; values logged to the console: ${values}` });
     }
   }
-  // Adds what Now shows, unless it matches Original or a favorite.
-  // A failed write refuses the Keep, so the chips never show a favorite that
-  // storage does not hold.
+  // Pins the draft. Pin is disabled while the draft matches Shipped or a pin.
+  // A failed write refuses the Pin, so the chips never show a pin that storage
+  // does not hold.
   function keep() {
-    const draft = stashedDraft.current ?? config;
-    const values = changedValues(baseline, draft);
-    if (Object.keys(values).length === 0) {
-      setStatus({ text: "Same as Original" });
-      return;
-    }
-    const same = candidates.find(c => sortedJson(c.values) === sortedJson(values));
-    if (same) {
-      setStatus({ text: `Same as ${same.name}` });
-      return;
-    }
+    if (draftMatch !== null) return;
+    const values = draftValues;
     const name = nextName(lastPreset.current ?? "tweak", issued.current);
     const candidate: Candidate = { name, basedOn, values };
     const profile: UITuningLabProfile = {
@@ -747,14 +752,14 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
       if (localStorage.getItem(key) !== null) throw new Error(`${name} already exists in storage`);
       localStorage.setItem(key, JSON.stringify(profile));
     } catch (error) {
-      setStatus({ text: `Keep failed: ${reasonOf(error)}`, error: true });
+      setStatus({ text: `Pin failed: ${reasonOf(error)}`, error: true });
       return;
     }
     setCandidates(list => [...list, candidate]);
     issued.current.add(name);
     logged.current.add(name);
     console.info(`UITUNINGLAB_CANDIDATE ${sortedJson(candidate)}`);
-    setStatus({ text: `Kept ${name}` });
+    setStatus({ text: `Pinned ${name}` });
   }
   function remove(name: string) {
     try {
@@ -767,11 +772,12 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
     if (shown === name) show("draft");
   }
-  // Picks the shown chip and finishes. Picking again replaces the result.
+  // Choose picks the highlighted chip and finishes. Picking again replaces the
+  // result.
   async function pickShown() {
-    const favorite = candidates.find(c => c.name === shown);
-    const winner = favorite ? favorite.name : shown === "baseline" ? "original" : "draft";
-    const values = favorite ? favorite.values : shown === "baseline" ? {} : changedValues(baseline, config);
+    const pin = candidates.find(c => c.name === current);
+    const winner = pin ? pin.name : current === "baseline" ? "original" : "draft";
+    const values = pin ? pin.values : current === "baseline" ? {} : draftValues;
     const result = { candidates, values, winner };
     console.info(`UITUNINGLAB_DONE ${sortedJson(result)}`);
     const problems: string[] = [];
@@ -792,11 +798,11 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   return <>
     <CardFeature config={config} />
     <button ref={trigger} type="button" onClick={openLab} disabled={open}
-      style={triggerStyle}>Tune</button>
+      style={triggerStyle}>Card Lab</button>
     {open && <div ref={panel} {...popoverManual} style={panelStyle} role="dialog"
       aria-labelledby="ui-tuning-lab-title">
       {sent ? <p style={rowStyle}>
-        <strong id="ui-tuning-lab-title">✓ Sent: {sent}</strong>
+        <strong id="ui-tuning-lab-title">Chosen: {sent}</strong>
         <button ref={changeButton} type="button" onClick={() => setSent(null)}>Change</button>
       </p> : <>
         <div style={rowStyle}>
@@ -811,14 +817,14 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
           <button type="button" onClick={copyValues}>Copy values</button>
         </div>}
         <div role="group" aria-label="Shown in the feature" style={rowStyle}>
-          <button type="button" aria-pressed={shown === "baseline"}
-            onClick={() => show("baseline")}>Original</button>
-          <button ref={firstControl} type="button" aria-pressed={shown === "draft"}
-            onClick={() => show("draft")}>Now</button>
+          <button ref={firstControl} type="button" aria-pressed={current === "baseline"}
+            onClick={() => show("baseline")}>Shipped</button>
           {candidates.map(c => <span key={c.name}>
-            <button type="button" aria-pressed={shown === c.name} onClick={() => show(c.name)}>{c.name}</button>
+            <button type="button" aria-pressed={current === c.name} onClick={() => show(c.name)}>{c.name}</button>
             <button type="button" aria-label={`Remove ${c.name}`} onClick={() => remove(c.name)}>×</button>
           </span>)}
+          {draftMatch === null && <button type="button" aria-pressed={current === "draft"}
+            onClick={() => show("draft")}>{draftTitle}</button>}
         </div>
         <fieldset disabled={shown === "baseline"} aria-label="Controls"
           style={{ border: 0, margin: 0, padding: 0 }}>
@@ -836,20 +842,20 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
           </label>
         </fieldset>
         <div style={rowStyle}>
-          <button type="button" onClick={keep}>★ Keep</button>
-          <button type="button" onClick={pickShown}>✓ Use this</button>
+          <button type="button" disabled={draftMatch !== null} onClick={keep}>Pin</button>
+          <button type="button" onClick={pickShown}>Choose</button>
         </div>
       </>}
       {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
       {!sent && <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
-        Keep favorites · Use this to finish</p>}
+        Pin looks to compare · Choose to finish</p>}
     </div>}
   </>;
 }
 ```
 
 
-Keep writes only `uiTuningLab.candidates.<name>` and × deletes only that key.
+Pin writes only `uiTuningLab.candidates.<name>` and × deletes only that key.
 Storage failures are shown in the status line and leave the chips unchanged.
 Inspect the emitted production bundle to confirm that the lab module and storage
 code were eliminated.

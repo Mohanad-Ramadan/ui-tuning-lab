@@ -85,15 +85,17 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
 - Copy values copies, and logs as one `UITUNINGLAB_VALUES` line, only the fields
   that differ from the baseline; `{}` when nothing changed. Landing writes those
   values into the feature defaults (`references/landing-protocol.md`).
-- Chips, ★ Keep, and ✓ Use this (`references/candidates.md`): ★ Keep logs one
-  `UITUNINGLAB_CANDIDATE` line per new readable name and skips a look that
-  matches Original or a favorite; × logs `UITUNINGLAB_CANDIDATE_REMOVED`; each
-  chip renders its look in the real feature and Now restores the draft exactly;
-  closing while another chip is shown restores the draft. ✓ Use this logs one
+- Chips, Pin, and Choose (`references/candidates.md`): Pin logs one
+  `UITUNINGLAB_CANDIDATE` line per new readable name and is disabled while the
+  draft matches Shipped or a pin; the draft chip is hidden then, and appears,
+  last, as `<source> + edits` once the draft holds unpinned changes; × logs
+  `UITUNINGLAB_CANDIDATE_REMOVED`; each chip renders its look in the real
+  feature and the draft chip restores the draft exactly; closing while another
+  chip is shown restores the draft. Choose logs one
   `UITUNINGLAB_DONE` line naming the shown chip as `winner`, writes the result
   file, copies `land <name>`, and shrinks the panel to the result bar. The hint
   is visible without scrolling past the controls.
-- When persistence was requested, each Keep writes only its namespaced
+- When persistence was requested, each Pin writes only its namespaced
   candidate (`.ui-tuning-lab/candidates/<name>.json` or
   `uiTuningLab.candidates.<name>`), which passes `verify.sh profile`, and
   retains the draft on failure. Remove deletes only that candidate. Reopening

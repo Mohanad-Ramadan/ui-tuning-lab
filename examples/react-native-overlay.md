@@ -14,7 +14,7 @@ Activation (`references/activation.md`):
   (`DevSettings.addMenuItem`), which the developer already opens by shake,
   `Cmd+D`/`Cmd+M`, or `adb shell input keyevent 82`. React Native owns shake
   through that menu; the lab never adds a second shake listener.
-- **Visible fallback:** a **Tune** pill in a free corner.
+- **Visible fallback:** a **Card Lab** pill in a free corner.
 - **Agent:** a Metro-time variable, `EXPO_PUBLIC_UITUNINGLAB_OPEN=1`, read only
   inside the lab module and consumed once per JavaScript runtime; or, when the
   app has no bundle-time environment, the `__DEV__`-only global
@@ -27,16 +27,18 @@ native changes in `AppDelegate` or `MainActivity` that also ship. A Metro-time
 variable is inlined only into a development bundle, and only inside a module the
 release bundle never contains, so nothing of it reaches Release.
 
-The lab component stays mounted while the screen is, so favorites, `basedOn`,
-and the stashed Now survive closing the panel. The default lab is ephemeral:
-favorites live in React state and the log, and a name is never reused within a
-JavaScript runtime. The chip row under the header shows Original, Now, or a
-favorite in the real feature; Now is stashed meanwhile and restored when Now is
-tapped or the panel closes. While Original is shown the presets and steppers
-are disabled; moving one while a favorite is shown loads that favorite into Now
-first. **★ Keep** adds Now to the favorites, **✓ Use this** picks the shown chip
-and shrinks the panel to the result bar, and the **⋯** button opens Reset and
-Copy values.
+The lab component stays mounted while the screen is, so pins, `basedOn`, and
+the stashed draft survive closing the panel. The default lab is ephemeral: pins
+live in React state and the log, and a name is never reused within a JavaScript
+runtime. The chip row under the header shows Shipped, each pin, and, last, the
+draft chip ("Shipped + edits", "compact + edits"), which appears only while the
+draft holds unpinned changes; tapping a chip shows it in the real feature, and
+the draft is stashed meanwhile and restored when its chip is tapped or the
+panel closes. While Shipped is shown the presets and steppers are disabled;
+moving one while a pin is shown copies that pin into the draft first. **Pin**
+pins the draft and is disabled while the draft matches Shipped or a pin,
+**Choose** picks the shown chip and shrinks the panel to the result bar, and
+the **⋯** button opens Reset and Copy values.
 
 ## Host change
 
@@ -184,17 +186,25 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const [menuOpen, setMenuOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [candidates, setCandidates] = useState(initialCandidates);
-  // Every name issued, removed ones included, plus the names a favorite never takes.
+  // Every name issued, removed ones included, plus the names a pin never takes.
   const issued = useRef(new Set(["draft", "now", "original", "baseline", ...initialCandidates.map(c => c.name)]));
   const logged = useRef(new Set<string>());
   const [basedOn, setBasedOn] = useState("baseline");
   const lastPreset = useRef<string | null>(null);
-  // The shown chip: "draft" (Now), "original", or a favorite's name.
+  // The shown chip: "draft", "original" (Shipped), or a pin's name.
   const [shown, setShown] = useState("draft");
   // The last pick; while set, the panel is the result bar.
   const [result, setResult] = useState<string | null>(null);
-  const stashedDraft = useRef<CardConfig | null>(null); // Now, while another chip is shown
+  const stashedDraft = useRef<CardConfig | null>(null); // the draft, while another chip is shown
   const editable = shown !== "original"; // never edit the baseline
+  // The chip the draft matches ("original" for Shipped, or a pin), or null while
+  // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+  const draftValues = changedValues(baseline, stashedDraft.current ?? config);
+  const draftMatch = Object.keys(draftValues).length === 0 ? "original"
+    : candidates.find(c => sortedJson(c.values) === sortedJson(draftValues))?.name ?? null;
+  // The highlighted chip: the one shown, or the one the draft matches.
+  const current = shown === "draft" ? draftMatch ?? "draft" : shown;
+  const draftTitle = `${basedOn === "baseline" ? "Shipped" : basedOn} + edits`;
 
   // In an effect rather than a state initializer: StrictMode runs initializers
   // twice, and the second call would see the request already consumed.
@@ -214,8 +224,10 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     }
   }, [open, candidates]);
 
-  // Tapping a chip shows it in the real feature.
-  function show(target: string) {
+  // Tapping a chip shows it in the real feature; the chip the draft matches
+  // shows the draft itself.
+  function show(chip: string) {
+    const target = chip === draftMatch ? "draft" : chip;
     if (target === "draft") {
       if (stashedDraft.current) setConfig(stashedDraft.current);
       stashedDraft.current = null;
@@ -227,30 +239,32 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     setShown(target);
   }
   function close() { show("draft"); setMenuOpen(false); setOpen(false); }
-  // Every control edits Now. Moved while a favorite is shown, it loads that
-  // favorite into Now first; the favorite itself does not change.
+  // Every control edits the draft. Moved while a pin is shown, it copies that pin
+  // into the draft first; the pin itself does not change. Editing a draft that
+  // matches Shipped or a pin starts from that look.
   function edit(next: CardConfig, from?: string) {
+    const match = shown === "draft" ? draftMatch : shown;
     stashedDraft.current = null;
-    setBasedOn(from ?? (shown === "draft" ? basedOn : shown));
+    setBasedOn(from ?? (match === null ? basedOn : match === "original" ? "baseline" : match));
     setConfig(next);
     setShown("draft");
   }
   function applyPreset(name: keyof typeof presets) { lastPreset.current = name; edit({ ...presets[name] }, name); }
   function reset() { lastPreset.current = null; edit({ ...baseline }, "baseline"); setMenuOpen(false); }
-  // Always reports Now. No clipboard module in core React Native: the values are
+  // Always reports the draft. No clipboard module in core React Native: the values are
   // logged and shown as selectable text. Call the app's clipboard module here if
   // it already has one.
   function copyValues() {
     const values = changedValues(baseline, stashedDraft.current ?? config);
     log("UITUNINGLAB_VALUES", values);
     const text = sortedJson(values);
-    setStatus(text === "{}" ? "No changes from Original" : `Logged ${text}`);
+    setStatus(text === "{}" ? "No changes from Shipped" : `Logged ${text}`);
     setMenuOpen(false);
   }
-  // Keep is enabled only while Now is shown, so config is Now.
+  // Pin is enabled only while the draft holds unpinned changes.
   function prepareKeep(): Candidate | null {
-    const values = changedValues(baseline, config);
-    if (Object.keys(values).length === 0) { setStatus("Same as Original"); return null; }
+    const values = draftValues;
+    if (Object.keys(values).length === 0) { setStatus("Same as Shipped"); return null; }
     const same = candidates.find(c => sortedJson(c.values) === sortedJson(values));
     if (same) { setStatus(`Same as ${same.name}`); return null; }
     const stem = lastPreset.current ?? "tweak";
@@ -263,7 +277,7 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     issued.current.add(candidate.name);
     logged.current.add(candidate.name);
     log("UITUNINGLAB_CANDIDATE", candidate);
-    setStatus(`Kept as ${candidate.name}`);
+    setStatus(`Pinned ${candidate.name}`);
   }
   function keep() { const c = prepareKeep(); if (c) commit(c); }
   function remove(name: string) {
@@ -271,15 +285,15 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     setCandidates(list => list.filter(c => c.name !== name));
     log("UITUNINGLAB_CANDIDATE_REMOVED", { name });
   }
-  // ✓ Use this: picks the shown chip and finishes. Picking again replaces the
+  // Choose: picks the highlighted chip and finishes. Picking again replaces the
   // result. Not named useThis, which React's lint rules would treat as a hook.
   function pick() {
-    const picked = candidates.find(c => c.name === shown);
-    const winner = picked?.name ?? (shown === "original" ? "original" : "draft");
-    const values: Partial<CardConfig> = picked?.values ?? (shown === "original" ? {} : changedValues(baseline, config));
+    const picked = candidates.find(c => c.name === current);
+    const winner = picked?.name ?? (current === "original" ? "original" : "draft");
+    const values: Partial<CardConfig> = picked?.values ?? (current === "original" ? {} : draftValues);
     const done = { candidates, values, winner };
     // Logcat cuts entries near 4 KB. When the Done line may be cut, repeat each
-    // favorite on its own line first, so the agent can rebuild the list.
+    // pin on its own line first, so the agent can rebuild the list.
     if (sortedJson(done).length > 3500) for (const c of candidates) log("UITUNINGLAB_CANDIDATE", c);
     log("UITUNINGLAB_DONE", done);
     // The result file needs AsyncStorage; without it the log and the land code
@@ -293,10 +307,10 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     <CardFeature config={config} />
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       {!open && <View style={styles.pill}>
-        <Button title="Tune" label="Open UI tuning lab" onPress={() => { setStatus(null); setOpen(true); }} />
+        <Button title="Card Lab" label="Open UI tuning lab" onPress={() => { setStatus(null); setOpen(true); }} />
       </View>}
       {open && result !== null && <View style={[styles.pill, styles.bar]}>
-        <Text accessibilityLiveRegion="polite">✓ Sent: {result}</Text>
+        <Text accessibilityLiveRegion="polite">Chosen: {result}</Text>
         <Text selectable style={{ color: "#555" }}>land {result}</Text>
         <Button title="Change" onPress={() => setResult(null)} />
       </View>}
@@ -310,14 +324,16 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
           <Button title="Reset" onPress={reset} />
           <Button title="Copy values" onPress={copyValues} />
         </View>}
-        {/* The chips: Original, Now, then each favorite. Highlighted = shown. */}
+        {/* The chips: Shipped, each pin, then the draft chip while the draft
+            holds unpinned changes. Highlighted = shown. */}
         <View style={styles.row}>
-          <Button title="Original" selected={shown === "original"} onPress={() => show("original")} />
-          <Button title="Now" selected={shown === "draft"} onPress={() => show("draft")} />
+          <Button title="Shipped" selected={current === "original"} onPress={() => show("original")} />
           {candidates.map(c => <View key={c.name} style={styles.chip}>
-            <Button title={c.name} selected={shown === c.name} onPress={() => show(c.name)} />
+            <Button title={c.name} selected={current === c.name} onPress={() => show(c.name)} />
             <Button title="×" label={`Remove ${c.name}`} onPress={() => remove(c.name)} />
           </View>)}
+          {draftMatch === null &&
+            <Button title={draftTitle} selected={current === "draft"} onPress={() => show("draft")} />}
         </View>
         <ScrollView style={{ flexGrow: 0, flexShrink: 1 }}>
           <View style={styles.row}>
@@ -331,11 +347,11 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
           {status && <Text selectable accessibilityLiveRegion="polite">{status}</Text>}
         </ScrollView>
         <View style={styles.row}>
-          <Button title="★ Keep" disabled={shown !== "draft"} onPress={keep} />
-          <Button title="✓ Use this" onPress={pick} />
+          <Button title="Pin" disabled={draftMatch !== null} onPress={keep} />
+          <Button title="Choose" onPress={pick} />
         </View>
         {/* Pinned below the controls, visible however long the panel grows. */}
-        <Text style={{ paddingTop: 8 }}>Keep favorites · Use this to finish</Text>
+        <Text style={{ paddingTop: 8 }}>Pin looks to compare · Choose to finish</Text>
       </View>}
     </View>
   </View>;
@@ -368,11 +384,11 @@ Use the commands in `references/platform-handoff.md`: `adb logcat -d -s ReactNat
 and the Android wait loop with `TAG=ReactNativeJS`, or the Simulator
 `log show` command without the subsystem clause.
 
-Logcat truncates an entry near 4 KB, so a Done line with many favorites can be
-cut. When its JSON exceeds about 3,500 characters, the lab logs every favorite
+Logcat truncates an entry near 4 KB, so a Done line with many pins can be
+cut. When its JSON exceeds about 3,500 characters, the lab logs every pin
 on its own `UITUNINGLAB_CANDIDATE` line right before Done; if the Done line does
 not parse, rebuild the list from those lines (`references/candidates.md`, "Log
-lines") and take Now's values from a fresh Copy values.
+lines") and take the draft's values from a fresh Copy values.
 
 Core React Native has no clipboard module, so the result bar shows the
 `land <name>` code as selectable text; when the app already has a clipboard
@@ -408,7 +424,7 @@ app so the menu item disappears.
 ## The result file, only when the app has AsyncStorage
 
 Only when the app already depends on `@react-native-async-storage/async-storage`;
-otherwise skip this and rely on the log and the land code. ✓ Use this then
+otherwise skip this and rely on the log and the land code. Choose then
 also stores the Done object plus `savedAt` under `uiTuningLab.result`, replacing
 the last pick; AsyncStorage writes one key atomically.
 
@@ -476,8 +492,9 @@ async function readStored(reserved: Set<string>) {
 }
 ```
 
-Wiring: `keep` becomes async, awaits `writeCandidate(c, config)` and calls
-`commit(c)` only if it succeeded, otherwise `setStatus("Keep failed: ...")`;
+Wiring: `keep` becomes async, awaits
+`writeCandidate(c, stashedDraft.current ?? config)` and calls `commit(c)` only
+if it succeeded, otherwise `setStatus("Pin failed: ...")`;
 `remove` awaits `AsyncStorage.removeItem(candidateKey + name)` first; an effect
 on `open` awaits `readStored(issued.current)`, merges the found candidates, and
 puts the problems in the status line. Copy a stored value to a file and

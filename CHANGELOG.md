@@ -2,6 +2,22 @@
 
 ## 1.3.0 — unreleased
 
+### Plainer labels and a draft chip
+
+- The panel's labels are plain words with no glyphs. The toggle is named after
+  the feature ("Card Lab", "Nav Lab") instead of "Tune"; the Original chip is
+  **Shipped**; Keep is **Pin**; Use this is **Choose**; the result bar reads
+  "Chosen: capsule · Change"; the hint reads *Pin looks to compare · Choose to
+  finish*. Saved looks are called pins.
+- The fixed Now chip is gone. The draft chip is hidden while the draft equals
+  Shipped or a pin, and appears last in the row only while the draft holds
+  unpinned changes, labeled after `basedOn`: "Shipped + edits",
+  "compact + edits", "capsule + edits". Pin is disabled while there is nothing
+  unpinned, and the new pin's chip replaces the draft chip. Reset returns the
+  draft to Shipped. Every example and the shared Swift asset implement it.
+- The wire format is unchanged: the Shipped chip still logs winner `original`,
+  the draft chip `draft`, and every log tag, key, and file path stays the same.
+
 ### Labs already in the project
 
 - Inspection now searches for labs left by earlier work. A lab for the same

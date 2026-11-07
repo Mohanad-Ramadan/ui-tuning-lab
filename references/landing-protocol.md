@@ -21,14 +21,15 @@ on one line:
 UITUNINGLAB_VALUES {"cornerRadius":20,"spacing":12}
 ```
 
-Labs also log their favorites and a `UITUNINGLAB_DONE` line when the user
-presses ✓ Use this, and write the same object to the result file
+Labs also log their pins and a `UITUNINGLAB_DONE` line when the user
+presses Choose, and write the same object to the result file
 (`references/candidates.md`). Use, in order:
 
 1. What the user says in chat wins: values they pasted, or a name they gave
    (`land capsule`).
 2. Otherwise the newest `UITUNINGLAB_DONE` line, else the result file. Land its
-   `winner`: a favorite's values, `draft` values, or nothing for `original`.
+   `winner`: a pin's values, `draft` values (the draft chip), or nothing for
+   `original` (the Shipped chip).
 3. Otherwise the newest `UITUNINGLAB_VALUES` line.
 
 Read the lines yourself rather than asking for a paste, with the platform's
@@ -74,7 +75,7 @@ later") and is independent of removing the lab:
 
 - **Remove (default).** Delete the lab files (`UITuningLab*.swift`,
   `*.ui-tuning-lab.tsx`), the gated host code that opens them (the launch-argument
-  handler, the shake shim, the Tune trigger or fallback pill, the marked
+  handler, the shake shim, the `<Feature> Lab` trigger or fallback pill, the marked
   DEBUG-only state such as `showUITuningLab`, the web `TuningLabHost` block and
   its gated `import()`), and any lab-only helper. Delete the result file
   (`references/platform-handoff.md`, "The result file") when you can reach it. Undo every other host
@@ -88,7 +89,7 @@ later") and is independent of removing the lab:
      message, no supported sources, means the wrong directory was checked.
   2. `grep -rnE 'TuningLab|tuning-lab|UITuningLabOpen|ui-tuning-lab=' <feature-dir>`
      finds nothing left from the lab, and a search for the fallback label (for
-     example `grep -rnw Tune` or the pill's accessibility label) is clean too.
+     example `grep -rn 'Card Lab'` or the pill's accessibility label) is clean too.
      Web host code is deliberately unmarked, so the linter alone cannot see it.
   3. The project builds, in both Debug and Release where they differ.
 

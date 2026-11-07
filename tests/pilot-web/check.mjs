@@ -46,6 +46,13 @@ async function setRange(page, label, value) {
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
+// Reset and Copy values live in the ⋯ menu, which closes after each action.
+async function menuItem(page, name) {
+  const item = page.getByRole("button", { name, exact: true });
+  if (!(await item.isVisible())) await page.getByRole("button", { name: "More actions" }).click();
+  await item.click();
+}
+
 async function devChecks(engineName, engine, viewportName) {
   const scope = `${engineName}/${viewportName}`;
   let browser;
@@ -61,10 +68,10 @@ async function devChecks(engineName, engine, viewportName) {
   page.on("console", message => logs.push(message.text()));
   try {
     await page.goto(devUrl);
-    await page.getByRole("button", { name: "Tune" }).waitFor();
+    await page.getByRole("button", { name: "Card Lab" }).waitFor();
     const before = await cardStyles(page);
 
-    await page.getByRole("button", { name: "Tune" }).click();
+    await page.getByRole("button", { name: "Card Lab" }).click();
     const dialog = page.getByRole("dialog", { name: /tuning lab/i });
     await dialog.waitFor();
     record(scope, "opening leaves the feature at its baseline", same(before, await cardStyles(page)), JSON.stringify(before));
@@ -94,18 +101,20 @@ async function devChecks(engineName, engine, viewportName) {
     record(scope, "clicking the feature keeps the lab open", await dialog.isVisible());
 
     const draft = await cardStyles(page);
-    await page.getByRole("button", { name: "Show baseline" }).click();
-    record(scope, "Show baseline renders the baseline", same(before, await cardStyles(page)));
-    record(scope, "editing is disabled while the baseline is shown",
+    await page.getByRole("button", { name: "Shipped", exact: true }).click();
+    record(scope, "the Shipped chip renders the baseline", same(before, await cardStyles(page)));
+    record(scope, "editing is disabled while Shipped is shown",
       await page.getByRole("button", { name: "Compact" }).isDisabled());
-    await page.getByRole("button", { name: "Show baseline" }).click();
-    record(scope, "turning Show baseline off restores the draft", same(draft, await cardStyles(page)));
+    await page.getByRole("button", { name: "compact + edits" }).click();
+    record(scope, "the draft chip restores the draft", same(draft, await cardStyles(page)));
 
     // Change exactly one field so an over-reporting Copy cannot pass.
-    await page.getByRole("button", { name: "Reset" }).click();
+    await menuItem(page, "Reset");
+    record(scope, "after Reset the draft chip is hidden",
+      (await page.getByRole("button", { name: /\+ edits$/ }).count()) === 0);
     await setRange(page, /Radius/, 20);
     logs.length = 0;
-    await page.getByRole("button", { name: "Copy values" }).click();
+    await menuItem(page, "Copy values");
     await page.waitForTimeout(300);
     const line = logs.find(text => text.startsWith("UITUNINGLAB_VALUES "));
     let copied = null;
@@ -114,7 +123,7 @@ async function devChecks(engineName, engine, viewportName) {
       copied !== null && JSON.stringify(copied) === JSON.stringify({ radius: 20 }),
       line ?? "no UITUNINGLAB_VALUES line");
 
-    await page.getByRole("button", { name: "Reset" }).click();
+    await menuItem(page, "Reset");
     record(scope, "Reset restores the baseline exactly", same(before, await cardStyles(page)));
 
     // Escape must close the lab even when focus is on the page, not the panel.
@@ -124,13 +133,13 @@ async function devChecks(engineName, engine, viewportName) {
     await page.waitForTimeout(200);
     record(scope, "Escape closes and unmounts the panel",
       (await page.locator("[role=dialog]").count()) === 0 && (await page.locator("[popover]").count()) === 0);
-    record(scope, "focus returns to Tune after Escape",
-      await page.evaluate(() => document.activeElement?.textContent?.trim() === "Tune"));
+    record(scope, "focus returns to Card Lab after Escape",
+      await page.evaluate(() => document.activeElement?.textContent?.trim() === "Card Lab"));
     record(scope, "closing keeps the tuned draft", !same(before, await cardStyles(page)));
 
     // Reopen with the draft still applied. The baseline is the declared default,
     // so the draft must still count as a change.
-    await page.getByRole("button", { name: "Tune" }).click();
+    await page.getByRole("button", { name: "Card Lab" }).click();
     await dialog.waitFor();
     // `before` is the declared default: it was read before any tuning, and the
     // app starts at its defaults. The copied fields must be exactly the ones the
@@ -139,7 +148,7 @@ async function devChecks(engineName, engine, viewportName) {
     const expectedDraft = Object.fromEntries(Object.keys(kept)
       .filter(key => kept[key] !== before[key]).map(key => [key, parseFloat(kept[key])]));
     logs.length = 0;
-    await page.getByRole("button", { name: "Copy values" }).click();
+    await menuItem(page, "Copy values");
     await page.waitForTimeout(300);
     const reopenLine = logs.find(text => text.startsWith("UITUNINGLAB_VALUES "));
     let reopened = null;
@@ -150,16 +159,16 @@ async function devChecks(engineName, engine, viewportName) {
       `${reopenLine ?? "no UITUNINGLAB_VALUES line"}; expected ${sorted(expectedDraft)}`);
     await setRange(page, /Radius/, 6);
     const draftAgain = await cardStyles(page);
-    // Closing while the baseline is shown must bring the draft back.
-    await page.getByRole("button", { name: "Show baseline" }).click();
-    record(scope, "after reopening, Show baseline shows the declared default",
+    // Closing while Shipped is shown must bring the draft back.
+    await page.getByRole("button", { name: "Shipped", exact: true }).click();
+    record(scope, "after reopening, Shipped shows the declared default",
       same(before, await cardStyles(page)) && !same(before, draftAgain));
     await page.getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(200);
-    record(scope, "closing while the baseline is shown restores the draft", same(draftAgain, await cardStyles(page)));
+    record(scope, "closing while Shipped is shown restores the draft", same(draftAgain, await cardStyles(page)));
 
     // Keyboard-only path: every control is reachable by Tab.
-    await page.getByRole("button", { name: "Tune" }).click();
+    await page.getByRole("button", { name: "Card Lab" }).click();
     await dialog.waitFor();
     const reachable = new Set();
     for (let i = 0; i < 30; i++) {
@@ -173,7 +182,7 @@ async function devChecks(engineName, engine, viewportName) {
     }
     const sliders = await dialog.getByRole("slider").evaluateAll(inputs =>
       inputs.map(input => input.closest("label")?.textContent?.trim().split(/\s+/)[0]));
-    const expected = ["Close", "Show baseline", "Compact", "Relaxed", "Reset", "Copy values", ...sliders];
+    const expected = ["Close", "More actions", "Shipped", "Compact", "Relaxed", "Pin", "Choose", ...sliders];
     const missing = expected.filter(name => !reachable.has(name));
     record(scope, "keyboard reaches every control", missing.length === 0, missing.length ? `missing ${missing.join(", ")}` : "");
   } catch (error) {
@@ -203,7 +212,7 @@ async function productionChecks(engineName, engine) {
     await page.keyboard.press("Meta+Shift+L");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
-    const tune = await page.getByRole("button", { name: "Tune" }).count();
+    const tune = await page.getByRole("button", { name: "Card Lab" }).count();
     const dialogs = await page.locator("[role=dialog], [popover]").count();
     record(scope, "query, storage, and keyboard activation open nothing", tune === 0 && dialogs === 0, `tune=${tune} dialogs=${dialogs}`);
   } catch (error) {

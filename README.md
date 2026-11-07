@@ -10,10 +10,10 @@ activation, configuration, and baseline from the project and asks at most one
 material setup question, plus how the lab should open. Activation has an agent
 path, one or more human fast paths the user picks, and a visible fallback; shake
 is offered only when inspection proves it free. Ephemeral labs need
-no configuration file. Every lab lets you shortlist finalists (Keep as
-candidate), flip between them (Compare), and press Done to hand them to the
-agent; a footer hint says how to finish. Candidates stay in memory unless you
-ask to save them; saved ones live under `uiTuningLab.*` or `.ui-tuning-lab/`,
+no configuration file. Every lab lets you pin finalists (Pin), flip between
+them with the chips (Shipped, each pin, and the draft while it has unpinned
+edits), and press Choose to hand the pick to the agent; a footer hint says how
+to finish. Pins stay in memory unless you ask to save them; saved ones live under `uiTuningLab.*` or `.ui-tuning-lab/`,
 and finalists you keep at landing are seeded into the lab next time.
 
 Start with `SKILL.md`; it routes to everything else.

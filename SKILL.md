@@ -20,9 +20,10 @@ A good lab feels like this:
 - **It opens without hunting.** The agent can open it deterministically, the
   human has a fast path, and a visible fallback is always there.
 - Every control edits the same configuration the feature renders, live.
-- **Chips** flip the real feature between Original, Now, and each favorite;
-  **Replay** and **Speed** make motion judgeable.
-- **★ Keep** adds a look to the favorites; **✓ Use this** picks what is shown
+- **Chips** flip the real feature between Shipped, each pin, and the draft
+  (shown as "Shipped + edits" or "compact + edits" only while it holds unpinned
+  changes); **Replay** and **Speed** make motion judgeable.
+- **Pin** saves the draft as a pin; **Choose** picks what is shown
   and hands it to the agent, with no paste: log line, result file, and a
   `land <name>` code on the clipboard. One hint line says how to finish.
 
@@ -30,7 +31,7 @@ A good lab feels like this:
 
 Every UI stack gets the same lab. On Android, Flutter, React Native, Windows,
 or a stack with no example at all, build: the
-panel, presets, direct controls, the chips, ★ Keep, ✓ Use this, the ⋯ menu
+panel, presets, direct controls, the chips, Pin, Choose, the ⋯ menu
 with Reset and Copy values, the hint, and the three activation paths.
 Start from the platform's example, or the nearest one when there is none, and
 keep every guarantee in the safety checklist. Never replace the lab with a row
@@ -73,10 +74,10 @@ picker in the panel, with the original as the baseline
    feature's declared default (what ships), never the value on screen when the
    lab opens: a draft kept from an earlier open must still count as a change.
    Keep the draft separate. Pick controls from `references/control-mapping.md`:
-   at least two presets, direct controls, the chips, ★ Keep, ✓ Use this, the ⋯
+   at least two presets, direct controls, the chips, Pin, Choose, the ⋯
    menu (Reset, Copy values), and the hint, plus Replay and Speed for motion
-   (`references/candidates.md`). Favorites stay in memory and the log; the only
-   write is the result file, and favorites go to storage only when persistence
+   (`references/candidates.md`). Pins stay in memory and the log; the only
+   write is the result file, and pins go to storage only when persistence
    was requested
    (`references/config-schema.md`). When `.ui-tuning-lab/lab.json` lists kept
    `candidates`, seed the lab with them.
@@ -124,7 +125,7 @@ module (presets, a diff function) need no marker: the file itself is gated.
 | **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files (for Kotlin, Dart, and C#, which it cannot read, the manual gate check in `references/platform-handoff.md` instead), and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
 | **Activatable only in development.** The lab opens through the documented agent path, the chosen human path, and a visible fallback; none survives Release. | Hands-on: every documented path opens the lab, a focused text field keeps shake-to-undo, and the fallback is reachable. Release archive: launch arguments, URL schemes, shake selectors, notification names, key commands, and fallback labels are absent or inert (`references/verify-protocol.md`). |
 | **Reversible.** Reset restores the baseline (the declared default) exactly, behavior included. | Hands-on: open, change everything, close, reopen, Reset, and compare with the unmodified app. |
-| **Explicit persistence.** The only write an ephemeral lab makes is the result file on ✓ Use this; favorites live only in memory and the log unless the user asked to save them; every write goes only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | An ephemeral lab's only storage writer is the result file; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
+| **Explicit persistence.** The only write an ephemeral lab makes is the result file on Choose; pins live only in memory and the log unless the user asked to save them; every write goes only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | An ephemeral lab's only storage writer is the result file; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
 | **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
 
 `source-gates` is a lint: a PASS does not prove the release build is clean, so
@@ -148,10 +149,10 @@ a save would overwrite a production key.
 - `references/control-mapping.md`: which control for which value; required controls.
 - `references/design-variants.md`: alternative designs of a feature as a
   Design picker in the lab, and landing the winning design's code.
-- `references/candidates.md`: chips, ★ Keep, ✓ Use this, favorite names, the
+- `references/candidates.md`: chips, Pin, Choose, pin names, the
   result file, waiting for the pick, and keeping finalists for later.
 - `references/platform-handoff.md`: per platform, how lab lines are logged and
-  read, how to wait for Done, where the result file and favorites are stored,
+  read, how to wait for Done, where the result file and pins are stored,
   and manual gate
   checks for languages the linter cannot read.
 - `references/landing-protocol.md`: reading values, writing defaults, removal.
@@ -171,16 +172,16 @@ table, the declaration changed, and whether the lab was removed or kept; before
 landing, say the lab is in place and awaiting a winner. Keep static
 lint, hands-on checks, and release-artifact inspection separate, and never mark an
 unrun check as passed. For each activation path the agent could not exercise
-(shake in the Simulator, a gesture, a hardware shortcut), give the user the
-exact steps to try it. Name the current keys, read from the host the user is
+(shake in the Simulator, a gesture, a hardware shortcut), name the gesture or
+keys in **How to try it**. Name the current keys, read from the host the user is
 looking at, never from memory: some hosts hide shake behind a shortcut only
 (`references/activation.md`, "Tell the user how to shake").
 
-Before landing, open the report with **How to try it**: where the pill or
-command is (which corner, which menu), then three to five numbered steps from
-opening the lab to the pick: try presets, ★ Keep the ones you like, tap the
-chips to compare, then ✓ Use this on the winner. With design variants, the first
-step is picking each design in the panel's Design picker. Say whether the agent
-will see the pick on its own or needs the pasted `land <name>` line. Name every
-choice the user makes inside the lab (pick a theme, switch mode) and anything
-that still lives elsewhere in the app, so nothing about the setup is a surprise.
+Before landing, open the report with **How to try it**: two or three short
+lines, a hint for a developer, not a tutorial. Say how to open the lab (the
+fastest path, then the fallback, such as "shake, or tap Card Lab in the
+bottom-right corner"), and give the flow in one line ("pick a design, Pin the
+ones you like, then Choose"). End with how the pick reaches you: on its own, or as a
+pasted `land <name>` line. Mention a setting outside the lab only when the lab
+depends on it. The panel's own hint line covers the rest, so do not walk
+through the presets, sliders, or chips.

@@ -1,6 +1,6 @@
-# Favorites and Use this
+# Pins and Choose
 
-The user flips between looks, keeps the ones they like, and picks one. The panel
+The user flips between looks, pins the ones they like, and picks one. The panel
 makes that two buttons and a row of chips, and the pick reaches the agent on its
 own.
 
@@ -14,39 +14,46 @@ own.
 - Persistence
 - Keeping finalists for later
 
-Every lab has all of this, ephemeral labs included: favorites live in memory and
-in the log. The one write an ephemeral lab makes is the result file below.
+Every lab has all of this, ephemeral labs included: pins live in memory and in
+the log. The one write an ephemeral lab makes is the result file below.
 
 ## The panel
 
 | Control | What it does |
 |---|---|
-| **Chips** | One row under the header: **Original** (the baseline), **Now** (the draft), then each favorite. Tapping a chip shows it in the real feature. The shown chip is highlighted. |
-| **★ Keep** | Adds what Now shows to the favorites. Skips a look that matches Original ("Same as Original") or a favorite ("Same as capsule"). |
-| **✓ Use this** | Picks whatever chip is shown (Now, a favorite, or Original) and finishes: logs the result, writes the result file, copies `land <name>` to the clipboard, and shrinks the panel to one bar. |
-| **Result bar** | `✓ Sent: capsule · Change`. Change reopens the panel. Picking again replaces the result: the newest pick wins. No confirmation step. |
-| **× on a favorite chip** | Removes it, with an accessible name such as "Remove capsule". |
-| **⋯ menu** | Reset (Now back to Original) and Copy values. |
-| **Hint** | One line pinned below the controls: *Keep favorites · Use this to finish* |
+| **Toggle** | The pill, button, or menu item that opens the lab is named after the feature: **Nav Lab**, **Card Lab**. |
+| **Chips** | One row under the header: **Shipped** (the baseline), then each pin, then the draft chip. Tapping a chip shows it in the real feature. The shown chip is highlighted. Example: Shipped · capsule · compact-2 · capsule + edits |
+| **Draft chip** | Hidden while the draft equals Shipped or a pin. It appears only while the draft holds unpinned changes, last in the row, labeled `<source> + edits` from `basedOn`: "Shipped + edits" when `basedOn` is `baseline`, otherwise the preset or pin name ("compact + edits", "capsule + edits"). |
+| **Pin** | Pins the draft: the new pin chip replaces the draft chip, which hides until the next change. Disabled while there is nothing unpinned, that is, while the draft matches Shipped or a pin (a status may say "Same as Shipped" or "Same as capsule"). |
+| **Choose** | Picks whatever chip is shown (Shipped, a pin, or the draft chip) and finishes: logs the result, writes the result file, copies `land <name>` to the clipboard, and shrinks the panel to one bar. |
+| **Result bar** | `Chosen: capsule · Change`. Change reopens the panel. Picking again replaces the result: the newest pick wins. No confirmation step. |
+| **× on a pin chip** | Removes it, with an accessible name such as "Remove capsule". |
+| **⋯ menu** | Reset (the draft back to Shipped, so the draft chip hides and Shipped is shown) and Copy values. |
+| **Hint** | One line pinned below the controls: *Pin looks to compare · Choose to finish* |
+
+Labels are plain words: no star or check-mark glyphs anywhere in the panel.
 
 Rules:
 
-- Controls edit Now. While Original is shown they are disabled. Moving a control
-  while a favorite is shown first loads that favorite into Now, so a favorite can
-  be refined; the favorite itself does not change.
+- There is exactly one draft, the working copy the controls edit. Pins are
+  frozen snapshots; Shipped is read-only, so the controls are disabled while it
+  is shown. Moving a control while a pin is shown first copies that pin into the
+  draft, so a pin can be refined; the pin itself does not change.
+- While the draft equals Shipped or a pin, that chip is highlighted instead of
+  a draft chip, the controls stay live, and moving one starts from that look.
 - Show baseline, Compare, and Load are not separate controls: the chips are all
-  three. The draft is stashed while another chip is shown and restored when Now
-  is tapped or the lab closes.
-- `basedOn` records where Now came from: the kebab-case name of the last preset
-  applied, `baseline` after Reset or when the lab first opens, or a favorite's
-  name after it was loaded into Now. Edits keep the same `basedOn`.
+  three. The draft is stashed while another chip is shown and restored when its
+  chip is tapped or the lab closes.
+- `basedOn` records where the draft came from: the kebab-case name of the last
+  preset applied, `baseline` after Reset or when the lab first opens, or a pin's
+  name after it was copied into the draft. Edits keep the same `basedOn`.
 - Keyboard shortcuts for the chips (Command-1 to Command-9 on macOS) are optional
   and only added when inspection shows they are free.
 
 ## Names
 
-A favorite is named after what it is, so the chip is readable and the name works
-as a code in chat (`land capsule`):
+A pin is named after what it is, so the chip is readable and the name works as
+a code in chat (`land capsule`):
 
 1. In a design-variant lab, the design key when it is not `original`
    (`capsule`); otherwise the last preset applied (`compact`); otherwise `tweak`.
@@ -67,14 +74,16 @@ UITUNINGLAB_CANDIDATE_REMOVED {"name":"tweak"}
 UITUNINGLAB_DONE {"candidates":[{"basedOn":"compact","name":"capsule","values":{"cornerRadius":14,"design":"capsule"}}],"values":{"cornerRadius":14,"design":"capsule"},"winner":"capsule"}
 ```
 
-- **Use this** logs `UITUNINGLAB_DONE`. `winner` is the favorite that was shown,
-  `original` when Original was shown (land nothing), or `draft` when Now was
-  shown; `values` is the winner's values (`{}` for `original`).
-- `candidates` holds every favorite still in the panel, oldest first, so the
-  line alone is enough to land or keep any of them.
-- A favorite loaded from storage or seeded from the project logs its own
+- **Choose** logs `UITUNINGLAB_DONE`. `winner` is the pin that was shown,
+  `original` when Shipped was shown (land nothing), or `draft` when the draft
+  chip was shown; `values` is the winner's values (`{}` for `original`). The
+  wire names predate the labels: the Shipped chip logs winner `original` and the
+  draft chip logs `draft`.
+- `candidates` holds every pin still in the panel, oldest first, so the line
+  alone is enough to land or keep any of them.
+- A pin loaded from storage or seeded from the project logs its own
   `UITUNINGLAB_CANDIDATE` line when the lab opens.
-- When the user names a favorite in chat before picking ("land capsule"),
+- When the user names a pin in chat before picking ("land capsule"),
   rebuild the list from the `UITUNINGLAB_CANDIDATE` and
   `UITUNINGLAB_CANDIDATE_REMOVED` lines: the latest line for a name wins, unless
   a later removal names it. An ephemeral lab restarts its names after a relaunch,
@@ -82,7 +91,7 @@ UITUNINGLAB_DONE {"candidates":[{"basedOn":"compact","name":"capsule","values":{
 
 ## The result file
 
-**Use this** also writes the `UITUNINGLAB_DONE` object, plus `savedAt` (ISO-8601
+**Choose** also writes the `UITUNINGLAB_DONE` object, plus `savedAt` (ISO-8601
 UTC), to the app's own storage, so the pick survives quitting the app and the
 agent can read it without a log:
 
@@ -111,8 +120,8 @@ file. When neither is reachable (a cloud device), the user pastes the
 
 ## Persistence
 
-Only when persistence was requested, the lab also writes each favorite as a
-saved profile with `schemaVersion: 2` (`references/config-schema.md`), one per
+Only when persistence was requested, the lab also writes each pin as a saved
+profile with `schemaVersion: 2` (`references/config-schema.md`), one per
 name, and loads them into the list when it opens:
 
 | Platform | Location |
@@ -122,9 +131,9 @@ name, and loads them into the list when it opens:
 | Web | `uiTuningLab.candidates.<name>` in `localStorage` |
 | Other platforms | `references/platform-handoff.md`, "Where persisted candidates live" |
 
-`savedAt` keeps fractional seconds, so two quick Keeps load in the order they
+`savedAt` keeps fractional seconds, so two quick Pins load in the order they
 were made. Remove deletes that candidate's file or key and nothing else. A
-failed write refuses the Keep: the status line shows the error and the
+failed write refuses the Pin: the status line shows the error and the
 candidate is not added, so the panel never shows a candidate that storage does
 not hold. An entry that fails to decode, has the wrong `schemaVersion` or
 `platform`, or whose `name` does not match its file or key, is reported in the

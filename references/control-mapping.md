@@ -18,16 +18,18 @@ a list of fields is fine; keep each one labelled.
 | Easing | Presets (ease-in-out, ease-out, linear, spring) plus a custom cubic-bézier only if requested | |
 | Text length | Sample copy: short, typical, long, overflowing | Tests truncation and wrapping without editing strings. |
 | UI state | Forced state picker: empty, loading, error, success | Drive the feature's real state, never a mock view. |
-| Alternative design | **Design** picker at the top of the panel: Original first, then one option per variant | A `design` string in the draft; see `references/design-variants.md`. Never in the feature's layout. |
+| Alternative design | **Design** picker at the top of the panel: Shipped (the `original` design) first, then one option per variant | A `design` string in the draft; see `references/design-variants.md`. Never in the feature's layout. |
 
 ## Required in every lab
 
 - **Presets**: at least two meaningful presets that differ clearly from the
   baseline and from each other.
-- **Chips, ★ Keep, and ✓ Use this**, with the hint line: see
-  `references/candidates.md`. The Original chip is the baseline flip; while it
+- **Chips, Pin, and Choose**, with the hint line: see
+  `references/candidates.md`. The Shipped chip is the baseline flip; while it
   is shown the controls are disabled, so an edit never lands on the baseline.
-  Restore the draft if the lab closes while another chip is shown.
+  The draft chip ("Shipped + edits", "compact + edits") appears only while the
+  draft holds unpinned changes. Restore the draft if the lab closes while
+  another chip is shown.
 - **⋯ menu** with **Reset** (copies the baseline back into the draft) and
   **Copy values** (`references/landing-protocol.md`; it always reports the
   draft).

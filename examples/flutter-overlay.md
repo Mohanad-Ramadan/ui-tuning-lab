@@ -18,20 +18,22 @@ Activation (`references/activation.md`):
 - **Agent:** `flutter run --dart-define=UITUNINGLAB_OPEN=true`. The flag is a
   `const bool.fromEnvironment` read inside the lab file and consumed the first
   time the host mounts in this Dart isolate.
-- **Human and visible fallback:** a **Tune** pill in a free corner. If the app
+- **Human and visible fallback:** a **Card Lab** pill in a free corner. If the app
   has a debug drawer or developer menu, add an entry that calls the same open
   method, and keep the pill.
 
-The host's lab state owns the favorites, so favorites, `basedOn`, and the
-stashed Now survive closing the overlay. The default lab is ephemeral: favorites
-live in memory and the log only, and a name is never reused within an isolate.
-The chip row under the header shows Original, Now, or a favorite in the real
-feature; the draft is stashed meanwhile and restored when Now is tapped or the
-panel closes. While Original is shown the presets and sliders are disabled;
-moving one while a favorite is shown loads that favorite into Now first.
-**★ Keep** adds Now to the favorites, **✓ Use this** picks the shown chip and
-collapses the panel to the result bar, and the **⋯** menu holds Reset and Copy
-values. The hint sits below the scrolling controls.
+The host's lab state owns the pins, so pins, `basedOn`, and the stashed draft
+survive closing the overlay. The default lab is ephemeral: pins live in memory
+and the log only, and a name is never reused within an isolate. The chip row
+under the header shows Shipped, each pin, and, last, the draft chip ("Shipped +
+edits", "compact + edits"), which appears only while the draft holds unpinned
+changes; tapping a chip shows it in the real feature, and the draft is stashed
+meanwhile and restored when its chip is tapped or the panel closes. While
+Shipped is shown the presets and sliders are disabled; moving one while a pin
+is shown copies that pin into the draft first. **Pin** pins the draft and is
+disabled while the draft matches Shipped or a pin, **Choose** picks the shown
+chip and collapses the panel to the result bar, and the **⋯** menu holds Reset
+and Copy values. The hint sits below the scrolling controls.
 
 ## Host change
 
@@ -181,16 +183,16 @@ class UITuningLabHost extends StatefulWidget {
 }
 
 class _UITuningLabHostState extends State<UITuningLabHost> {
-  // Favorites the lab opens with. Empty by default; a later session seeds the
+  // Pins the lab opens with. Empty by default; a later session seeds the
   // finalists kept in the project here (references/candidates.md).
   final List<_Candidate> candidates = [];
-  // Every name issued, removed ones included, plus the names a favorite never takes.
+  // Every name issued, removed ones included, plus the names a pin never takes.
   final Set<String> issued = {'draft', 'now', 'original', 'baseline'};
   final Set<String> logged = {};
   String basedOn = 'baseline';
   String? lastPreset;
-  String shown = 'draft'; // the shown chip: "draft" (Now), "original", or a favorite's name
-  CardStyle? stash; // Now, while another chip is shown
+  String shown = 'draft'; // the shown chip: "draft", "original" (Shipped), or a pin's name
+  CardStyle? stash; // the draft, while another chip is shown
   String? status;
   String? result; // the last pick; while set, the panel is the result bar
   // Hidden means the panel is not built: nothing of it stays in the tree.
@@ -198,6 +200,19 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   bool isOpen = false;
 
   CardStyle get draft => widget.style;
+
+  // The chip the draft matches ('original' for Shipped, or a pin), or null while
+  // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+  String? get draftMatch {
+    final values = _changed(stash ?? draft);
+    if (values.isEmpty) return 'original';
+    return candidates.where((c) => _sortedJson(c.values) == _sortedJson(values)).firstOrNull?.name;
+  }
+
+  // The highlighted chip: the one shown, or the one the draft matches.
+  String get current => shown == 'draft' ? draftMatch ?? 'draft' : shown;
+
+  String get draftTitle => '${basedOn == 'baseline' ? 'Shipped' : basedOn} + edits';
 
   @override
   void initState() {
@@ -226,8 +241,10 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     update(() => isOpen = false);
   }
 
-  // Tapping a chip shows it in the real feature; Now is stashed meanwhile.
-  void show(String target) {
+  // Tapping a chip shows it in the real feature; the draft is stashed meanwhile.
+  // The chip the draft matches shows the draft itself.
+  void show(String chip) {
+    final target = chip == draftMatch ? 'draft' : chip;
     if (target == 'draft') {
       if (stash != null) widget.onChanged(stash!);
       stash = null;
@@ -239,11 +256,13 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     update(() => shown = target);
   }
 
-  // Every control edits Now. Moved while a favorite is shown, it loads that
-  // favorite into Now first; the favorite itself does not change.
+  // Every control edits the draft. Moved while a pin is shown, it copies that pin
+  // into the draft first; the pin itself does not change. Editing a draft that
+  // matches Shipped or a pin starts from that look.
   void edit(CardStyle next, [String? from]) {
+    final match = shown == 'draft' ? draftMatch : shown;
+    final source = from ?? (match == null ? basedOn : match == 'original' ? 'baseline' : match);
     stash = null;
-    final source = from ?? (shown == 'draft' ? basedOn : shown);
     widget.onChanged(next);
     update(() { basedOn = source; shown = 'draft'; });
   }
@@ -251,21 +270,21 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   void applyPreset(String name) { lastPreset = name; edit(_presets[name]!, name); }
   void reset() { lastPreset = null; edit(_baseline, 'baseline'); }
 
-  // Always reports Now, whichever chip is shown.
+  // Always reports the draft, whichever chip is shown.
   Future<void> copyValues() async {
     final values = _changed(stash ?? draft);
     final json = _sortedJson(values);
     _log('UITUNINGLAB_VALUES', values);
     await Clipboard.setData(ClipboardData(text: json));
-    update(() => status = json == '{}' ? 'No changes from Original' : 'Copied $json');
+    update(() => status = json == '{}' ? 'No changes from Shipped' : 'Copied $json');
   }
 
-  // Returns the new favorite, or null with a status. Keep is enabled only while
-  // Now is shown, so draft is Now. The persist variant writes the favorite
-  // before calling commit().
+  // Returns the new pin, or null with a status. Pin is enabled only while the
+  // draft holds unpinned changes. The persist variant writes the pin before
+  // calling commit().
   _Candidate? prepareKeep() {
-    final values = _changed(draft);
-    if (values.isEmpty) { update(() => status = 'Same as Original'); return null; }
+    final values = _changed(stash ?? draft);
+    if (values.isEmpty) { update(() => status = 'Same as Shipped'); return null; }
     final same = candidates.where((c) => _sortedJson(c.values) == _sortedJson(values)).firstOrNull;
     if (same != null) { update(() => status = 'Same as ${same.name}'); return null; }
     final stem = lastPreset ?? 'tweak';
@@ -278,7 +297,7 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     issued.add(c.name);
     logged.add(c.name);
     _log('UITUNINGLAB_CANDIDATE', c.toJson());
-    update(() { candidates.add(c); status = 'Kept as ${c.name}'; });
+    update(() { candidates.add(c); status = 'Pinned ${c.name}'; });
   }
 
   void keep() { final c = prepareKeep(); if (c != null) commit(c); }
@@ -289,11 +308,13 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     update(() => candidates.removeWhere((c) => c.name == name));
   }
 
-  // Picks the shown chip and finishes. Picking again replaces the result.
+  // Choose picks the highlighted chip and finishes. Picking again replaces the
+  // result.
   Future<void> useThis() async {
-    final picked = candidates.where((c) => c.name == shown).firstOrNull;
-    final winner = picked?.name ?? (shown == 'original' ? 'original' : 'draft');
-    final values = picked?.values ?? (shown == 'original' ? <String, double>{} : _changed(draft));
+    final chip = current;
+    final picked = candidates.where((c) => c.name == chip).firstOrNull;
+    final winner = picked?.name ?? (chip == 'original' ? 'original' : 'draft');
+    final values = picked?.values ?? (chip == 'original' ? <String, double>{} : _changed(draft));
     final done = <String, Object?>{
       'candidates': [for (final c in candidates) c.toJson()],
       'values': values,
@@ -316,7 +337,7 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
       if (isOpen) return result == null ? panel(overlayContext) : resultBar(result!);
       return Positioned(right: 16, bottom: 16, child: SafeArea(child: Semantics(
           label: 'Open UI tuning lab', button: true, excludeSemantics: true,
-          child: FilledButton(onPressed: open, child: const Text('Tune')))));
+          child: FilledButton(onPressed: open, child: const Text('Card Lab')))));
     });
   }
 
@@ -326,7 +347,7 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
       child: Padding(
         padding: const EdgeInsets.only(left: 16, right: 4),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Semantics(liveRegion: true, child: Text('✓ Sent: $name')),
+          Semantics(liveRegion: true, child: Text('Chosen: $name')),
           TextButton(onPressed: () => update(() => result = null), child: const Text('Change')),
         ]),
       ),
@@ -370,18 +391,20 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
                 ),
                 TextButton(onPressed: close, child: const Text('Close')),
               ]),
-              // The chips: Original, Now, then each favorite. Highlighted = shown.
+              // The chips: Shipped, each pin, then the draft chip while the draft
+              // holds unpinned changes. Highlighted = shown.
               Wrap(spacing: 8, runSpacing: 4, children: [
-                ChoiceChip(label: const Text('Original'), selected: shown == 'original',
+                ChoiceChip(label: const Text('Shipped'), selected: current == 'original',
                     onSelected: (_) => show('original')),
-                ChoiceChip(label: const Text('Now'), selected: shown == 'draft',
-                    onSelected: (_) => show('draft')),
                 for (final c in candidates)
-                  InputChip(label: Text(c.name), selected: shown == c.name,
+                  InputChip(label: Text(c.name), selected: current == c.name,
                       onSelected: (_) => show(c.name),
                       deleteIcon: const Icon(Icons.close, size: 16),
                       deleteButtonTooltipMessage: 'Remove ${c.name}',
                       onDeleted: () => remove(c.name)),
+                if (draftMatch == null)
+                  ChoiceChip(label: Text(draftTitle), selected: current == 'draft',
+                      onSelected: (_) => show('draft')),
               ]),
               Flexible(child: SingleChildScrollView(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -397,11 +420,11 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
                 if (status != null) Semantics(liveRegion: true, child: Text(status!)),
               ]))),
               Wrap(spacing: 8, children: [
-                OutlinedButton(onPressed: shown == 'draft' ? keep : null, child: const Text('★ Keep')),
-                FilledButton(onPressed: useThis, child: const Text('✓ Use this')),
+                OutlinedButton(onPressed: draftMatch == null ? keep : null, child: const Text('Pin')),
+                FilledButton(onPressed: useThis, child: const Text('Choose')),
               ]),
               // Pinned below the controls, visible however long the panel grows.
-              const Padding(padding: EdgeInsets.only(top: 8), child: Text('Keep favorites · Use this to finish')),
+              const Padding(padding: EdgeInsets.only(top: 8), child: Text('Pin looks to compare · Choose to finish')),
             ]),
           ),
         ),
@@ -437,7 +460,7 @@ final Map<String, _DesignBuilder> _designs = {
                 child: Center(child: Text(title))),
         ]),
 };
-const _designLabels = {'original': 'Original', 'grid': 'Grid'};
+const _designLabels = {'original': 'Shipped', 'grid': 'Grid'};
 
 // The design joins the values: present only when it differs from 'original'.
 Map<String, Object> _changedWith(String design, CardStyle draft) =>
@@ -451,10 +474,10 @@ CardStyle _styleOf(Map<String, Object> v) => _apply({
 In the host state:
 
 - Add `String design = 'original';` and `String? stashDesign;` beside `stash`.
-- `_Candidate.values` becomes `Map<String, Object>`. `prepareKeep` uses
-  `_changedWith(design, draft)`, and `copyValues` reports Now with
-  `_changedWith(stashDesign ?? design, stash ?? draft)`.
-- A favorite is named after its design when that is not `original`, so
+- `_Candidate.values` becomes `Map<String, Object>`. `prepareKeep` and
+  `draftMatch` use `_changedWith(stashDesign ?? design, stash ?? draft)`, and
+  `copyValues` reports the draft the same way.
+- A pin is named after its design when that is not `original`, so
   `prepareKeep` takes `final stem = design != 'original' ? design : lastPreset ?? 'tweak';`.
 - Presets carry a design: `Map<String, ({String design, CardStyle style})>`,
   and `applyPreset` passes both to `edit`.
@@ -470,7 +493,8 @@ In the host state:
 `show`, `edit`, and `useThis` move the design with the style:
 
 ```dart
-void show(String target) {
+void show(String chip) {
+  final target = chip == draftMatch ? 'draft' : chip;
   if (target == 'draft') {
     if (stash != null) widget.onChanged(stash!);
     design = stashDesign ?? design;
@@ -486,12 +510,13 @@ void show(String target) {
   update(() => shown = target);
 }
 
-// While a favorite is shown, design already holds its design, so loading it
-// into Now keeps it unless the control changes the design itself.
+// While a pin is shown, design already holds its design, so copying it into
+// the draft keeps it unless the control changes the design itself.
 void edit(CardStyle next, {String? from, String? design}) {
+  final match = shown == 'draft' ? draftMatch : shown;
+  final source = from ?? (match == null ? basedOn : match == 'original' ? 'baseline' : match);
   stash = null;
   stashDesign = null;
-  final source = from ?? (shown == 'draft' ? basedOn : shown);
   if (design != null) this.design = design;
   widget.onChanged(next);
   update(() { basedOn = source; shown = 'draft'; });
@@ -503,10 +528,10 @@ void applyPreset(String name) {
   edit(p.style, from: name, design: p.design);
 }
 
-// In useThis(): a favorite's values come from the favorite itself, never from
+// In useThis(): a pin's values come from the pin itself, never from
 // widget.style, which updates only after the parent rebuilds.
 final values = picked?.values ??
-    (shown == 'original' ? <String, Object>{} : _changedWith(design, draft));
+    (chip == 'original' ? <String, Object>{} : _changedWith(design, draft));
 ```
 
 The sliders call `edit(draft.copyWith(...))` as before.
@@ -515,7 +540,7 @@ The sliders call `edit(draft.copyWith(...))` as before.
   `final body = _designs[design]?.call(context, draft) ?? widget.child;` and
   uses `body` where it used `widget.child`.
 - The panel's first row under the chips is the Design picker, disabled while
-  Original is shown like every other control:
+  Shipped is shown like every other control:
 
 ```dart
 const Text('Design'),
@@ -539,8 +564,8 @@ the Android wait loop with `TAG=flutter`, or the Simulator `log show` command
 without the subsystem clause. When the agent started `flutter run` itself with
 its output redirected to a file, polling that file with
 `grep -m1 UITUNINGLAB_DONE <file>` in the same `until` loop works on every
-platform. Logcat truncates a line near 4 KB; a Done line with many favorites
-can exceed it, so ask the user to press ✓ Use this again or read `flutter run`
+platform. Logcat truncates a line near 4 KB; a Done line with many pins
+can exceed it, so ask the user to press Choose again or read `flutter run`
 output.
 
 When the app builds only in CI or a cloud device service and `flutter` is not
@@ -563,7 +588,7 @@ the `kDebugMode` branch, and point the screen back at
 
 ## The result file, only when the app has `path_provider`
 
-✓ Use this also writes the Done object plus `savedAt` to
+Choose also writes the Done object plus `savedAt` to
 `getApplicationSupportDirectory()/.ui-tuning-lab/result.json`, replacing the
 last pick atomically. When the app does not depend on `path_provider`, skip
 this section; never add the package for it. Add to the lab file:
@@ -629,7 +654,7 @@ Future<void> _uiTuningLabWrite(_Candidate c, CardStyle overrides) async {
     }), flush: true);
     await temp.rename(target.path);
   } catch (_) {
-    await target.delete(); // release the claimed name; the Keep is refused
+    await target.delete(); // release the claimed name; the Pin is refused
     rethrow;
   }
 }
@@ -665,8 +690,8 @@ Future<(List<_Candidate>, List<String>)> _uiTuningLabReadAll(Set<String> reserve
 }
 ```
 
-Wiring: `keep()` becomes `Future<void> keep() async { final c = prepareKeep(); if (c == null) return; try { await _uiTuningLabWrite(c, draft); commit(c); } catch (e) { update(() => status = 'Keep failed: $e'); } }`,
-so a failed write refuses the Keep. In a design-variant lab, write
+Wiring: `keep()` becomes `Future<void> keep() async { final c = prepareKeep(); if (c == null) return; try { await _uiTuningLabWrite(c, stash ?? draft); commit(c); } catch (e) { update(() => status = 'Pin failed: $e'); } }`,
+so a failed write refuses the Pin. In a design-variant lab, write
 `{..._asMap(overrides), 'design': design}` as `overrides` and read `design`
 back with `_designOf`, so a saved candidate reopens on its design. `remove()` deletes
 `<dir>/<name>.json` first and stops with a status on failure. `open()` awaits

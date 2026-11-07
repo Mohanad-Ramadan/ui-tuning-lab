@@ -4,7 +4,7 @@ Use this when the user asks for alternative designs of a feature ("make three
 better versions of this list", "try a card layout and a timeline") rather than
 new values for the existing one. The variants are different widget or view
 trees, so they cannot be reached by sliders alone, but they still go through
-the same lab: the same panel, chips, ★ Keep, ✓ Use this,
+the same lab: the same panel, chips, Pin, Choose,
 and landing. A row of chips or tabs dropped into the screen is not a lab.
 
 ## Where ideas come from
@@ -18,7 +18,7 @@ accessibility, right-to-left, light and dark).
 
 ## Build
 
-1. **Original is the baseline.** The feature's current widget stays exactly as
+1. **The shipped design is the baseline.** The feature's current widget stays exactly as
    it is and is what renders when the lab opens. Its design key is `original`.
 2. **Variants live in the lab file.** Each variant is one builder or view in the
    `*.ui-tuning-lab.*` file (or files), named with a kebab-case key such as
@@ -29,7 +29,7 @@ accessibility, right-to-left, light and dark).
    renders the variant whose key matches `draft.design` in place of the
    feature, and the original otherwise.
 4. **The picker lives in the panel.** Put a **Design** picker (segmented
-   control or choice chips, one option per key, Original first) at the top of
+   control or choice chips, one option per key, Shipped first) at the top of
    the panel, per the target picker rule in `references/control-mapping.md`.
    Never put it in the feature's layout: opening the lab changes nothing on
    screen, and the screen must look the same with the lab closed.
@@ -41,15 +41,15 @@ accessibility, right-to-left, light and dark).
    that design's own defaults, declared next to it in the lab file; the
    original's knobs start from its real defaults, which means lifting its
    constants into state as usual. When the original hard-codes values and the
-   user asked only for new designs, leave Original untunable (its knobs
+   user asked only for new designs, leave the shipped design untunable (its knobs
    disabled) rather than editing production code. Copy values reports each
    knob against the selected design's defaults, and landing writes the winning
    design with those defaults plus the changed values.
-6. **Everything else is unchanged.** The Original chip renders `original`
+6. **Everything else is unchanged.** The Shipped chip renders `original`
    with the baseline values; Reset returns to it; Copy values reports only what
-   differs (`{"design":"strip","cardRadius":16}`); ★ Keep records the design in
-   `values` and names the favorite after it (`strip`); the chips flip the real
-   screen between favorites of different designs; ✓ Use this hands the pick
+   differs (`{"design":"strip","cardRadius":16}`); Pin records the design in
+   `values` and names the pin after it (`strip`); the chips flip the real
+   screen between pins of different designs; Choose hands the pick
    over (`references/candidates.md`). A saved profile
    keeps `design` inside `overrides` like any other field, so a persisted or
    seeded candidate reopens on its design.
@@ -74,5 +74,5 @@ accessibility, right-to-left, light and dark).
 ## Report
 
 Name each design in one line (what it is and what it optimises for), then the
-usual **How to try it**: open the lab, pick each design in the panel, tune it,
-★ Keep each finalist, tap the chips to compare, then ✓ Use this.
+usual short **How to try it**, with "pick a design" as the start of its flow
+line.

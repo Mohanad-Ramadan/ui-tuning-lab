@@ -2,7 +2,7 @@
 
 How each platform emits the lab's log lines, where the agent reads them, how it
 waits for the pick, where the result file lives, and where a persisted lab keeps
-its favorites. The lines
+its pins. The lines
 themselves are the same everywhere (`references/candidates.md`): one tag, a
 space, then one sorted-key JSON object, on a single line.
 
@@ -31,7 +31,7 @@ space, then one sorted-key JSON object, on a single line.
 Read with a window that covers the whole session. `adb logcat -d` dumps the
 current buffer and exits; a busy device can rotate the buffer, so read soon
 after the pick, or read the result file. Logcat also cuts a line at about 4 KB,
-so a Done line with many favorites can arrive truncated: read the result file,
+so a Done line with many pins can arrive truncated: read the result file,
 or rebuild the list from the `UITUNINGLAB_CANDIDATE` lines.
 
 ## Wait for Done
@@ -101,7 +101,7 @@ whole lab anyway.
   human path, and add the flag to the pipeline's debug job only when the user
   agrees.
 - **The pick reaches the agent through chat.** There is no log or file to
-  read. ✓ Use this copies a short `land <name>` line and the result bar shows
+  read. Choose copies a short `land <name>` line and the result bar shows
   the name, so the user pastes one line or types the name. Many device
   services show the device log in their page; when the agent can open that
   page in its own browser, read the `UITUNINGLAB_DONE` line there instead.
@@ -115,7 +115,7 @@ whole lab anyway.
 
 ## The result file
 
-✓ Use this writes the `UITUNINGLAB_DONE` object plus `savedAt` here, replacing
+Choose writes the `UITUNINGLAB_DONE` object plus `savedAt` here, replacing
 the previous pick atomically (temporary file, then rename). Development builds
 only. Read it when the log no longer holds the pick, for example after the app
 quit, and delete it at landing.
