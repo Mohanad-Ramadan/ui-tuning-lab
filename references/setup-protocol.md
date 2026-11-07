@@ -6,6 +6,7 @@ tests. Record these working choices:
 
 ## Contents
 
+- Labs already in the project
 - Reuse an existing control surface
 - Wire the host
 - Proceed or ask
@@ -35,6 +36,36 @@ tests. Record these working choices:
   the teardown guarantee is about work and UI). Capture it again if its source
   changes while the draft still equals it, for example on a theme switch, and key
   the store to that source. Copy values reports against this captured baseline.
+
+## Labs already in the project
+
+Before writing a lab, search the source tree for lab markers: file names
+containing `ui-tuning-lab` or `UITuningLab`, and host code that references a
+`UITuningLab` or `uiTuningLab` symbol (for example
+`grep -rlE 'UITuningLab|uiTuningLab|ui-tuning-lab' <source-dir>`, skipping build
+output and dependencies). Also read `.ui-tuning-lab/result.json` and
+`.ui-tuning-lab/lab.json` when they exist. A lab found this way was left behind
+by earlier work: nobody landed it, or it was kept on purpose.
+
+- **A lab for the same feature:** extend it, rather than writing a second one.
+  Its kept `candidates` seed the new lab. Say in the report that you reused it.
+- **A lab for another feature:** ask the user before writing anything. Name
+  that lab by feature and file, say whether it has an unread pick (a
+  `result.json` or a `UITUNINGLAB_DONE` line for it), and offer:
+  1. **Remove it** (recommended when it has no pick): take out its file and host
+     wiring per `references/landing-protocol.md`, step 3, so only the new lab
+     runs.
+  2. **Land it first:** finish that lab with its pick, then build the new one.
+  3. **Keep both:** leave it in place; scope each lab's activation to its own
+     feature (`references/activation.md`, "Screen cases", "More than one lab").
+
+This question is always asked when another feature's lab is found, even when
+the request mentions "the existing lab": that phrase comes from the request,
+which may have been written by another agent, not from the user's choice. It
+does not use up the one setup question, and it goes in the same prompt as the
+setup and activation questions. If the user cannot be asked, keep the other lab
+untouched, build the new one beside it with scoped activation, and name the
+other lab in the report as still active.
 
 ## Reuse an existing control surface
 
@@ -137,7 +168,9 @@ recommended default. Activation is asked separately and always, unless the
 request or a fitting remembered `activation` already answers it: "How should the
 lab open?" with the inspection-derived candidates, more than one selectable, and
 shake recommended only when it is free (`references/activation.md`). When both
-questions are needed, ask them in one prompt. Do not batch a questionnaire.
+questions are needed, ask them in one prompt. A lab for another feature found
+during inspection adds its own question to that prompt ("Labs already in the
+project"). Do not batch a questionnaire.
 
 An ephemeral lab can live entirely in development-only state. Create
 `.ui-tuning-lab/lab.json` only when the user wants a reusable profile or saved

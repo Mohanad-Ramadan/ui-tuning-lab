@@ -15,6 +15,9 @@ Common checks:
   to a focused text input's undo, and the visible fallback stays reachable.
 - Re-arm the human path after the lab closes. If it was a first-responder shim,
   regain first responder without stealing focus from a text field.
+- A lab for another feature already in the project is the user's call: ask
+  whether to remove it, land it first, or keep both before writing the new lab
+  (`references/setup-protocol.md`, "Labs already in the project").
 - With more than one lab, scope activation to the visible feature or offer a
   picker; never open an arbitrary lab.
 - Another development overlay (router or query devtools, a framework dev

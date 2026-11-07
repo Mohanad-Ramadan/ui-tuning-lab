@@ -2,6 +2,13 @@
 
 ## 1.3.0 — unreleased
 
+### Labs already in the project
+
+- Inspection now searches for labs left by earlier work. A lab for the same
+  feature is extended; a lab for another feature always prompts the user to
+  remove it, land it first, or keep both, even when the request says "the
+  existing lab". The report names every other lab still active.
+
 ### Simpler finish, automatic handoff
 
 - The panel finishes with two buttons and a chip row. Chips (Original, Now, and

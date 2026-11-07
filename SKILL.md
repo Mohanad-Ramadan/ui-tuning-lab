@@ -50,7 +50,10 @@ picker in the panel, with the original as the baseline
    when the project has one (`references/setup-protocol.md`). Check whether the
    toolchain runs here (`which flutter`, `xcodebuild -version`, `adb`, `node`);
    when the app only builds in CI or a cloud device service, follow
-   "No local toolchain" in `references/platform-handoff.md`.
+   "No local toolchain" in `references/platform-handoff.md`. Search the project
+   for labs already in place (files and host references marked `UITuningLab`,
+   `uiTuningLab`, or `ui-tuning-lab`) before writing anything
+   (`references/setup-protocol.md`, "Labs already in the project").
 2. **Decide quietly.** Infer target, scope, container, gate, activation, and
    persistence; persistence is off unless the user asked to save. Ask at most one
    focused setup question, only when the answer changes the implementation.
@@ -58,7 +61,10 @@ picker in the panel, with the original as the baseline
    path, unless the request or a fitting remembered `activation` already says,
    or the visible pill is the only human path inspection found;
    it does not use up the setup question, and both go in one prompt
-   (`references/activation.md`).
+   (`references/activation.md`). When inspection found a lab for another
+   feature, always ask what to do with it, in the same prompt; this does not use
+   up the setup question either. Never decide on your own to keep, extend, or
+   remove another lab.
 3. **Build the lab.** Start from the matching file in `examples/`. Choose
    activation per `references/activation.md`: an agent path, one or more human
    paths, and a visible fallback. Wrap only the feature, lifting a constant config into state
@@ -159,7 +165,8 @@ a save would overwrite a production key.
 
 Return the files changed; the chosen container, gate, activation paths, and
 baseline source; any production-side change (such as a constant lifted into
-state); any save location; and the commands run with their results. After landing, add the values
+state); any save location; every other lab still in the project and what the
+user chose for it; and the commands run with their results. After landing, add the values
 table, the declaration changed, and whether the lab was removed or kept; before
 landing, say the lab is in place and awaiting a winner. Keep static
 lint, hands-on checks, and release-artifact inspection separate, and never mark an
