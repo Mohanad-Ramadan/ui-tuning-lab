@@ -494,11 +494,14 @@ import type { TuningLabHostProps } from "./EntranceScreen";
 // Close and Escape dismiss it. React 18 types omit `popover`, so it is spread.
 const popoverManual = { popover: "manual" };
 // Pinned beside the feature rather than centered over it; the fixed trigger
-// never shifts the feature's layout.
+// never shifts the feature's layout. The outline keeps the panel distinct when
+// the screen behind it has the same background, where a shadow alone vanishes;
+// GrayText and Canvas follow color-scheme, so it holds in light and dark mode.
 const panelStyle = {
   insetBlockStart: "auto", insetInlineStart: "auto", insetBlockEnd: 72, insetInlineEnd: 16,
   margin: 0, maxWidth: "min(320px, calc(100vw - 32px))", maxHeight: "calc(100dvh - 88px)",
-  overflow: "auto", colorScheme: "light dark", font: "inherit",
+  overflow: "auto", border: "1px solid GrayText", background: "Canvas",
+  colorScheme: "light dark", font: "inherit",
 } as const;
 const triggerStyle = { position: "fixed", insetBlockEnd: 16, insetInlineEnd: 16 } as const;
 

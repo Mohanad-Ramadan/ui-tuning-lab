@@ -397,6 +397,7 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
 package com.example.cards
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -448,7 +449,8 @@ fun UITuningLabPanel(
     // After Choose the panel is one bar; Change reopens it.
     lab.result?.let { name ->
         Surface(modifier.padding(16.dp), shape = MaterialTheme.shapes.extraLarge,
-            tonalElevation = 3.dp, shadowElevation = 8.dp) {
+            tonalElevation = 3.dp, shadowElevation = 8.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)) {
             Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Chosen: $name", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                 TextButton(onClick = { lab.result = null }) { Text("Change") }
@@ -457,8 +459,11 @@ fun UITuningLabPanel(
         return
     }
 
+    // The outline keeps the panel distinct when the screen behind it has the
+    // same background, where a shadow alone vanishes.
     Surface(modifier.padding(16.dp).widthIn(max = 360.dp).heightIn(max = maxHeight),
-        shape = MaterialTheme.shapes.large, tonalElevation = 3.dp, shadowElevation = 8.dp) {
+        shape = MaterialTheme.shapes.large, tonalElevation = 3.dp, shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("UI tuning lab", style = MaterialTheme.typography.titleMedium,

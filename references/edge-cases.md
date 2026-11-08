@@ -23,6 +23,10 @@ Common checks:
 - Another development overlay (router or query devtools, a framework dev
   indicator) can sit in the lab's corner and cover the pill. Hit-test the
   fallback, and move the lab, not the other tool.
+- A screen whose background matches the panel's surface erases a shadow-only
+  boundary, and a flat theme drops the shadow too. Keep the panel's hairline
+  outline in both light and dark mode, and on the result bar
+  (`references/setup-protocol.md`, "Wire the host").
 - An app modal (a settings sheet, a dialog) makes the rest of the page inert
   while it is open, the lab included. Keep the lab in the top layer with
   `pointer-events: auto`, and move any picker the tuning depends on into the lab

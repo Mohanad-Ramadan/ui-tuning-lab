@@ -177,6 +177,11 @@ else
   ok 'macOS panel does not use a closure Binding to plain properties'
 fi
 require_text examples/web-floating-panel.md 'maxHeight: "calc(100dvh - 88px)"' 'web panel stays inside the viewport'
+require_text examples/web-floating-panel.md 'border: "1px solid GrayText", background: "Canvas"' 'web panel has an outline against a matching background'
+require_text examples/animation-spring.md 'border: "1px solid GrayText", background: "Canvas"' 'web motion panel has an outline against a matching background'
+require_text examples/flutter-overlay.md 'side: BorderSide(color: Theme.of(overlayContext).colorScheme.outline)' 'Flutter panel has an outline against a matching background'
+require_text examples/flutter-overlay.md 'side: BorderSide(color: Theme.of(context).colorScheme.outline)' 'Flutter result bar keeps the outline'
+require_text examples/android-compose-sheet.md 'border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)' 'Compose panel has an outline against a matching background'
 require_text examples/web-floating-panel.md '<output aria-hidden="true">{config.radius}px</output>' 'web sliders show their value'
 require_text examples/web-floating-panel.md 'firstControl.current?.focus()' 'web dialog receives initial focus'
 require_text examples/web-floating-panel.md 'trigger.current?.focus()' 'web dismissal restores trigger focus'
@@ -283,6 +288,11 @@ if [ -n "$rn_host" ] && "$VERIFY" source-gates "$rn_host" >/dev/null 2>&1; then
   ok "react-native-overlay.md host passes source-gates"
 else
   not_ok "react-native-overlay.md host passes source-gates"
+fi
+if grep -q 'borderColor: "#8a8a8a"' "$ROOT/examples/react-native-overlay.md"; then
+  ok "react-native-overlay.md panel has an outline against a matching background"
+else
+  not_ok "react-native-overlay.md panel has an outline against a matching background"
 fi
 
 if grep -rn 'variantLab' "$ROOT/SKILL.md" "$ROOT/examples" "$ROOT/references" "$ROOT/validation" >/dev/null; then

@@ -360,9 +360,12 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
 const styles = StyleSheet.create({
   // Pick the corner inspection found free of other dev overlays.
   pill: { position: "absolute", right: 16, bottom: 16 },
+  // The outline keeps the panel distinct when the screen behind it has the same
+  // background, where a shadow alone vanishes.
   panel: {
     position: "absolute", right: 16, bottom: 72, width: 320, maxWidth: "90%", maxHeight: "70%",
     padding: 12, borderRadius: 12, backgroundColor: "white", elevation: 8,
+    borderWidth: 1, borderColor: "#8a8a8a",
     shadowOpacity: 0.2, shadowRadius: 8,
   },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginVertical: 4 },
@@ -372,6 +375,7 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: "row", alignItems: "center", gap: 8, padding: 8, borderRadius: 20,
     backgroundColor: "white", elevation: 8, shadowOpacity: 0.2, shadowRadius: 8,
+    borderWidth: 1, borderColor: "#8a8a8a",
   },
 });
 ```

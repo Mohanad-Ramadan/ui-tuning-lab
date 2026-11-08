@@ -89,6 +89,21 @@ Fixes from a Flutter session where the agent read "unvalidated adaptation" as
   before every release is the release-artifact search proving no lab code
   ships. README status now describes platforms in plain terms.
 
+### The panel reads as its own surface
+
+- The panel and the result bar carry a hairline outline in the platform's
+  stronger separator token, so the lab stays distinguishable when the screen
+  behind it has the same background and a shadow alone vanishes. Web
+  (`GrayText` on `Canvas`), Flutter, Compose, and React Native draw it; native
+  chrome (an iOS sheet, a macOS panel window, a WinUI `Flyout`) is verified
+  instead of double-bordered. The rule lives in `references/setup-protocol.md`
+  ("Make the panel its own surface") and `SKILL.md`, with a hands-on check in
+  `references/verify-protocol.md` and regression assertions in
+  `tests/examples.sh`.
+- Shadows stay as they are and stay static: a cached shadow costs no frames,
+  while animating elevation or adding a backdrop blur would. The outline is the
+  cue that does not depend on a theme's shadow.
+
 ## 1.2.0 — unreleased
 
 - New `references/candidates.md`. Every lab, ephemeral ones included, has

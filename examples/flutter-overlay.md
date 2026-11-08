@@ -343,7 +343,13 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
 
   Widget resultBar(String name) {
     return Positioned(right: 16, bottom: 16, child: SafeArea(child: Material(
-      elevation: 8, borderRadius: BorderRadius.circular(24),
+      elevation: 8,
+      // The outline keeps the bar distinct when the screen behind it has the
+      // same background, where a shadow alone vanishes.
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: Theme.of(context).colorScheme.outline),
+      ),
       child: Padding(
         padding: const EdgeInsets.only(left: 16, right: 4),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -375,7 +381,14 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: compact ? size.height * 0.45 : size.height - 120),
         child: Material(
-          elevation: 8, borderRadius: BorderRadius.circular(12),
+          elevation: 8,
+          // The outline keeps the panel distinct when the screen behind it has
+          // the same background, where a shadow alone vanishes. Material takes
+          // either borderRadius or shape, never both.
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Theme.of(overlayContext).colorScheme.outline),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [

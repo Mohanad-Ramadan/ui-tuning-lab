@@ -20,6 +20,9 @@ A good lab feels like this:
 - **It opens without hunting.** The agent can open it deterministically, the
   human has a fast path, and a visible fallback is always there.
 - Every control edits the same configuration the feature renders, live.
+- **It reads as its own surface.** The panel has a visible outline against the
+  screen, even when the app's background is the same color; a shadow alone does
+  not count.
 - **Chips** flip the real feature between Shipped, each pin, and the draft
   (shown as "Shipped + edits" or "compact + edits" only while it holds unpinned
   changes); **Replay** and **Speed** make motion judgeable.

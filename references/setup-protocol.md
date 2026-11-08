@@ -129,7 +129,18 @@ native panel instead and say why.
   edge or corner, never centered over the feature, and do not light-dismiss it:
   clicking or scrolling the feature is part of tuning. Close it with an explicit
   Close button and Escape. Give it the app's font and `color-scheme` so it stays
-  readable in dark mode; styling it beyond that is optional.
+  readable in dark mode.
+- **Make the panel its own surface.** A shadow alone disappears when the screen
+  behind the panel has the same background, and flat themes drop it entirely.
+  Draw a hairline outline (1px, 1dp, or 1pt) in the platform's stronger
+  separator token — `GrayText` or `CanvasText` at low opacity on the web,
+  `colorScheme.outline` on Flutter and Compose, `separatorColor` on SwiftUI —
+  and keep it on the result bar too. A distinct surface tint or elevation may
+  support the outline, never replace it. Keep any shadow static: animating
+  elevation or adding a backdrop blur costs frames and buys nothing for the
+  boundary. When the container already draws native chrome (an iOS sheet, a
+  macOS panel window, a WinUI `Flyout`, a system dialog), verify that chrome
+  instead of double-bordering it.
 - **Phones.** On compact width (under about 600 points or dp), a corner panel
   covers the feature. Dock the panel full width at the bottom, at most about 45%
   of the screen tall, and leave the feature scrollable above it (on iOS, the

@@ -80,6 +80,9 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
   exists, each path opens the intended one, never an arbitrary one.
 - At least two presets differ meaningfully and all direct controls update the same
   configuration consumed by the feature.
+- The panel reads as its own surface: with the screen's background set to the
+  panel's surface color (or shadows disabled), the hairline outline is visible at
+  a glance in light and dark mode, and the result bar keeps it after Choose.
 - Reset restores the baseline (the declared default) exactly, including after the
   lab has been closed and reopened with a draft still applied.
 - Copy values copies, and logs as one `UITUNINGLAB_VALUES` line, only the fields
