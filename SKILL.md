@@ -19,6 +19,10 @@ A good lab feels like this:
 - Opening it changes nothing on screen: the feature renders exactly as before.
 - **It opens without hunting.** The agent can open it deterministically, the
   human has a fast path, and a visible fallback is always there.
+- **It is handed over, not demoed.** The agent builds it, confirms it opens
+  once, and gives it to the user; it does not tune it, tour the presets, or
+  screenshot the options first. A self-review pass runs only when the user asks
+  for one.
 - Every control edits the same configuration the feature renders, live.
 - **It reads as its own surface.** The panel has a visible outline against the
   screen, even when the app's background is the same color; a shadow alone does
@@ -84,15 +88,20 @@ picker in the panel, with the original as the baseline
    was requested
    (`references/config-schema.md`). When `.ui-tuning-lab/lab.json` lists kept
    `candidates`, seed the lab with them.
-4. **Tune with the user.** Open the lab in the running app and iterate. If the
-   user is not available, stop here and report the lab as built, with every
-   hands-on check listed as not run. You can still run the release-artifact
-   checks yourself: build, search the output, serve it, and try activation
-   paths. Wait for the pick with a background poll of the platform's log where
-   one exists (`references/platform-handoff.md`, "Wait for Done"), and read the
-   result file when the log is gone. When the app builds only in CI or a cloud
-   device service, the lab still ships complete; ask before pushing, and the
-   pick reaches you as a pasted `land <name>` line
+4. **Hand it over, then tune with the user.** Build, typecheck, and run the gate
+   lint; open the lab once through the agent path to confirm it renders and
+   opens, then close it and stop. Do not iterate the controls, flip the chips,
+   Pin, Choose, Reset, compare candidates, or capture screenshots before the
+   user has seen it: the user tunes, and a self-review pass runs only when they
+   ask for one ("check it yourself first"). Hand over with **How to try it** and
+   wait for the pick with a background poll of the platform's log where one
+   exists (`references/platform-handoff.md`, "Wait for Done"), and read the
+   result file when the log is gone. If the user is not available, stop here and
+   report the lab as built, with the smoke launch and every hands-on check listed
+   as not run; static and release-artifact checks are still yours to run (step
+   6). When the app builds only in CI or a cloud device service, the smoke launch
+   is reported as not run and the lab still ships complete; ask before pushing,
+   and the pick reaches you as a pasted `land <name>` line
    (`references/platform-handoff.md`, "No local toolchain").
 5. **Land the winner.** Take the candidate or values the user names in chat,
    else the newest `UITUNINGLAB_DONE` or `UITUNINGLAB_VALUES` line
@@ -100,8 +109,11 @@ picker in the panel, with the original as the baseline
    feature's defaults, show a baseline-to-winner table, offer to keep the other
    finalists for later, then remove the lab (default) or keep it
    (`references/landing-protocol.md`).
-6. **Verify.** Run the checks below and report what passed, what failed, and what
-   was not run.
+6. **Verify and report.** Run the static and release-artifact checks yourself,
+   then report what passed, what failed, and what was not run. Hands-on checks
+   run during or after the user's tuning session, not before handover: record
+   which the agent ran and which the user ran, and count the smoke launch as one
+   check ("opens and renders"), not as the whole hands-on list.
 
 ## Naming rule
 
@@ -126,10 +138,10 @@ module (presets, a diff function) need no marker: the file itself is gated.
 | Guarantee | How it is checked |
 |---|---|
 | **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files (for Kotlin, Dart, and C#, which it cannot read, the manual gate check in `references/platform-handoff.md` instead), and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
-| **Activatable only in development.** The lab opens through the documented agent path, the chosen human path, and a visible fallback; none survives Release. | Hands-on: every documented path opens the lab, a focused text field keeps shake-to-undo, and the fallback is reachable. Release archive: launch arguments, URL schemes, shake selectors, notification names, key commands, and fallback labels are absent or inert (`references/verify-protocol.md`). |
-| **Reversible.** Reset restores the baseline (the declared default) exactly, behavior included. | Hands-on: open, change everything, close, reopen, Reset, and compare with the unmodified app. |
+| **Activatable only in development.** The lab opens through the documented agent path, the chosen human path, and a visible fallback; none survives Release. | Hands-on, during the tuning session with the user: every documented path opens the lab, a focused text field keeps shake-to-undo, and the fallback is reachable. Release archive: launch arguments, URL schemes, shake selectors, notification names, key commands, and fallback labels are absent or inert (`references/verify-protocol.md`). |
+| **Reversible.** Reset restores the baseline (the declared default) exactly, behavior included. | Hands-on, during the tuning session with the user: open, change everything, close, reopen, Reset, and compare with the unmodified app. |
 | **Explicit persistence.** The only write an ephemeral lab makes is the result file on Choose; pins live only in memory and the log unless the user asked to save them; every write goes only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | An ephemeral lab's only storage writer is the result file; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
-| **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
+| **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on, during or after the tuning session with the user: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
 
 `source-gates` is a lint: a PASS does not prove the release build is clean, so
 still search the release build. `N/A` means it found no lab code it can read; for
@@ -172,9 +184,11 @@ baseline source; any production-side change (such as a constant lifted into
 state); any save location; every other lab still in the project and what the
 user chose for it; and the commands run with their results. After landing, add the values
 table, the declaration changed, and whether the lab was removed or kept; before
-landing, say the lab is in place and awaiting a winner. Keep static
-lint, hands-on checks, and release-artifact inspection separate, and never mark an
-unrun check as passed. For each activation path the agent could not exercise
+landing, say the lab is in place and awaiting a winner. Keep static lint,
+hands-on checks, and release-artifact inspection separate, and never mark an
+unrun check as passed. Hands-on checks are the ones run during the user's tuning
+session or a self-review they asked for; say who ran each. For each activation
+path the agent could not exercise
 (shake in the Simulator, a gesture, a hardware shortcut), name the gesture or
 keys in **How to try it**. Name the current keys, read from the host the user is
 looking at, never from memory: some hosts hide shake behind a shortcut only

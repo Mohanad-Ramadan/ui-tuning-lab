@@ -104,6 +104,18 @@ Fixes from a Flutter session where the agent read "unvalidated adaptation" as
   while animating elevation or adding a backdrop blur would. The outline is the
   cue that does not depend on a theme's shadow.
 
+### Hand over, don't demo the lab
+
+- The lab is handed over after one smoke launch: build, typecheck, and run the
+  gate lint, open it once through the agent path to confirm it renders and
+  opens, then stop. The agent no longer iterates the controls, flips the chips,
+  Pin, Choose, Reset, compares candidates, or screenshots each option before the
+  user has seen it; that burned the time the user wanted to spend tuning. A
+  self-review pass runs only when the user asks for one.
+- Hands-on checks are reported as run by the agent or by the user, never as a
+  pre-handover gate, and the smoke launch counts as one check ("opens and
+  renders"), not as the whole list.
+
 ## 1.2.0 — unreleased
 
 - New `references/candidates.md`. Every lab, ephemeral ones included, has

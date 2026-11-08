@@ -11,7 +11,10 @@ Keep three kinds of evidence distinct:
 1. **Static checks** validate reusable configuration and recognize a limited set
    of Swift/web source gates.
 2. **Hands-on checks** exercise behavior, accessibility, inputs, and teardown in
-   the running app.
+   the running app. They are not a pre-handover gate: the agent runs them with
+   the user during tuning, or after the user asks for a self-review; otherwise
+   they are user-run and reported as such. Do not demo the lab or screenshot
+   each option to "verify" it before handing it over.
 3. **Release-artifact inspection** establishes that the compiled archive or
    production bundle contains no activatable lab. Static source lint cannot make
    this claim.

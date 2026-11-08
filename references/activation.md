@@ -21,7 +21,7 @@ Every lab has three ways in:
 
 | Path | Purpose | Requirement |
 |---|---|---|
-| Agent | The agent launches the lab deterministically to tune, screenshot, adjust | Development-only, documented, no shipped URL scheme |
+| Agent | The agent launches the lab deterministically to confirm it opens, then hands it over; it does not tune or screenshot the options first | Development-only, documented, no shipped URL scheme |
 | Human | The fastest path, or paths, for the person on the screen being tuned | Chosen by the user from inspection-derived candidates; shake only when it is free |
 | Fallback | A visible way in when the gesture fails or a screen reader is used | Always present; never hidden |
 
@@ -248,8 +248,9 @@ A project can remember its activation in `.ui-tuning-lab/lab.json`:
 
 ## Verify
 
-The hands-on and release checks are in `references/verify-protocol.md`. At
-minimum, exercise the agent path, every chosen human path, and the visible
-fallback; confirm that a focused text field keeps shake-to-undo; confirm that
-VoiceOver or Switch Control can reach the fallback; and confirm that the human
-path works again after the lab closes.
+The hands-on and release checks are in `references/verify-protocol.md`. The
+hands-on ones run with the user during tuning, or after the user asks for a
+self-review, not before handover. They cover exercising the agent path, every
+chosen human path, and the visible fallback; a focused text field keeping
+shake-to-undo; VoiceOver or Switch Control reaching the fallback; and the human
+path working again after the lab closes.

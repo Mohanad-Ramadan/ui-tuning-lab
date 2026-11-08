@@ -42,13 +42,17 @@ feature. Instead:
   sheet.
 - Put a **Close** button in the tab header row and keep drag-to-dismiss. Close is
   required: drag alone is not discoverable and VoiceOver users need a button.
-- Check the largest preset in a screenshot. If the feature grows into the area
-  under the sheet, move the feature's preview up or note the overlap in the
-  report; never hide part of the feature silently.
-- Screenshot **every tab** at the short detent and confirm its last row is fully
-  visible. Then open the lab at `.large` (set `uiTuningLabDetent = .large` for
-  one run, or drag the grabber) and screenshot that too. A tab whose last row is
-  cut at 320 pt means the row budget was exceeded: split the tab.
+- Check the largest preset's layout with the lab open: during the tuning session,
+  or when the user asks for a self-review, not as a screenshot sweep before
+  handover. If the feature grows into the area under the sheet, move the
+  feature's preview up or note the overlap in the report; never hide part of the
+  feature silently.
+- When a self-review is requested, screenshot **every tab** at the short detent
+  and confirm its last row is fully visible. Then open the lab at `.large` (set
+  `uiTuningLabDetent = .large` for one run, or drag the grabber) and screenshot
+  that too. A tab whose last row is cut at 320 pt means the row budget was
+  exceeded: split the tab. During a normal handover, the row budget is a
+  static layout decision; do not tour the tabs first.
 
 On iPad (regular width), keep the popover from the examples.
 
@@ -72,8 +76,9 @@ inaccessible and unrecoverable when the gesture dies.
   the shake shim from the `variant=shake` example.
 - **Fallback.** A small visible button or pill with explicit colors, for example
   white text on `.ultraThinMaterial`. It is the VoiceOver, Switch Control, and
-  recovery path, and the thing to screenshot. Apps often set an accent color that
-  matches their background, which makes a default `Button` invisible.
+  recovery path, and the thing to inspect when a self-review is requested. Apps
+  often set an accent color that matches their background, which makes a default
+  `Button` invisible.
   Pin it to the full screen, not to the feature: a feature view is often only as
   tall as its content, so an `.overlay(alignment: .bottomTrailing)` on it lands
   mid-screen, under other layers, or outside a hosted view's bounds. Attach the
@@ -167,8 +172,9 @@ for example "Press <the keys you found>, or choose Device > Shake, on the Who's
 Watching screen; the lab should open." Never report shake as working without
 the user's confirmation or the agent's own shake.
 
-- Confirm in a screenshot that the visible fallback is on screen and that tapping
-  it opens the lab. `source-gates` cannot see a control that never renders.
+- When a self-review is requested, confirm in a screenshot that the visible
+  fallback is on screen and that tapping it opens the lab. `source-gates` cannot
+  see a control that never renders.
 - If shake is not free, skip the shim and use the screen-appropriate human path;
   never force shake over a focused text field's undo.
 
