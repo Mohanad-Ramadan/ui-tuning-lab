@@ -138,7 +138,7 @@ final class UITuningLabCoordinator: NSObject, NSWindowDelegate {
         if let panel { panel.makeKeyAndOrderFront(nil); return }
         // The panel observes the model and the lab state, so every change
         // redraws it. The baseline is the declared default, never the value on
-        // screen at open: a draft kept from an earlier session must still count.
+        // screen at open: a look kept from an earlier session must still count.
         let controls = UITuningLabPanel(model: model, lab: lab, candidates: candidates,
                                         baseline: .appDefault)
         let panel = UITuningLabNSPanel(contentRect: .init(x: 0, y: 0, width: 320, height: 420),

@@ -54,7 +54,8 @@ a list of fields is fine; keep each one labelled.
   the controls unless the user asked to tune it, and say so.
 - **Other places using the same value**: when another view hard-codes a value
   the lab now tunes (for example a matched transition that starts from the old
-  card size), list it in the report. It will not follow the draft and may jump.
+  card size), list it in the report. It will not follow the selected look and
+  may jump.
 
 Speed, the shown chip, and Replay are preview settings: they never enter
-the draft, Copy values, a candidate, or a saved profile.
+a pin's values, Copy values, or a saved profile.

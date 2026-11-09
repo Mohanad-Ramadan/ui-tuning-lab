@@ -1,30 +1,19 @@
 #!/bin/sh
-# Build the publishable skill from the files an installed copy needs. Tests,
-# pilots, evals, and validation evidence stay in the repository.
+# Zip the publishable skill. skills/ui-tuning-lab/ is exactly what an installed
+# copy gets (`npx skills add` copies that folder); tests, pilots, evals, and
+# validation evidence stay at the repository root.
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SKILL="$ROOT/skills/ui-tuning-lab"
 OUT=${1:-"$ROOT/dist"}
-VERSION=$(cat "$ROOT/VERSION")
+VERSION=$(cat "$SKILL/VERSION")
 PACKAGE="$OUT/ui-tuning-lab"
 
-SHIPPED='SKILL.md
-README.md
-LICENSE.txt
-VERSION
-assets
-examples
-references
-scripts'
-
 rm -rf "$PACKAGE" "$OUT/ui-tuning-lab-$VERSION.zip"
-mkdir -p "$PACKAGE"
-printf '%s\n' "$SHIPPED" | while read -r path; do
-  case "$path" in
-    */*) cp -R "$ROOT/$path" "$PACKAGE/$path" ;;
-    *) cp -R "$ROOT/$path" "$PACKAGE/" ;;
-  esac
-done
+mkdir -p "$OUT"
+cp -R "$SKILL" "$PACKAGE"
+rm -rf "$PACKAGE/.omc"
 find "$PACKAGE" -name '.DS_Store' -delete
 (cd "$OUT" && zip -qr "ui-tuning-lab-$VERSION.zip" ui-tuning-lab)
 echo "$PACKAGE"

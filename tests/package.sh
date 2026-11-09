@@ -14,9 +14,18 @@ not_ok() { printf 'not ok - %s\n' "$1"; failures=$((failures + 1)); }
 sh "$ROOT/tools/package.sh" "$WORK" >/dev/null
 PACKAGE="$WORK/ui-tuning-lab"
 
-for forbidden in tests tools pilots evals .omc .git validation profiles CHANGELOG.md; do
-  if [ -e "$PACKAGE/$forbidden" ]; then not_ok "package excludes $forbidden"; else ok "package excludes $forbidden"; fi
-done
+# `npx skills add` installs the whole skill folder from GitHub, so its tracked
+# files must be only these.
+extra=$(git -C "$ROOT" ls-files skills/ui-tuning-lab | cut -d/ -f3 | sort -u |
+  grep -vxE 'SKILL\.md|README\.md|LICENSE\.txt|VERSION|assets|examples|references|scripts' || true)
+if [ -z "$extra" ]; then ok "skill folder holds only shipped files"; else not_ok "skill folder holds only shipped files: $extra"; fi
+
+if [ -e "$ROOT/SKILL.md" ]; then not_ok "no SKILL.md at the repository root"; else ok "no SKILL.md at the repository root"; fi
+
+if cmp -s "$ROOT/LICENSE.txt" "$PACKAGE/LICENSE.txt"; then ok "shipped license matches the repository license"; else not_ok "shipped license matches the repository license"; fi
+
+version=$(cat "$PACKAGE/VERSION")
+if grep -q "^  version: \"$version\"$" "$PACKAGE/SKILL.md"; then ok "SKILL.md metadata version matches VERSION"; else not_ok "SKILL.md metadata version matches VERSION"; fi
 
 # Paths named in shipped Markdown must resolve inside the package. Receipts may
 # cite validation evidence, which stays in the repository by design.

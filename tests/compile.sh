@@ -5,6 +5,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SKILL="$ROOT/skills/ui-tuning-lab"
 . "$ROOT/tests/lib/extract.sh"
 WEB="$ROOT/tests/compile/web"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/ui-tuning-lab-compile.XXXXXX")
@@ -81,9 +82,9 @@ EOF
 
 if command -v xcrun >/dev/null 2>&1 && xcrun --find swiftc >/dev/null 2>&1; then
   printf '%s\n' "$SWIFT_EXAMPLES" | while read -r example platform; do
-    for variant in $(example_variants "$ROOT/examples/$example"); do
+    for variant in $(example_variants "$SKILL/examples/$example"); do
       dir="$WORK/swift-${example%.md}-$variant"
-      extract_example "$ROOT/examples/$example" "$dir" "$variant"
+      extract_example "$SKILL/examples/$example" "$dir" "$variant"
       swift_check "$platform" "$dir" "$example [$variant] swift"
     done
   done > "$WORK/swift.log"
@@ -93,7 +94,7 @@ fi
 # The values helper is shared by every Swift example; run it, not just typecheck it.
 if xcrun --find swiftc >/dev/null 2>&1; then
   helper="$WORK/values"
-  extract_example "$ROOT/examples/macos-panel-minimal.md" "$helper"
+  extract_example "$SKILL/examples/macos-panel-minimal.md" "$helper"
   # Top-level statements are only allowed in a file named main.swift.
   cp "$ROOT/tests/compile/swift/values-check.swift" "$helper/main.swift"
   if output=$(xcrun swiftc -DDEBUG -o "$WORK/values-check" \
@@ -112,11 +113,11 @@ skips=$((skips + $(grep -c '^skip' "$WORK/swift.log" || true)))
 
 if web_ready; then
   for example in $WEB_EXAMPLES; do
-    for variant in $(example_variants "$ROOT/examples/$example"); do
+    for variant in $(example_variants "$SKILL/examples/$example"); do
       # Sources sit under the toolchain directory so imports resolve its
       # node_modules.
       dir="$WEB/.work/${example%.md}-$variant"
-      extract_example "$ROOT/examples/$example" "$dir" "$variant"
+      extract_example "$SKILL/examples/$example" "$dir" "$variant"
       rm -f "$dir"/*.swift
       [ -n "$(ls "$dir"/*.ts "$dir"/*.tsx 2>/dev/null)" ] || continue
       web_check "$dir" "$example [$variant] tsx"

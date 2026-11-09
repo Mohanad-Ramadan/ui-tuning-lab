@@ -2,7 +2,8 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-VERIFY="$ROOT/scripts/verify.sh"
+SKILL="$ROOT/skills/ui-tuning-lab"
+VERIFY="$SKILL/scripts/verify.sh"
 FIXTURES="$ROOT/tests/fixtures"
 passes=0
 failures=0
@@ -93,10 +94,12 @@ expect_fail_message 'config with an empty candidates list' '^FAIL: invalid candi
 expect_fail_message 'config with a duplicate candidate' '^FAIL: invalid candidates:' "$VERIFY" config "$FIXTURES/config/candidates-duplicate.json"
 expect_fail_message 'config with a candidate name not kebab-case' '^FAIL: invalid candidates:' "$VERIFY" config "$FIXTURES/config/candidates-bad-name.json"
 expect_fail_message 'config with a reserved candidate name' '^FAIL: invalid candidates:' "$VERIFY" config "$FIXTURES/config/candidates-reserved-name.json"
+expect_fail_message 'config with candidate name now' '^FAIL: invalid candidates:' "$VERIFY" config "$FIXTURES/config/candidates-reserved-now.json"
+expect_fail_message 'config with candidate name original' '^FAIL: invalid candidates:' "$VERIFY" config "$FIXTURES/config/candidates-reserved-original.json"
 expect_fail_message 'config with candidates that are not a list' '^FAIL: invalid candidates:' "$VERIFY" config "$FIXTURES/config/candidates-not-list.json"
-expect_pass 'lab config template is valid' "$VERIFY" config "$ROOT/assets/labconfig.template.json"
+expect_pass 'lab config template is valid' "$VERIFY" config "$SKILL/assets/labconfig.template.json"
 expect_pass 'valid profile' "$VERIFY" profile "$FIXTURES/profile/valid.json"
-expect_pass 'profile template is valid' "$VERIFY" profile "$ROOT/assets/profile.template.json"
+expect_pass 'profile template is valid' "$VERIFY" profile "$SKILL/assets/profile.template.json"
 expect_fail 'profile missing a field' "$VERIFY" profile "$FIXTURES/profile/missing-key.json"
 expect_fail 'profile with an extra field' "$VERIFY" profile "$FIXTURES/profile/extra-key.json"
 expect_fail 'profile for an unsupported platform' "$VERIFY" profile "$FIXTURES/profile/bad-platform.json"

@@ -27,7 +27,7 @@ Template: `assets/labconfig.template.json`.
 | `persist` | string | `none` or `namespaced-save` |
 | `profile` | string | the legacy single-save name; kept for compatibility |
 | `activation` | object | optional; `{ "human": string or string[], "agent": string, "fallback": string }`, each token non-blank; `human` as an array is non-empty with distinct tokens, for a lab that opens several ways. Records the chosen entry points (`references/activation.md`). `verify.sh config` validates it when present; configs without it remain valid. |
-| `candidates` | string array | optional; non-empty, distinct kebab-case names, never `draft` or `baseline`, of the finalists kept in `.ui-tuning-lab/candidates/` (`references/candidates.md`). `verify.sh config` validates it when present. |
+| `candidates` | string array | optional; non-empty, distinct kebab-case names, never `draft`, `now`, `original`, or `baseline`, of the finalists kept in `.ui-tuning-lab/candidates/` (`references/candidates.md`). `verify.sh config` validates it when present. |
 
 `activation` is memory for reuse, not a requirement. Write it only when the user
 asks to remember how the lab opens, or confirms when a reusable config already
@@ -46,7 +46,7 @@ Template: `assets/profile.template.json`, a candidate. The examples'
 | `platform` | string | `ios`, `macos`, `web`, `visionos`, `android`, `flutter`, `react-native`, `windows`, `linux`, or `harmonyos`; Flutter and React Native use the framework value (`references/platform-handoff.md`) |
 | `container` | string | the host surface used when saving |
 | `scope` | string array | non-empty |
-| `overrides` | object | non-empty; the full draft configuration at save time, including `design` for a design-variant lab (`references/design-variants.md`) |
+| `overrides` | object | non-empty; the pin's full configuration at save time, including `design` for a design-variant lab (`references/design-variants.md`) |
 | `notes` | string | may be empty |
 | `basedOn` | string | candidates only; kebab-case: the preset it started from, `baseline`, or another candidate's name |
 | `savedAt` | string | candidates only; ISO-8601 UTC, for example `2026-11-04T14:23:24Z` |

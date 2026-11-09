@@ -1,48 +1,51 @@
 # ui-tuning-lab
 
-An agent skill for tuning UI by feel. The agent adds a temporary,
-development-only control panel beside a real screen: sliders, presets, a flip
-back to the original, and Replay and Speed for motion. When you pick a winner,
-it writes those values into the feature's defaults and removes the panel.
+[![skills.sh](https://skills.sh/b/Mohanad-Ramadan/ui-tuning-lab)](https://skills.sh/Mohanad-Ramadan/ui-tuning-lab)
 
-The workflow is inspect-first: the agent derives the platform, gate, container,
-activation, configuration, and baseline from the project and asks at most one
-material setup question, plus how the lab should open. Activation has an agent
-path, one or more human fast paths the user picks, and a visible fallback; shake
-is offered only when inspection proves it free. Ephemeral labs need
-no configuration file. Every lab holds a row of looks: Shipped and each pin.
-The selected one is outlined and is what the feature shows, the controls edit it
-(an edit on Shipped starts a new pin), Duplicate branches it, and Choose hands
-it to the agent; a footer hint says how to finish. Pins stay in memory unless you ask to save them; saved ones live under `uiTuningLab.*` or `.ui-tuning-lab/`,
-and finalists you keep at landing are seeded into the lab next time.
+An agent skill for tuning UI by feel. Ask your coding agent to "dial in this
+card's spacing" or "give me three better versions of this list", and it adds a
+temporary, development-only control panel beside the real screen in your
+running app. You drag sliders, try presets, and compare looks on the real
+feature. When you choose one, the agent writes those values into the feature's
+defaults and removes the panel. Nothing about the lab ships.
 
-Start with `SKILL.md`; it routes to everything else.
+## Install
+
+```sh
+npx skills add Mohanad-Ramadan/ui-tuning-lab
+```
+
+This works with Claude Code, Codex, Cursor, and the other agents the
+[skills CLI](https://github.com/vercel-labs/skills) supports. Add `-g` to
+install it for every project. To install by hand, copy `skills/ui-tuning-lab/`
+into your agent's skills directory (for Claude Code, `~/.claude/skills/`).
+
+## What you get
+
+- **A panel beside the real feature**, not a mockup: presets, direct controls,
+  and Replay and Speed for motion.
+- **Looks you compare by switching chips.** Shipped is the declared default and
+  is read-only; editing it starts a pin. Duplicate branches a pin to try a
+  variation.
+- **Alternative designs** as a Design picker in the same panel, with the
+  original as the baseline.
+- **A finish with no copy-paste.** Choose hands the selected look to the agent
+  through the log, a result file, and a `land <name>` code on the clipboard.
+- **Opening without hunting.** Every lab has a path the agent can open it
+  through, one or more fast paths you pick (a shortcut, a gesture, a menu item),
+  and a visible fallback.
 
 ## Guarantees
 
-- Development, DEBUG, internal, or tester builds only.
-- Every lab opens through an agent path, one or more human fast paths, and a visible
-  fallback; activation is development-only.
-- The Shipped chip always shows the declared default, however often the lab reopens.
-- Persistence off by default; candidates are written to namespaced storage only when requested.
-- Closing releases all lab-owned UI, timers, observers, listeners, and tasks.
+- The lab exists only in development, DEBUG, internal, or tester builds, and
+  the agent checks the release build or production bundle for leftovers.
+- Opening the lab changes nothing on screen, and the Shipped chip always shows
+  the declared default.
+- Nothing is saved unless you ask. Saved pins live only under `uiTuningLab.*`
+  or `.ui-tuning-lab/`, never a production key.
+- Closing releases every view, timer, observer, listener, and task the lab owns.
 
-## Checks an installed copy can run
-
-`<skill-dir>` is where the skill is installed.
-
-```sh
-sh <skill-dir>/scripts/verify.sh source-gates path/to/source
-sh <skill-dir>/scripts/verify.sh config path/to/lab.json
-sh <skill-dir>/scripts/verify.sh profile path/to/saved-profile.json
-```
-
-Source lint cannot prove production absence. Inspect the compiled archive or
-production bundle too (`references/verify-protocol.md`).
-`source-gates` exits `3` with `N/A:` when the path contains no supported Swift or
-web files, or no lab reference. That is deliberately distinct from PASS.
-
-## Status
+## Platforms
 
 Used in real apps on web (React), iOS, and macOS (SwiftUI), with a recorded web
 pilot in `validation/`. Android (Compose), Flutter, React Native, and Windows
@@ -50,25 +53,26 @@ pilot in `validation/`. Android (Compose), Flutter, React Native, and Windows
 visionOS, Linux, and HarmonyOS are adapted from the nearest example. Issues and
 pull requests from any platform are welcome: that is how the newer ones mature.
 
-## License
+## Repository layout
 
-MIT. See `LICENSE.txt`.
-
-## Developing this skill (repository only)
-
-These files are not in the installed package.
+`skills/ui-tuning-lab/` is the skill, exactly as it installs. Start with its
+`SKILL.md`, which routes to everything else. Everything else in this repository
+is for developing the skill and is not installed.
 
 ```sh
 sh tests/verify.sh      # linter and validator fixtures
 sh tests/examples.sh    # every iOS, macOS, and web example variant linted, plus gate-stripped mutants, and the React Native host
 sh tests/compile.sh     # Swift (iOS, macOS; DEBUG and Release) and TypeScript typecheck
-sh tests/package.sh     # the package is self-contained
+sh tests/package.sh     # the skill folder is self-contained and holds only shipped files
 sh tools/package.sh     # builds dist/ui-tuning-lab/ and dist/ui-tuning-lab-<version>.zip
 ```
 
 `tests/compile.sh` exits `3` with `SKIP` when a toolchain is missing. The web
 pilot lives in `pilots/web-vite/`, its cross-engine checks in
-`tests/pilot-web/check.mjs`, and evals in `evals/`. The package contains
-`SKILL.md`, `README.md`, `references/`, `examples/`, `assets/`, `scripts/`, and
-the license; the changelog, validation receipts, tests, tools, pilots, and evals
-stay here.
+`tests/pilot-web/check.mjs` (run with `sh tests/pilot-web/run.sh`), evals in
+`evals/`, platform receipts in `validation/`, and release notes in
+`CHANGELOG.md`.
+
+## License
+
+MIT. See `LICENSE.txt`.

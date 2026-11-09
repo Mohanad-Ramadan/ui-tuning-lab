@@ -3,13 +3,14 @@
 # and runs check.mjs against its dev server and its production preview.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
+SKILL="$ROOT/skills/ui-tuning-lab"
 . "$ROOT/tests/lib/extract.sh"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/ui-tuning-lab-pilot.XXXXXX")
 trap 'kill $DEV $PREVIEW 2>/dev/null || true; rm -rf "$WORK"' EXIT
 trap 'exit 130' INT TERM
 
 mkdir -p "$WORK/src"
-extract_example "$ROOT/examples/web-floating-panel.md" "$WORK/src"
+extract_example "$SKILL/examples/web-floating-panel.md" "$WORK/src"
 cp "$ROOT/pilots/web-vite/package.json" "$ROOT/pilots/web-vite/tsconfig.json" "$WORK/"
 ln -s "$ROOT/pilots/web-vite/node_modules" "$WORK/node_modules"
 printf '%s\n' '<!doctype html><html><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>' > "$WORK/index.html"

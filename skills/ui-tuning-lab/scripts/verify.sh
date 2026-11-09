@@ -88,10 +88,10 @@ validate_config() {
     (has("candidates") | not) or
     (.candidates | type == "array" and length > 0 and
       all(.[]; type == "string" and test("^[a-z0-9]+(-[a-z0-9]+)*$") and
-        . != "draft" and . != "baseline") and
+        (. as $n | ["draft", "now", "original", "baseline"] | index($n) | not)) and
       (unique | length) == length)
   ' "$file" >/dev/null 2>&1 || \
-    fail "invalid candidates: expected a non-empty list of distinct kebab-case names other than draft and baseline: $file"
+    fail "invalid candidates: expected a non-empty list of distinct kebab-case names other than draft, now, original, and baseline: $file"
   reject_placeholders "$file"
   echo "PASS: valid lab configuration: $file"
 }

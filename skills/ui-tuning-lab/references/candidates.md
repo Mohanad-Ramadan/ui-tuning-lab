@@ -160,8 +160,8 @@ keep the finalists. If yes:
 3. Ask before committing `.ui-tuning-lab/`; it is never shipped.
 
 When a later session reopens the lab, seed it with those candidates: pass them
-as the lab's initial candidates in the gated lab code, so Compare works at once
-with no app storage. Each seeded candidate's `values` is its `overrides` diffed
+as the lab's initial candidates in the gated lab code, so their chips are
+there at once with no app storage. Each seeded candidate's `values` is its `overrides` diffed
 against the current baseline; one that now matches the baseline is dropped and
 reported. "Test b and c together" then means: rebuild the lab with b and c
-seeded and open it on Compare.
+seeded; switching between their chips is the comparison.

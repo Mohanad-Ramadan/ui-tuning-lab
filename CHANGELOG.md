@@ -1,138 +1,96 @@
 # Changelog — ui-tuning-lab
 
-## 1.3.0 — unreleased
+## 1.3.0 — 2026-11-10
 
-### Looks you edit in place, and a macOS panel that lays out
+First public release, installable with
+`npx skills add Mohanad-Ramadan/ui-tuning-lab`. Versions 1.0.0 to 1.2.0 below
+were never published; this entry describes the lab as it ships.
 
-- The draft, the stash, the "+ edits" chip, Reset, and Pin are gone. Chips are
-  Shipped and each pin; exactly one is selected, outlined, and shown in the
-  feature, so switching chips is the comparison. The controls edit the selected
-  pin in place; on Shipped, which is read-only, they start a new pin named after
-  the preset or `tweak`. **Duplicate** branches the selected pin. **Choose**
-  picks the selected chip, so `draft` is no longer a winner; the hint reads
-  *Duplicate to compare · Choose to finish*.
-- A pin logs `UITUNINGLAB_CANDIDATE` when created and again when it is left after
-  an edit; persisting labs rewrite its profile at the same moments.
-- **Bug fix (macOS):** Shipped no longer stays outlined after an edit, and the
-  panel is a plain stack instead of a `Form`, whose two-column layout pushed the
-  controls right, showed each label twice, and floated the hint mid-window. The
-  panel keeps a fixed size, so Change after Choose brings back the whole panel.
-- `tests/pilot-web/run.sh` builds the web example into the pilot and runs the
-  cross-browser check against it.
+### Install layout
 
-### Plainer labels
+- The skill lives in `skills/ui-tuning-lab/`, which is exactly what
+  `npx skills add` installs. Tests, pilots, evals, validation receipts, and this
+  changelog stay at the repository root and are no longer copied into installs.
+  `tests/package.sh` fails if anything else lands in the skill folder or the
+  `SKILL.md` metadata version drifts from `VERSION`.
 
-- The panel's labels are plain words with no glyphs. The toggle is named after
-  the feature ("Card Lab", "Nav Lab") instead of "Tune"; the Original chip is
-  **Shipped**; Keep is **Pin**; Use this is **Choose**; the result bar reads
-  "Chosen: capsule · Change"; the hint reads *Pin looks to compare · Choose to
-  finish*. Saved looks are called pins.
-- The fixed Now chip is gone, and so is any chip for unpinned edits (see
-  "Selection is an outline" below). Pin is disabled while there is nothing
-  unpinned. Reset returns the draft to Shipped. Every example and the shared
-  Swift asset implement it.
-- The wire format is unchanged: the Shipped chip still logs winner `original`,
-  unpinned edits `draft`, and every log tag, key, and file path stays the same.
+### Looks you edit in place
 
-### Labs already in the project
-
-- Inspection now searches for labs left by earlier work. A lab for the same
-  feature is extended; a lab for another feature always prompts the user to
-  remove it, land it first, or keep both, even when the request says "the
-  existing lab". The report names every other lab still active.
-
-### Simpler finish, automatic handoff
-
-- The panel finishes with two buttons and a chip row. Chips (Original, Now, and
-  each favorite) replace Show baseline, Compare, and Load; **★ Keep** replaces
-  Keep as candidate; **✓ Use this** replaces Done and picks what is shown, then
-  shrinks the panel to a "✓ Sent" bar. No confirmation: the newest pick wins.
-  Reset and Copy values move to a ⋯ menu. The hint is one line.
-- Favorites are named after what they are (`capsule`, `compact-2`), so a name
-  works as a code in chat.
-- ✓ Use this also writes `.ui-tuning-lab/result.json` (web:
-  `uiTuningLab.result`) in development builds and copies `land <name>`, so the
-  agent reads the pick after the app quits, and a cloud-device user pastes one
-  short line.
-
-### Leaner package
-
-- Maintainer notes are gone from what the agent reads: no "unvalidated / not
-  compiled" banners, "Assumptions" sections became direct **Version notes**,
-  and the stub examples, `profiles/`, `validation/`, and the changelog no
-  longer ship.
-- The Swift values and candidates file shared by every Swift example is one
-  asset, `assets/swift/UITuningLabValues.swift`, copied unchanged.
-- Long references open with a Contents list; duplicated log tables, wait
-  scripts, and activation memory now live in one place. The description is in
-  third person.
-
-### From the Flutter rerun
-
-- The pill and panel pin to the screen, separate from the wrap around the
-  feature; the Flutter example uses one always-shown `OverlayPortal`.
-- Phones dock the panel full width at the bottom (at most 45% tall); the lab
-  hides while its tab or route is offstage; right-to-left apps keep their
-  direction.
-- Each design's knobs start from that design's declared defaults; Original
-  stays untunable when the user asked only for new designs.
-- A CI workflow with build or launch inputs carries the agent path.
-- The activation question is skipped when the pill is the only human path.
-
-Fixes from a Flutter session where the agent read "unvalidated adaptation" as
-"unsupported", skipped the panel, and put design chips into the screen.
-
-- `SKILL.md` gains "Every platform gets the whole lab": unvalidated means not
-  yet proven, never unsupported. Android, Flutter, React Native, Windows, and
-  stacks with no example get the full panel, handoff, and activation, adapted
-  from the nearest example.
-- New `references/design-variants.md`: alternative designs ("three better
-  versions of this list") are a **Design** picker in the panel, with the
-  original as the baseline and `design` as a value in Copy values, candidates,
-  Compare, and Done. Landing moves the winning variant's code into the
-  production widget. Never chips or tabs inserted into the screen. The trigger
-  description now covers this request.
-- `references/platform-handoff.md` gains "No local toolchain" for apps that
-  build only in CI or a cloud device service: build the whole lab, ask before
-  pushing, hand Done over through chat, and run the release search in the
-  pipeline or report it as not run. Inspection now checks whether the
-  toolchain runs here.
-- `examples/flutter-overlay.md` shows design variants and the remote-build
-  handoff.
-- Fixed a broken code fence in `references/platform-handoff.md`.
-- Receipts in `validation/` are evidence, not a release gate: publishing no
-  longer waits for every platform receipt to pass. The one check required
-  before every release is the release-artifact search proving no lab code
-  ships. README status now describes platforms in plain terms.
+- Chips are **Shipped** and each pin. Exactly one is selected, outlined, and
+  shown in the feature, so switching chips is the comparison. There is no
+  draft, no stash, no Reset, and no compare mode.
+- The controls edit the selected pin in place. Shipped is read-only: editing it
+  starts a new pin named after the design, the preset, or `tweak`. Pins are
+  named after what they are (`capsule`, `compact-2`), so a name works as a code
+  in chat.
+- **Duplicate** branches the selected pin. **Choose** picks the selected chip,
+  writes `.ui-tuning-lab/result.json` (web: `uiTuningLab.result`) in development
+  builds, and copies `land <name>`, so the agent reads the pick after the app
+  quits and a cloud-device user pastes one short line. The panel then shrinks to
+  "Chosen: capsule · Change"; Change brings the whole panel back.
+- Copy values sits in a ⋯ menu. The hint reads *Duplicate to compare · Choose
+  to finish*. The toggle is named after the feature ("Card Lab").
+- A pin logs `UITUNINGLAB_CANDIDATE` when created and again when it is left
+  after an edit; persisting labs rewrite its profile at the same moments. The
+  Shipped chip still logs winner `original`; an older lab's `draft` winner
+  lands like a pin.
+- Candidate names are never `draft`, `now`, `original`, or `baseline`, and
+  `verify.sh config` now rejects all four in `lab.json`.
 
 ### The panel reads as its own surface
 
 - The panel and the result bar carry a hairline outline in the platform's
   stronger separator token, so the lab stays distinguishable when the screen
-  behind it has the same background and a shadow alone vanishes. Web
-  (`GrayText` on `Canvas`), Flutter, Compose, and React Native draw it; native
-  chrome (an iOS sheet, a macOS panel window, a WinUI `Flyout`) is verified
-  instead of double-bordered. The rule lives in `references/setup-protocol.md`
-  ("Make the panel its own surface") and `SKILL.md`, with a hands-on check in
-  `references/verify-protocol.md` and regression assertions in
-  `tests/examples.sh`.
-- Shadows stay as they are and stay static: a cached shadow costs no frames,
-  while animating elevation or adding a backdrop blur would. The outline is the
-  cue that does not depend on a theme's shadow.
+  behind it has the same background. Native chrome (an iOS sheet, a macOS panel
+  window, a WinUI `Flyout`) is verified instead of double-bordered. Shadows stay
+  static: animating elevation or adding a blur would cost frames.
+- **Bug fix (macOS):** Shipped no longer stays outlined after an edit, and the
+  panel is a plain stack instead of a `Form`, whose two-column layout pushed the
+  controls right, showed each label twice, and floated the hint mid-window. The
+  panel keeps a fixed size.
 
-### Hand over, don't demo the lab
+### Hand over, don't demo
 
-- The lab is handed over after one smoke launch: build, typecheck, and run the
-  gate lint, open it once through the agent path to confirm it renders and
-  opens, then stop. The agent no longer iterates the controls, flips the chips,
-  Pin, Choose, Reset, compares candidates, or screenshots each option before the
-  user has seen it; that burned the time the user wanted to spend tuning. A
-  self-review pass runs only when the user asks for one.
-- Hands-on checks are reported as run by the agent or by the user, never as a
-  pre-handover gate, and the smoke launch counts as one check ("opens and
-  renders"), not as the whole list.
+- The lab is handed over after one smoke launch: build, typecheck, run the gate
+  lint, open it once through the agent path, then stop. The agent does not tune
+  it, tour the presets, or screenshot the options first; a self-review pass runs
+  only when the user asks for one.
+- Hands-on checks are reported as run by the agent or by the user, and the
+  smoke launch counts as one check ("opens and renders").
 
-## 1.2.0 — unreleased
+### Every platform gets the whole lab
+
+- Android, Flutter, React Native, Windows, and stacks with no example get the
+  full panel, handoff, and activation, adapted from the nearest example. Not
+  yet compiled means not yet proven, never unsupported.
+- Alternative designs ("three better versions of this list") are a **Design**
+  picker in the panel, with the original as the baseline
+  (`references/design-variants.md`). Landing moves the winning design's code
+  into the production view.
+- `references/platform-handoff.md` gains "No local toolchain" for apps that
+  build only in CI or a cloud device service.
+- Flutter: the pill and panel pin to the screen through one always-shown
+  `OverlayPortal`; phones dock the panel at the bottom (at most 45% tall); the
+  lab hides while its route is offstage; right-to-left apps keep their
+  direction.
+
+### Labs already in the project
+
+- Inspection searches for labs left by earlier work. A lab for the same feature
+  is extended; a lab for another feature always prompts the user to remove it,
+  land it first, or keep both. The report names every other lab still active.
+
+### Leaner package
+
+- The Swift values and candidates file shared by every Swift example is one
+  asset, `assets/swift/UITuningLabValues.swift`.
+- Long references open with a Contents list; duplicated log tables, wait
+  scripts, and activation memory live in one place. Maintainer notes no longer
+  ship.
+- `tests/pilot-web/run.sh` builds the web example into the pilot and runs the
+  cross-browser check against it.
+
+## 1.2.0 — pre-release (not published)
 
 - New `references/candidates.md`. Every lab, ephemeral ones included, has
   **Keep as candidate** (finalists named `a`, `b`, … with the preset each came
@@ -183,7 +141,7 @@ Fixes from a Flutter session where the agent read "unvalidated adaptation" as
 - Release searches look for the `UITUNINGLAB_` and `ui-tuning-lab` strings as
   well as the class marker, since minifiers rename identifiers.
 
-## 1.1.0 — unreleased
+## 1.1.0 — pre-release (not published)
 
 - New `references/activation.md`: every lab has an agent path, a human fast path,
   and a mandatory visible fallback. Shake is recommended only when inspection
@@ -216,7 +174,7 @@ Fixes from a Flutter session where the agent read "unvalidated adaptation" as
   The fallback pill is hit-tested, not just opened by the agent path, and the
   pre-landing report opens with **How to try it**.
 
-## 1.0.0 — unreleased
+## 1.0.0 — pre-release (not published)
 
 First public release candidate.
 

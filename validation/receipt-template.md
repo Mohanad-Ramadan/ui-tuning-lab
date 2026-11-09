@@ -18,7 +18,7 @@
 - [ ] With multiple labs, each path opens the intended one.
 - [ ] Reset exactly restores the baseline (the declared default), also after close and reopen.
 - [ ] Copy values copies and logs only the changed fields, and landing writes them into the feature defaults.
-- [ ] Candidates, Compare, and Done (`references/candidates.md`): Keep as candidate logs `UITUNINGLAB_CANDIDATE` and skips duplicates; Compare renders each candidate and Draft restores the draft; Done logs a `UITUNINGLAB_DONE` line carrying the winner and every candidate; the finish hint is visible.
+- [ ] Chips, Duplicate, and Choose (`references/candidates.md`): the selected chip is outlined and is what the feature shows; editing Shipped starts a new pin and logs `UITUNINGLAB_CANDIDATE`; Duplicate branches the selected pin; Choose logs a `UITUNINGLAB_DONE` line carrying the winner and every pin, writes the result file, and copies `land <name>`; the finish hint is visible.
 - [ ] If persistence was requested, Keep writes one candidate under the documented namespace.
 - [ ] If persistence was requested, a failed candidate write is visible and retains the draft.
 - [ ] Primary pointer/touch, keyboard, focus, and gesture paths work.

@@ -828,7 +828,8 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
 ```
 
 
-Pin writes only `uiTuningLab.candidates.<name>` and × deletes only that key.
+Creating or editing a pin writes only `uiTuningLab.candidates.<name>`, and ×
+deletes only that key.
 Storage failures are shown in the status line and leave the chips unchanged.
 Inspect the emitted production bundle to confirm that the lab module and storage
 code were eliminated.

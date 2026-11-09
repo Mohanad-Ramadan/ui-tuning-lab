@@ -2,8 +2,9 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SKILL="$ROOT/skills/ui-tuning-lab"
 . "$ROOT/tests/lib/extract.sh"
-VERIFY="$ROOT/scripts/verify.sh"
+VERIFY="$SKILL/scripts/verify.sh"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/ui-tuning-lab-examples.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 trap 'exit 130' INT TERM
@@ -14,7 +15,7 @@ ok() { printf 'ok - %s\n' "$1"; }
 not_ok() { printf 'not ok - %s\n' "$1"; [ -z "${2:-}" ] || printf '%s\n' "$2"; failures=$((failures + 1)); }
 
 require_text() {
-  if grep -qF "$2" "$ROOT/$1"; then ok "$3"; else not_ok "$3"; fi
+  if grep -qF "$2" "$SKILL/$1"; then ok "$3"; else not_ok "$3"; fi
 }
 
 # require_in <extracted-file> <text> <name>: assert against the code a variant
@@ -33,7 +34,7 @@ lint_status() {
 # The default variant is what users copy when persistence was not requested.
 for example in $EXAMPLES; do
   dir="$WORK/${example%.md}-ephemeral"
-  extract_example "$ROOT/examples/$example" "$dir"
+  extract_example "$SKILL/examples/$example" "$dir"
   if [ -z "$(ls "$dir")" ]; then
     not_ok "$example has no tagged source files"
   # The result file (uiTuningLab.result, .ui-tuning-lab/result.json) is the one
@@ -54,10 +55,10 @@ expect_mutant_fails() {
 # Swift and web files are mutated and linted separately so one language's
 # failure cannot mask the other's.
 for example in $EXAMPLES; do
-  for variant in $(example_variants "$ROOT/examples/$example"); do
+  for variant in $(example_variants "$SKILL/examples/$example"); do
     label="$example [$variant]"
     dir="$WORK/${example%.md}-$variant"
-    extract_example "$ROOT/examples/$example" "$dir" "$variant"
+    extract_example "$SKILL/examples/$example" "$dir" "$variant"
     lint_status "$dir"
     if [ "$status" -eq 0 ]; then ok "$label passes source-gates"; else not_ok "$label passes source-gates (exit $status)" "$output"; fi
 
@@ -154,13 +155,13 @@ if grep -q 'URLSearchParams' "$WORK/web-floating-panel-default/FeatureScreen.tsx
 else
   ok 'web agent query is parsed only inside the development-gated lab module'
 fi
-if grep -qE 'CFBundleURLSchemes|UIApplication\.shared\.open' "$ROOT/examples/swiftui-popover-palette.md"; then
+if grep -qE 'CFBundleURLSchemes|UIApplication\.shared\.open' "$SKILL/examples/swiftui-popover-palette.md"; then
   not_ok 'iOS agent path does not register a URL scheme'
 else
   ok 'iOS agent path does not register a URL scheme'
 fi
 # A baseline taken from the screen at open becomes the draft after a reopen.
-if grep -nE 'setBaseline\(|uiTuningLabBaseline|baseline = (style|config|motion)|baseline: *(model\.)?(style|config|motion)\b|baseline \?\? ' "$ROOT"/examples/*.md >/dev/null; then
+if grep -nE 'setBaseline\(|uiTuningLabBaseline|baseline = (style|config|motion)|baseline: *(model\.)?(style|config|motion)\b|baseline \?\? ' "$SKILL"/examples/*.md >/dev/null; then
   not_ok 'no example captures the baseline from the screen at open'
 else
   ok 'no example captures the baseline from the screen at open'
@@ -171,7 +172,7 @@ require_text examples/web-floating-panel.md '{...popoverManual}' 'web lab stays 
 require_text examples/web-floating-panel.md 'document.addEventListener("keydown", onKeyDown);' 'web lab closes on Escape wherever focus is'
 require_text examples/web-floating-panel.md 'useLayoutEffect(() => { latest.current = { candidates, selected }; });' 'web close path reads current pins, not stale state'
 require_text examples/macos-panel-minimal.md '@ObservedObject var model: FeatureSceneModel' 'macOS panel observes the model so it redraws'
-if grep -q 'get: { \[weak self\] in self?\.' "$ROOT/examples/macos-panel-minimal.md"; then
+if grep -q 'get: { \[weak self\] in self?\.' "$SKILL/examples/macos-panel-minimal.md"; then
   not_ok 'macOS panel does not use a closure Binding to plain properties'
 else
   ok 'macOS panel does not use a closure Binding to plain properties'
@@ -233,7 +234,7 @@ for example in macos-panel-minimal animation-spring; do
 done
 
 # Saved profiles: load is validated, and the envelope matches the template.
-template_fields=$(jq -r 'keys[]' "$ROOT/assets/profile.template.json" | sort | tr '\n' ' ')
+template_fields=$(jq -r 'keys[]' "$SKILL/assets/profile.template.json" | sort | tr '\n' ' ')
 for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; do
   dir="$WORK/$example-persist"
   if grep -Eq 'schemaVersion (==|!==) 2' "$dir"/*; then
@@ -262,7 +263,7 @@ done
 # Chips, Duplicate, Choose, and the result file are in every variant
 # users copy (references/candidates.md), the ephemeral default included.
 for example in $EXAMPLES; do
-  for variant in $(example_variants "$ROOT/examples/$example"); do
+  for variant in $(example_variants "$SKILL/examples/$example"); do
     dir="$WORK/${example%.md}-$variant"
     label="$example [$variant]"
     for needle in 'Shipped' 'Duplicate' 'Choose' 'Duplicate to compare · Choose to finish' \
@@ -291,20 +292,20 @@ done
 rn="$WORK/react-native-overlay"
 mkdir -p "$rn"
 awk -v d="$rn" '/^```(tsx|ts)$/ { inside = 1; n++; out = d "/block" n ".tsx"; next } /^```$/ { inside = 0 } inside { print > out }' \
-  "$ROOT/examples/react-native-overlay.md"
+  "$SKILL/examples/react-native-overlay.md"
 rn_host=$(grep -l 'require("./' "$rn"/*.tsx 2>/dev/null | head -1)
 if [ -n "$rn_host" ] && "$VERIFY" source-gates "$rn_host" >/dev/null 2>&1; then
   ok "react-native-overlay.md host passes source-gates"
 else
   not_ok "react-native-overlay.md host passes source-gates"
 fi
-if grep -q 'borderColor: "#8a8a8a"' "$ROOT/examples/react-native-overlay.md"; then
+if grep -q 'borderColor: "#8a8a8a"' "$SKILL/examples/react-native-overlay.md"; then
   ok "react-native-overlay.md panel has an outline against a matching background"
 else
   not_ok "react-native-overlay.md panel has an outline against a matching background"
 fi
 
-if grep -rn 'variantLab' "$ROOT/SKILL.md" "$ROOT/examples" "$ROOT/references" "$ROOT/validation" >/dev/null; then
+if grep -rn 'variantLab' "$SKILL/SKILL.md" "$SKILL/examples" "$SKILL/references" "$ROOT/validation" >/dev/null; then
   not_ok 'no legacy variantLab namespace remains'
 else
   ok 'no legacy variantLab namespace remains'

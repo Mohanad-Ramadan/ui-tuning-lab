@@ -7,7 +7,7 @@ this installed skill.
 
 Common checks:
 
-- Preserve baseline and unsaved draft across rotation, resizing, trait, locale,
+- Preserve the baseline, the pins, and the selected chip across rotation, resizing, trait, locale,
   dark-mode, Dynamic Type, and safe-area changes.
 - Keep focus, selection, keyboard, gesture, and screen-reader ownership intact
   when applying a variant.
