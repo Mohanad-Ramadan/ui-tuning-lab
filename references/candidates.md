@@ -22,7 +22,7 @@ the log. The one write an ephemeral lab makes is the result file below.
 | Control | What it does |
 |---|---|
 | **Toggle** | The pill, button, or menu item that opens the lab is named after the feature: **Nav Lab**, **Card Lab**. |
-| **Chips** | One row under the header: **Shipped** (the baseline), then each pin. Tapping a chip shows it in the real feature. The selected chip has a visible outline, like any selected option; a label such as "+ edits" is never used to say what is selected. Example: Shipped · capsule · compact-2 |
+| **Chips** | One row under the header: **Shipped** (the baseline), then each pin. Tapping a chip shows it in the real feature. The selected chip has a visible outline, like any selected option; selection is never shown by changing the label text. Example: Shipped · capsule · compact-2 |
 | **Presets** | The preset buttons in the controls are outlined while the draft, with or without edits, started from that preset. |
 | **Pin** | Pins the draft: the new pin gets a chip and is selected. Disabled while there is nothing unpinned, that is, while the draft matches Shipped or a pin (a status may say "Same as Shipped" or "Same as capsule"). |
 | **Choose** | Picks what the feature shows (Shipped, a pin, or the draft while it holds unpinned edits) and finishes: logs the result, writes the result file, copies `land <name>` to the clipboard, and shrinks the panel to one bar. Change brings back the same panel at its original size, controls included. |
