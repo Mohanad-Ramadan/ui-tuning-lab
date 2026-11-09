@@ -258,16 +258,23 @@ for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; d
   fi
 done
 
-# Chips, Pin, Choose, the draft chip, and the result file are in every variant
+# Chips, Pin, Choose, the draft's home chip, and the result file are in every variant
 # users copy (references/candidates.md), the ephemeral default included.
 for example in $EXAMPLES; do
   for variant in $(example_variants "$ROOT/examples/$example"); do
     dir="$WORK/${example%.md}-$variant"
     label="$example [$variant]"
-    for needle in 'Shipped' ' + edits' 'draftMatch' 'Pin' 'Choose' 'Pin looks to compare · Choose to finish' \
+    for needle in 'Shipped' 'draftMatch' 'Pin' 'Choose' 'Pin looks to compare · Choose to finish' \
         'Chosen: ' 'land ' 'result' 'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE'; do
       if grep -rqF "$needle" "$dir"; then ok "$label has $needle"; else not_ok "$label has $needle"; fi
     done
+    # Unpinned edits have no chip of their own: selection is an outline, never a
+    # "<source> + edits" label.
+    if grep -rqF '+ edits' "$dir"; then
+      not_ok "$label has no draft chip label" "$(grep -rnF '+ edits' "$dir")"
+    else
+      ok "$label has no draft chip label"
+    fi
     # The old labels and glyphs are gone from the panel.
     if grep -rqE '★|✓|"Now"|>Now<|Use this|"Original"|>Original<' "$dir"; then
       not_ok "$label has no retired panel labels" "$(grep -rnE '★|✓|"Now"|>Now<|Use this|"Original"|>Original<' "$dir")"

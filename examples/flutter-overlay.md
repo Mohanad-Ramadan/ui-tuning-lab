@@ -25,14 +25,14 @@ Activation (`references/activation.md`):
 The host's lab state owns the pins, so pins, `basedOn`, and the stashed draft
 survive closing the overlay. The default lab is ephemeral: pins live in memory
 and the log only, and a name is never reused within an isolate. The chip row
-under the header shows Shipped, each pin, and, last, the draft chip ("Shipped +
-edits", "compact + edits"), which appears only while the draft holds unpinned
-changes; tapping a chip shows it in the real feature, and the draft is stashed
-meanwhile and restored when its chip is tapped or the panel closes. While
-Shipped is shown the presets and sliders are disabled; moving one while a pin
-is shown copies that pin into the draft first. **Pin** pins the draft and is
-disabled while the draft matches Shipped or a pin, **Choose** picks the shown
-chip and collapses the panel to the result bar, and the **⋯** menu holds Reset
+under the header shows Shipped and each pin; the selected chip is outlined, and
+so is the preset the draft started from. Unpinned edits stay under the chip they
+started from, with no chip of their own; tapping another chip stashes them until
+that chip is tapped again or the panel closes. While Shipped is shown away from
+the draft the presets and sliders are disabled; moving one while a pin is shown
+copies that pin into the draft first. **Pin** pins the draft and is disabled
+while the draft matches Shipped or a pin, **Choose** picks what the feature
+shows and collapses the panel to the result bar, and the **⋯** menu holds Reset
 and Copy values. The hint sits below the scrolling controls.
 
 ## Host change
@@ -202,17 +202,27 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   CardStyle get draft => widget.style;
 
   // The chip the draft matches ('original' for Shipped, or a pin), or null while
-  // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+  // it holds unpinned changes.
   String? get draftMatch {
     final values = _changed(stash ?? draft);
     if (values.isEmpty) return 'original';
     return candidates.where((c) => _sortedJson(c.values) == _sortedJson(values)).firstOrNull?.name;
   }
 
-  // The highlighted chip: the one shown, or the one the draft matches.
-  String get current => shown == 'draft' ? draftMatch ?? 'draft' : shown;
+  // The draft's home chip: the chip it matches, else the pin it was copied from,
+  // else Shipped. Unpinned edits stay under it; there is no chip of their own.
+  String get home =>
+      draftMatch ?? (candidates.any((c) => c.name == basedOn) ? basedOn : 'original');
 
-  String get draftTitle => '${basedOn == 'baseline' ? 'Shipped' : basedOn} + edits';
+  // The selected chip: the one shown, or the draft's home.
+  String get current => shown == 'draft' ? home : shown;
+
+  // A preset is selected while the draft, with or without edits, started from it.
+  bool presetOn(String name) => shown == 'draft' && basedOn == name;
+
+  // A selected chip or preset is outlined, so it reads as selected without a label.
+  BorderSide? outline(bool on) =>
+      on ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2) : null;
 
   @override
   void initState() {
@@ -242,9 +252,9 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   }
 
   // Tapping a chip shows it in the real feature; the draft is stashed meanwhile.
-  // The chip the draft matches shows the draft itself.
+  // The draft's home chip shows the draft itself.
   void show(String chip) {
-    final target = chip == draftMatch ? 'draft' : chip;
+    final target = chip == home ? 'draft' : chip;
     if (target == 'draft') {
       if (stash != null) widget.onChanged(stash!);
       stash = null;
@@ -308,13 +318,13 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     update(() => candidates.removeWhere((c) => c.name == name));
   }
 
-  // Choose picks the highlighted chip and finishes. Picking again replaces the
-  // result.
+  // Choose picks what the feature shows (a pin, Shipped, or the draft while it
+  // holds unpinned edits) and finishes. Picking again replaces the result.
   Future<void> useThis() async {
-    final chip = current;
+    final chip = shown == 'draft' ? draftMatch : shown;
     final picked = candidates.where((c) => c.name == chip).firstOrNull;
-    final winner = picked?.name ?? (chip == 'original' ? 'original' : 'draft');
-    final values = picked?.values ?? (chip == 'original' ? <String, double>{} : _changed(draft));
+    final winner = chip == null ? 'draft' : picked?.name ?? 'original';
+    final values = chip == null ? _changed(draft) : picked?.values ?? <String, double>{};
     final done = <String, Object?>{
       'candidates': [for (final c in candidates) c.toJson()],
       'values': values,
@@ -404,26 +414,25 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
                 ),
                 TextButton(onPressed: close, child: const Text('Close')),
               ]),
-              // The chips: Shipped, each pin, then the draft chip while the draft
-              // holds unpinned changes. Highlighted = shown.
+              // The chips: Shipped, then each pin. The selected chip is outlined.
               Wrap(spacing: 8, runSpacing: 4, children: [
                 ChoiceChip(label: const Text('Shipped'), selected: current == 'original',
+                    side: outline(current == 'original'), showCheckmark: false,
                     onSelected: (_) => show('original')),
                 for (final c in candidates)
                   InputChip(label: Text(c.name), selected: current == c.name,
+                      side: outline(current == c.name), showCheckmark: false,
                       onSelected: (_) => show(c.name),
                       deleteIcon: const Icon(Icons.close, size: 16),
                       deleteButtonTooltipMessage: 'Remove ${c.name}',
                       onDeleted: () => remove(c.name)),
-                if (draftMatch == null)
-                  ChoiceChip(label: Text(draftTitle), selected: current == 'draft',
-                      onSelected: (_) => show('draft')),
               ]),
               Flexible(child: SingleChildScrollView(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Wrap(spacing: 8, children: [
                   for (final name in _presets.keys)
                     OutlinedButton(onPressed: editable ? () => applyPreset(name) : null,
+                        style: presetOn(name) ? OutlinedButton.styleFrom(side: outline(true)) : null,
                         child: Text(name[0].toUpperCase() + name.substring(1))),
                 ]),
                 slider('Radius', draft.cornerRadius, 32, editable,
@@ -507,7 +516,7 @@ In the host state:
 
 ```dart
 void show(String chip) {
-  final target = chip == draftMatch ? 'draft' : chip;
+  final target = chip == home ? 'draft' : chip;
   if (target == 'draft') {
     if (stash != null) widget.onChanged(stash!);
     design = stashDesign ?? design;
@@ -543,8 +552,7 @@ void applyPreset(String name) {
 
 // In useThis(): a pin's values come from the pin itself, never from
 // widget.style, which updates only after the parent rebuilds.
-final values = picked?.values ??
-    (chip == 'original' ? <String, Object>{} : _changedWith(design, draft));
+final values = chip == null ? _changedWith(design, draft) : picked?.values ?? <String, Object>{};
 ```
 
 The sliders call `edit(draft.copyWith(...))` as before.
@@ -560,6 +568,7 @@ const Text('Design'),
 Wrap(spacing: 8, children: [
   for (final key in _designLabels.keys)
     ChoiceChip(label: Text(_designLabels[key]!), selected: design == key,
+        side: outline(design == key), showCheckmark: false,
         onSelected: editable ? (_) => edit(draft, design: key) : null),
 ]),
 ```

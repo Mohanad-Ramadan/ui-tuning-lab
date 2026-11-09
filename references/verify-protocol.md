@@ -93,11 +93,13 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
   values into the feature defaults (`references/landing-protocol.md`).
 - Chips, Pin, and Choose (`references/candidates.md`): Pin logs one
   `UITUNINGLAB_CANDIDATE` line per new readable name and is disabled while the
-  draft matches Shipped or a pin; the draft chip is hidden then, and appears,
-  last, as `<source> + edits` once the draft holds unpinned changes; × logs
+  draft matches Shipped or a pin; the selected chip is outlined, and the draft's
+  unpinned edits stay under the chip they started from; × logs
   `UITUNINGLAB_CANDIDATE_REMOVED`; each chip renders its look in the real
-  feature and the draft chip restores the draft exactly; closing while another
-  chip is shown restores the draft. Choose logs one
+  feature and tapping the draft's home chip again restores the draft exactly;
+  closing while another chip is shown restores the draft. Choose, then Change,
+  brings back the whole panel, controls included, at its original size: on
+  desktop windows that follow their content, check the frame after Change. Choose logs one
   `UITUNINGLAB_DONE` line naming the shown chip as `winner`, writes the result
   file, copies `land <name>`, and shrinks the panel to the result bar. The hint
   is visible without scrolling past the controls.

@@ -27,9 +27,9 @@ a list of fields is fine; keep each one labelled.
 - **Chips, Pin, and Choose**, with the hint line: see
   `references/candidates.md`. The Shipped chip is the baseline flip; while it
   is shown the controls are disabled, so an edit never lands on the baseline.
-  The draft chip ("Shipped + edits", "compact + edits") appears only while the
-  draft holds unpinned changes. Restore the draft if the lab closes while
-  another chip is shown.
+  The selected chip and the preset the draft started from are outlined; the draft
+  has no chip of its own, so unpinned edits stay under the chip they started
+  from. Restore the draft if the lab closes while another chip is shown.
 - **⋯ menu** with **Reset** (copies the baseline back into the draft) and
   **Copy values** (`references/landing-protocol.md`; it always reports the
   draft).

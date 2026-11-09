@@ -2,21 +2,36 @@
 
 ## 1.3.0 — unreleased
 
-### Plainer labels and a draft chip
+### Selection is an outline, and Change no longer loses the controls
+
+- **Bug fix (macOS):** after Choose and Change, the lab window came back only as
+  tall as its header and chips, with no controls. A desktop window follows its
+  content's ideal size, and a panel built on a `ScrollView` has almost none, so
+  the window collapsed with the result bar and stayed collapsed. The panel
+  branch now carries its own size (`.frame(width: 320, height: 420)`), and the
+  verify protocol checks the frame after Change.
+- The "<source> + edits" chip is gone. Chips are Shipped and each pin; the
+  selected chip is outlined (and so is the preset the draft started from), like
+  any selected option. Unpinned edits stay under their home chip: the chip the
+  draft matches, else the pin it was copied from, else Shipped. Tapping another
+  chip stashes them until the home chip is tapped again. To compare unpinned
+  edits with Shipped, Pin them first.
+- Choose picks what the feature shows. The wire format is unchanged: Shipped logs
+  `original`, a pin its name, unpinned edits `draft`.
+
+### Plainer labels
 
 - The panel's labels are plain words with no glyphs. The toggle is named after
   the feature ("Card Lab", "Nav Lab") instead of "Tune"; the Original chip is
   **Shipped**; Keep is **Pin**; Use this is **Choose**; the result bar reads
   "Chosen: capsule · Change"; the hint reads *Pin looks to compare · Choose to
   finish*. Saved looks are called pins.
-- The fixed Now chip is gone. The draft chip is hidden while the draft equals
-  Shipped or a pin, and appears last in the row only while the draft holds
-  unpinned changes, labeled after `basedOn`: "Shipped + edits",
-  "compact + edits", "capsule + edits". Pin is disabled while there is nothing
-  unpinned, and the new pin's chip replaces the draft chip. Reset returns the
-  draft to Shipped. Every example and the shared Swift asset implement it.
+- The fixed Now chip is gone, and so is any chip for unpinned edits (see
+  "Selection is an outline" below). Pin is disabled while there is nothing
+  unpinned. Reset returns the draft to Shipped. Every example and the shared
+  Swift asset implement it.
 - The wire format is unchanged: the Shipped chip still logs winner `original`,
-  the draft chip `draft`, and every log tag, key, and file path stays the same.
+  unpinned edits `draft`, and every log tag, key, and file path stays the same.
 
 ### Labs already in the project
 

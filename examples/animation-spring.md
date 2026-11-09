@@ -10,11 +10,12 @@ Every lab in this example provides:
 
 - **Replay**: re-creates the card (a bumped `id` / `key`) so its entrance runs again.
 - **Speed**: 1×, 0.5×, 0.25×, or 0.1×, applied by stretching the rendered duration.
-- **Chips**: Shipped (the declared default), each pin, and, last, the draft
-  chip ("Shipped + edits", "snappy + edits"), which appears only while the draft
-  holds unpinned changes; tapping one renders it in the real card and replays
-  it. The controls are disabled while Shipped is shown, and moving one while a
-  pin is shown copies that pin into the draft first.
+- **Chips**: Shipped (the declared default) and each pin; the selected chip is
+  outlined, and so is the preset the draft started from. Unpinned edits stay
+  under the chip they started from, with no chip of their own. Tapping a chip
+  renders it in the real card and replays it. The controls are disabled while
+  Shipped is shown away from the draft, and moving one while a pin is shown
+  copies that pin into the draft first.
 - **Reduced motion**: the feature keeps its own reduced animation, and the lab says
   when that is what you are seeing.
 - **⋯ menu**: Reset, and Copy values, which copies the draft fields that differ
@@ -22,7 +23,7 @@ Every lab in this example provides:
   landing (`references/landing-protocol.md`). Speed and the chip shown are
   preview settings and are never included.
 - **Pin** and **Choose**: Pin pins the draft, and is disabled while the draft
-  matches Shipped or a pin; Choose picks the chip shown, logs
+  matches Shipped or a pin; Choose picks what the card shows, logs
   `UITUNINGLAB_DONE`, stores the result, copies `land <name>`, and collapses the
   panel to a `Chosen:` bar with Change and Replay, as in
   `references/candidates.md`. The hint *Pin looks to compare · Choose to
@@ -242,8 +243,6 @@ struct UITuningLabMotionControls: View {
                                 .accessibilityLabel("Remove \(pin.name)")
                         }
                     }
-                    // The draft chip comes last, and only while the draft holds unpinned changes.
-                    if draftMatch == nil { chip(candidates.draftTitle, id: "draft") }
                 }
             }
             if reduceMotion {
@@ -251,8 +250,8 @@ struct UITuningLabMotionControls: View {
             }
             Group {
                 HStack {
-                    Button("Snappy") { apply(Self.snappy, named: "snappy") }
-                    Button("Playful") { apply(Self.playful, named: "playful") }
+                    Button("Snappy") { apply(Self.snappy, named: "snappy") }.uiTuningLabSelected(presetOn("snappy"))
+                    Button("Playful") { apply(Self.playful, named: "playful") }.uiTuningLabSelected(presetOn("playful"))
                 }
                 LabeledContent("Duration", value: String(format: "%.2f s", draft.wrappedValue.duration))
                     .accessibilityHidden(true)  // the slider reports its own value
@@ -305,24 +304,33 @@ struct UITuningLabMotionControls: View {
     }
 
     /// The chip the draft matches (`original` for Shipped, or a pin), or nil
-    /// while it holds unpinned changes and shows its own chip.
+    /// while it holds unpinned changes.
     private var draftMatch: String? { candidates.match(motion) }
 
-    /// The highlighted chip: the one shown, or the one the draft matches.
-    private var current: String { lab.shown == "draft" ? draftMatch ?? "draft" : lab.shown }
+    /// The chip the draft sits under: the chip it matches, else the pin it was
+    /// copied from, else Shipped. Unpinned edits stay under it; they have no chip
+    /// of their own.
+    private var home: String { candidates.home(motion) }
+
+    /// The selected chip: the one shown, or the draft's home.
+    private var current: String { lab.shown == "draft" ? home : lab.shown }
+
+    /// A preset is selected while the draft, with or without edits, started from it.
+    private func presetOn(_ name: String) -> Bool { lab.shown == "draft" && candidates.basedOn == name }
 
     /// One chip; the highlighted chip is the one the card shows.
     private func chip(_ title: String, id: String) -> some View {
         Button(title) { show(id) }
             .buttonStyle(.bordered)
             .tint(current == id ? .accentColor : .secondary)
+            .uiTuningLabSelected(current == id)
             .accessibilityAddTraits(current == id ? .isSelected : [])
     }
 
     /// Shows a chip in the real card. The draft stays in `motion` the whole
     /// time; tapping the chip the draft matches shows the draft.
     private func show(_ id: String) {
-        let target = id == draftMatch ? "draft" : id
+        let target = id == home ? "draft" : id
         lab.showing = target == "draft" ? nil : target == "original" ? baseline : candidates.named(target)?.value
         lab.shown = lab.showing == nil ? "draft" : target
     }
@@ -370,9 +378,10 @@ struct UITuningLabMotionControls: View {
         }
     }
 
-    /// Choose picks the highlighted chip: a pin, `original` for Shipped, or `draft`.
+    /// Choose picks what the feature shows: a pin, `original` for Shipped, or
+    /// `draft` while the draft holds unpinned edits.
     private func useThis() {
-        let winner = current
+        let winner = (lab.shown == "draft" ? draftMatch : lab.shown) ?? "draft"
         status = candidates.use(lab.showing ?? motion, winner: winner)
         sent = winner
     }
@@ -630,13 +639,17 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
 
   const shownCandidate = candidates.find(c => c.name === shown);
   // The chip the draft matches ("original" for Shipped, or a pin), or null while
-  // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+  // it holds unpinned changes.
   const draftValues = changedValues(baseline, motion);
   const draftMatch = Object.keys(draftValues).length === 0 ? "original"
     : candidates.find(c => sortedJson(c.values) === sortedJson(draftValues))?.name ?? null;
-  // The highlighted chip: the one shown, or the one the draft matches.
-  const current = shown === "draft" ? draftMatch ?? "draft" : shown;
-  const draftTitle = `${basedOn === "baseline" ? "Shipped" : basedOn} + edits`;
+  // The draft's home chip: the chip it matches, else the pin it was copied from,
+  // else Shipped. Unpinned edits stay under it; there is no chip of their own.
+  const home = draftMatch ?? (candidates.some(c => c.name === basedOn) ? basedOn : "original");
+  // The selected chip: the one shown, or the draft's home.
+  const current = shown === "draft" ? home : shown;
+  // A preset is selected while the draft, with or without edits, started from it.
+  const presetOn = (name: string) => shown === "draft" && basedOn === name;
   // Seeded pins log their own line the first time the lab shows them; the
   // set also guards StrictMode's repeated effects.
   useEffect(() => {
@@ -677,8 +690,8 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   }
   function reset() { edit(baseline, "baseline"); replayNow(); }
   function apply(name: keyof typeof presets) { edit(presets[name], name); replayNow(); }
-  // Tapping the chip the draft matches shows the draft itself.
-  function show(chip: string) { setShown(chip === draftMatch ? "draft" : chip); replayNow(); }
+  // Tapping the draft's home chip shows the draft itself.
+  function show(chip: string) { setShown(chip === home ? "draft" : chip); replayNow(); }
   // Pins the draft. Pin is disabled while the draft matches Shipped or a pin.
   function keep() {
     if (draftMatch !== null) return;
@@ -699,11 +712,12 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
     if (shown === name) show("draft");
   }
-  // Choose picks the highlighted chip and finishes: logs the result, stores it under
+  // Choose picks what the card shows (a pin, Shipped, or the draft while it holds
+  // unpinned edits) and finishes: logs the result, stores it under
   // `uiTuningLab.result` (one setItem replaces it atomically), copies
   // `land <name>`, and collapses the panel to one bar.
   async function useThis() {
-    const winner = current;
+    const winner = (shown === "draft" ? draftMatch : shown) ?? "draft";
     const done = { candidates, values: changedValues(baseline, source), winner };
     console.info(`UITUNINGLAB_DONE ${sortedJson(done)}`);
     const notes: string[] = [];
@@ -722,8 +736,9 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     setSent(winner);
   }
 
-  const chipStyle = (chip: string) => ({ fontWeight: current === chip ? 700 : 400,
-    outline: current === chip ? "2px solid AccentColor" : undefined });
+  // A selected chip or preset is outlined, so it reads as selected without a label.
+  const chipStyle = (on: boolean) => ({ fontWeight: on ? 700 : 400,
+    outline: on ? "2px solid Highlight" : undefined, outlineOffset: 1 });
 
   return <>
     <EntranceCard key={replay} motion={rendered} />
@@ -746,20 +761,22 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
         </details>
         <button type="button" onClick={closeLab}>Close</button>
         <div role="group" aria-label="Looks">
-          {["original", ...candidates.map(c => c.name), ...(draftMatch === null ? ["draft"] : [])]
+          {["original", ...candidates.map(c => c.name)]
             .map(chip => <span key={chip}>
-            <button type="button" aria-pressed={current === chip} style={chipStyle(chip)}
+            <button type="button" aria-pressed={current === chip} style={chipStyle(current === chip)}
               onClick={() => show(chip)}>
-              {chip === "original" ? "Shipped" : chip === "draft" ? draftTitle : chip}</button>
-            {chip !== "original" && chip !== "draft" && <button type="button"
+              {chip === "original" ? "Shipped" : chip}</button>
+            {chip !== "original" && <button type="button"
               aria-label={`Remove ${chip}`} onClick={() => remove(chip)}>×</button>}{" "}
           </span>)}
         </div>
         {reducedMotion && <p>Reduced motion is on, so the card shows its reduced animation.</p>}
         <fieldset disabled={shown === "original"} style={{ border: 0, margin: 0, padding: 0 }}>
           <button ref={firstControl} type="button"
+            aria-pressed={presetOn("snappy")} style={chipStyle(presetOn("snappy"))}
             onClick={() => apply("snappy")}>Snappy</button>
-          <button type="button" onClick={() => apply("playful")}>Playful</button>
+          <button type="button" aria-pressed={presetOn("playful")} style={chipStyle(presetOn("playful"))}
+            onClick={() => apply("playful")}>Playful</button>
           <label>Duration <input type="range" min="150" max="1500" step="10"
             value={source.durationMs}
             onChange={e => edit({ durationMs: Number(e.target.value) })}/>

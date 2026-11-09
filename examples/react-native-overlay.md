@@ -30,15 +30,15 @@ release bundle never contains, so nothing of it reaches Release.
 The lab component stays mounted while the screen is, so pins, `basedOn`, and
 the stashed draft survive closing the panel. The default lab is ephemeral: pins
 live in React state and the log, and a name is never reused within a JavaScript
-runtime. The chip row under the header shows Shipped, each pin, and, last, the
-draft chip ("Shipped + edits", "compact + edits"), which appears only while the
-draft holds unpinned changes; tapping a chip shows it in the real feature, and
-the draft is stashed meanwhile and restored when its chip is tapped or the
-panel closes. While Shipped is shown the presets and steppers are disabled;
-moving one while a pin is shown copies that pin into the draft first. **Pin**
-pins the draft and is disabled while the draft matches Shipped or a pin,
-**Choose** picks the shown chip and shrinks the panel to the result bar, and
-the **⋯** button opens Reset and Copy values.
+runtime. The chip row under the header shows Shipped and each pin; the selected
+chip is outlined, and so is the preset the draft started from. Unpinned edits
+stay under the chip they started from, with no chip of their own; tapping
+another chip stashes them until that chip is tapped again or the panel closes.
+While Shipped is shown away from the draft the presets and steppers are
+disabled; moving one while a pin is shown copies that pin into the draft first.
+**Pin** pins the draft and is disabled while the draft matches Shipped or a pin,
+**Choose** picks what the feature shows and shrinks the panel to the result bar,
+and the **⋯** button opens Reset and Copy values.
 
 ## Host change
 
@@ -198,13 +198,17 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const stashedDraft = useRef<CardConfig | null>(null); // the draft, while another chip is shown
   const editable = shown !== "original"; // never edit the baseline
   // The chip the draft matches ("original" for Shipped, or a pin), or null while
-  // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+  // it holds unpinned changes.
   const draftValues = changedValues(baseline, stashedDraft.current ?? config);
   const draftMatch = Object.keys(draftValues).length === 0 ? "original"
     : candidates.find(c => sortedJson(c.values) === sortedJson(draftValues))?.name ?? null;
-  // The highlighted chip: the one shown, or the one the draft matches.
-  const current = shown === "draft" ? draftMatch ?? "draft" : shown;
-  const draftTitle = `${basedOn === "baseline" ? "Shipped" : basedOn} + edits`;
+  // The draft's home chip: the chip it matches, else the pin it was copied from,
+  // else Shipped. Unpinned edits stay under it; there is no chip of their own.
+  const home = draftMatch ?? (candidates.some(c => c.name === basedOn) ? basedOn : "original");
+  // The selected chip: the one shown, or the draft's home.
+  const current = shown === "draft" ? home : shown;
+  // A preset is selected while the draft, with or without edits, started from it.
+  const presetOn = (name: string) => shown === "draft" && basedOn === name;
 
   // In an effect rather than a state initializer: StrictMode runs initializers
   // twice, and the second call would see the request already consumed.
@@ -224,10 +228,10 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     }
   }, [open, candidates]);
 
-  // Tapping a chip shows it in the real feature; the chip the draft matches
-  // shows the draft itself.
+  // Tapping a chip shows it in the real feature; the draft's home chip shows the
+  // draft itself.
   function show(chip: string) {
-    const target = chip === draftMatch ? "draft" : chip;
+    const target = chip === home ? "draft" : chip;
     if (target === "draft") {
       if (stashedDraft.current) setConfig(stashedDraft.current);
       stashedDraft.current = null;
@@ -285,12 +289,14 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     setCandidates(list => list.filter(c => c.name !== name));
     log("UITUNINGLAB_CANDIDATE_REMOVED", { name });
   }
-  // Choose: picks the highlighted chip and finishes. Picking again replaces the
-  // result. Not named useThis, which React's lint rules would treat as a hook.
+  // Choose: picks what the feature shows (a pin, Shipped, or the draft while it
+  // holds unpinned edits) and finishes. Picking again replaces the result. Not
+  // named useThis, which React's lint rules would treat as a hook.
   function pick() {
-    const picked = candidates.find(c => c.name === current);
-    const winner = picked?.name ?? (current === "original" ? "original" : "draft");
-    const values: Partial<CardConfig> = picked?.values ?? (current === "original" ? {} : draftValues);
+    const shownChip = shown === "draft" ? draftMatch : shown;
+    const picked = candidates.find(c => c.name === shownChip);
+    const winner = shownChip === null ? "draft" : picked?.name ?? "original";
+    const values: Partial<CardConfig> = shownChip === null ? draftValues : picked?.values ?? {};
     const done = { candidates, values, winner };
     // Logcat cuts entries near 4 KB. When the Done line may be cut, repeat each
     // pin on its own line first, so the agent can rebuild the list.
@@ -324,21 +330,20 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
           <Button title="Reset" onPress={reset} />
           <Button title="Copy values" onPress={copyValues} />
         </View>}
-        {/* The chips: Shipped, each pin, then the draft chip while the draft
-            holds unpinned changes. Highlighted = shown. */}
+        {/* The chips: Shipped, then each pin. The selected chip is outlined. */}
         <View style={styles.row}>
           <Button title="Shipped" selected={current === "original"} onPress={() => show("original")} />
           {candidates.map(c => <View key={c.name} style={styles.chip}>
             <Button title={c.name} selected={current === c.name} onPress={() => show(c.name)} />
             <Button title="×" label={`Remove ${c.name}`} onPress={() => remove(c.name)} />
           </View>)}
-          {draftMatch === null &&
-            <Button title={draftTitle} selected={current === "draft"} onPress={() => show("draft")} />}
         </View>
         <ScrollView style={{ flexGrow: 0, flexShrink: 1 }}>
           <View style={styles.row}>
-            <Button title="Compact" disabled={!editable} onPress={() => applyPreset("compact")} />
-            <Button title="Relaxed" disabled={!editable} onPress={() => applyPreset("relaxed")} />
+            <Button title="Compact" selected={presetOn("compact")} disabled={!editable}
+              onPress={() => applyPreset("compact")} />
+            <Button title="Relaxed" selected={presetOn("relaxed")} disabled={!editable}
+              onPress={() => applyPreset("relaxed")} />
           </View>
           <Stepper label="Radius" value={config.radius} max={32} disabled={!editable}
             onChange={radius => edit({ ...config, radius })} />
@@ -370,7 +375,8 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginVertical: 4 },
   button: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: "#999" },
-  selected: { backgroundColor: "#cde" },
+  // Outlined, so a selected chip or preset reads as selected without a label.
+  selected: { backgroundColor: "#dbeafe", borderColor: "#06c", borderWidth: 2, paddingHorizontal: 9, paddingVertical: 5 },
   chip: { flexDirection: "row", gap: 2 },
   bar: {
     flexDirection: "row", alignItems: "center", gap: 8, padding: 8, borderRadius: 20,

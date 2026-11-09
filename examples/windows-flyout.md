@@ -19,15 +19,15 @@ Activation (`references/activation.md`):
 The page owns the `UITuningLabFlyout` instance, so pins, `basedOn`, and the
 stashed draft survive closing the flyout. The default lab is ephemeral: pins
 live in memory and the debug output only, and a name is never reused within a
-process. The chip row under the header shows Shipped, each pin, and, last, the
-draft chip ("Shipped + edits", "compact + edits"), which appears only while the
-draft holds unpinned changes; clicking a chip shows it in the real feature, and
-the draft is stashed meanwhile and restored when its chip is clicked or the
-flyout closes. While Shipped is shown the presets and sliders are disabled;
+process. The chip row under the header shows Shipped and each pin; the selected
+chip is outlined, and so is the preset the draft started from. Unpinned edits
+stay under the chip they started from, with no chip of their own; clicking
+another chip stashes them until that chip is clicked again or the flyout closes.
+While Shipped is shown away from the draft the presets and sliders are disabled;
 moving one while a pin is shown copies that pin into the draft first. **Pin**
 pins the draft and is disabled while the draft matches Shipped or a pin,
-**Choose** picks the shown chip and shrinks the flyout to the result bar, and the **⋯** menu holds Reset and
-Copy values. The hint is a grid row below the `ScrollViewer`, so it stays
+**Choose** picks what the feature shows and shrinks the flyout to the result
+bar, and the **⋯** menu holds Reset and Copy values. The hint is a grid row below the `ScrollViewer`, so it stays
 visible.
 
 ## Host change
@@ -193,7 +193,7 @@ internal sealed class UITuningLabFlyout
     private bool refreshing;
     // Controls exist only while the flyout is open.
     private Grid? panel;
-    private StackPanel? resultBar, chips, draftControls;
+    private StackPanel? resultBar, chips, draftControls, presetRow;
     private TextBlock? resultText, status;
     private Slider? radiusSlider, spacingSlider;
     private Button? keepButton;
@@ -335,7 +335,7 @@ internal sealed class UITuningLabFlyout
         Show("draft");
         if (flyout != null) { flyout.Closed -= OnClosed; flyout.Content = null; }
         flyout = null;
-        panel = null; resultBar = chips = draftControls = null; resultText = status = null;
+        panel = null; resultBar = chips = draftControls = presetRow = null; resultText = status = null;
         radiusSlider = spacingSlider = null; keepButton = null;
         tuneButton.Focus(FocusState.Programmatic);
     }
@@ -361,8 +361,8 @@ internal sealed class UITuningLabFlyout
         Grid.SetColumn(closeButton, 2);
         header.Children.Add(closeButton);
 
-        // The chips: Shipped, each pin, then the draft chip while the draft holds
-        // unpinned changes. Refresh fills them.
+        // The chips: Shipped, then each pin. Refresh fills them and outlines the
+        // selected one.
         chips = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         var chipScroller = new ScrollViewer
         {
@@ -372,10 +372,10 @@ internal sealed class UITuningLabFlyout
 
         var body = new StackPanel { Spacing = 8 };
         draftControls = new StackPanel { Spacing = 8 };
-        var presetRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        presetRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         foreach (var (key, label, value) in Presets)
         {
-            var b = new Button { Content = label };
+            var b = new Button { Content = label, Tag = key };
             b.Click += (_, _) => { lastPreset = key; Edit(value, key); };
             presetRow.Children.Add(b);
         }
@@ -446,7 +446,7 @@ internal sealed class UITuningLabFlyout
     }
 
     // The chip the draft matches ("original" for Shipped, or a pin), or null while
-    // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+    // it holds unpinned changes.
     private string? DraftMatch()
     {
         var values = Changed(stash ?? getDraft());
@@ -454,10 +454,24 @@ internal sealed class UITuningLabFlyout
         return candidates.Find(c => Json(c.Values) == Json(values))?.Name;
     }
 
-    // The highlighted chip: the one shown, or the one the draft matches.
-    private string Current() => shown == "draft" ? DraftMatch() ?? "draft" : shown;
+    // The draft's home chip: the chip it matches, else the pin it was copied from,
+    // else Shipped. Unpinned edits stay under it; there is no chip of their own.
+    private string Home() =>
+        DraftMatch() ?? (candidates.Exists(c => c.Name == basedOn) ? basedOn : "original");
 
-    private string DraftTitle => $"{(basedOn == "baseline" ? "Shipped" : basedOn)} + edits";
+    // The selected chip: the one shown, or the draft's home.
+    private string Current() => shown == "draft" ? Home() : shown;
+
+    // A preset is selected while the draft, with or without edits, started from it.
+    private bool PresetOn(string key) => shown == "draft" && basedOn == key;
+
+    // A selected chip or preset is outlined, so it reads as selected without a label.
+    private static void Outline(Control control, bool on)
+    {
+        control.BorderThickness = new Thickness(on ? 2 : 1);
+        if (on) control.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentFillColorDefaultBrush"];
+        else control.ClearValue(Control.BorderBrushProperty);
+    }
 
     // Brings every control in line with the draft, the pins, and the shown chip.
     private void Refresh()
@@ -475,6 +489,7 @@ internal sealed class UITuningLabFlyout
         foreach (var control in draftControls!.Children.OfType<Control>()) control.IsEnabled = editable;
         foreach (var row in draftControls.Children.OfType<StackPanel>())
             foreach (var control in row.Children.OfType<Control>()) control.IsEnabled = editable;
+        foreach (var preset in presetRow!.Children.OfType<Button>()) Outline(preset, PresetOn((string)preset.Tag));
         keepButton!.IsEnabled = match == null; // nothing to pin while the draft matches a chip
         chips!.Children.Clear();
         AddChip("Shipped", "original");
@@ -487,13 +502,13 @@ internal sealed class UITuningLabFlyout
             remove.Click += (_, _) => Later(() => Remove(name));
             chips.Children.Add(remove);
         }
-        if (match == null) AddChip(DraftTitle, "draft");
         refreshing = false;
     }
 
     private void AddChip(string label, string target)
     {
         var chip = new ToggleButton { Content = label, IsChecked = Current() == target };
+        Outline(chip, Current() == target);
         chip.Click += (_, _) => Later(() => Show(target));
         chips!.Children.Add(chip);
     }
@@ -501,11 +516,11 @@ internal sealed class UITuningLabFlyout
     // The chips are rebuilt by Refresh; do that after the click, not inside it.
     private void Later(Action action) => tuneButton.DispatcherQueue.TryEnqueue(() => { if (flyout != null) action(); });
 
-    // Clicking a chip shows it in the real feature; the chip the draft matches
-    // shows the draft itself.
+    // Clicking a chip shows it in the real feature; the draft's home chip shows
+    // the draft itself.
     private void Show(string chip)
     {
-        var target = chip == DraftMatch() ? "draft" : chip;
+        var target = chip == Home() ? "draft" : chip;
         if (target == "draft")
         {
             if (stash != null) setDraft(stash);
@@ -532,7 +547,7 @@ internal sealed class UITuningLabFlyout
         stash = null;
         shown = "draft";
         setDraft(next);
-        // Refresh when the draft chip appears or hides, not on every slider tick.
+        // Refresh when Pin's state or a selection changes, not on every slider tick.
         if (chipChanged || from != null || match != DraftMatch()) Refresh();
     }
 
@@ -582,14 +597,14 @@ internal sealed class UITuningLabFlyout
         Refresh();
     }
 
-    // Choose picks the highlighted chip and finishes. Picking again replaces the
-    // result.
+    // Choose picks what the feature shows (a pin, Shipped, or the draft while it
+    // holds unpinned edits) and finishes. Picking again replaces the result.
     private void UseThis()
     {
-        var chip = Current();
+        var chip = shown == "draft" ? DraftMatch() : shown;
         var picked = candidates.Find(c => c.Name == chip);
-        var winner = picked?.Name ?? (chip == "original" ? "original" : "draft");
-        var values = picked?.Values ?? (chip == "original" ? new SortedDictionary<string, double>() : Changed(getDraft()));
+        var winner = chip == null ? "draft" : picked?.Name ?? "original";
+        var values = chip == null ? Changed(getDraft()) : picked?.Values ?? new SortedDictionary<string, double>();
         var done = new SortedDictionary<string, object?>
         {
             ["candidates"] = candidates.Select(c => c.AsJson()).ToList(),

@@ -28,7 +28,7 @@ presses Choose, and write the same object to the result file
 1. What the user says in chat wins: values they pasted, or a name they gave
    (`land capsule`).
 2. Otherwise the newest `UITUNINGLAB_DONE` line, else the result file. Land its
-   `winner`: a pin's values, `draft` values (the draft chip), or nothing for
+   `winner`: a pin's values, `draft` values (unpinned edits), or nothing for
    `original` (the Shipped chip).
 3. Otherwise the newest `UITUNINGLAB_VALUES` line.
 

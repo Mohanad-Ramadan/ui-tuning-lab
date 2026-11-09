@@ -22,16 +22,17 @@ Activation (`references/activation.md`):
 The host owns the `UITuningLabCandidates` store beside the draft, so pins,
 `basedOn`, and the stashed draft survive closing the panel. The default lab is
 ephemeral: pins live in memory and in logcat only, and a name is never reused
-within a process. The chip row under the header shows Shipped, each pin, and,
-last, the draft chip ("Shipped + edits", "compact + edits"), which appears only
-while the draft holds unpinned changes; tapping a chip shows it in the real
-feature, and the draft is stashed meanwhile and restored when its chip is
-tapped or the panel closes. While Shipped is shown the presets and sliders are
-disabled; moving one while a pin is shown copies that pin into the draft first.
-**Pin** pins the draft and is disabled while the draft matches Shipped or a
-pin, **Choose** picks the shown chip and shrinks the panel to the result bar,
-and the **⋯** menu holds Reset and Copy values. The panel's height is capped and the hint sits below the scrolling
-controls, so it is visible at any panel or screen size.
+within a process. The chip row under the header shows Shipped and each pin; the
+selected chip is outlined, and so is the preset the draft started from. Unpinned
+edits stay under the chip they started from, with no chip of their own; tapping
+another chip stashes them until that chip is tapped again or the panel closes.
+While Shipped is shown away from the draft the presets and sliders are disabled;
+moving one while a pin is shown copies that pin into the draft first. **Pin**
+pins the draft and is disabled while the draft matches Shipped or a pin,
+**Choose** picks what the feature shows and shrinks the panel to the result bar,
+and the **⋯** menu holds Reset and Copy values. The panel's height is capped and
+the hint sits below the scrolling controls, so it is visible at any panel or
+screen size.
 
 ## Host change (main source set)
 
@@ -282,27 +283,33 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
     private var stash: CardStyle? = null
 
     // The chip the draft matches ("original" for Shipped, or a pin), or null while
-    // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+    // it holds unpinned changes.
     fun draftMatch(onScreen: CardStyle): String? {
         val values = uiTuningLabChanged(stash ?: onScreen)
         if (values.isEmpty()) return "original"
         return list.firstOrNull { it.values == values }?.name
     }
 
-    // The highlighted chip: the one shown, or the one the draft matches.
-    fun current(onScreen: CardStyle) = if (shown == "draft") draftMatch(onScreen) ?: "draft" else shown
+    // The draft's home chip: the chip it matches, else the pin it was copied from,
+    // else Shipped. Unpinned edits stay under it; there is no chip of their own.
+    fun home(onScreen: CardStyle) =
+        draftMatch(onScreen) ?: if (list.any { it.name == basedOn }) basedOn else "original"
 
-    val draftTitle get() = "${if (basedOn == "baseline") "Shipped" else basedOn} + edits"
+    // The selected chip: the one shown, or the draft's home.
+    fun current(onScreen: CardStyle) = if (shown == "draft") home(onScreen) else shown
+
+    // A preset is selected while the draft, with or without edits, started from it.
+    fun presetOn(name: String) = shown == "draft" && basedOn == name
 
     // Seeded or stored pins log their own line the first time the lab shows them.
     fun logUnlogged() {
         for (c in list) if (logged.add(c.name)) uiTuningLabLog("UITUNINGLAB_CANDIDATE", uiTuningLabJson(c.asMap()))
     }
 
-    // Tapping a chip shows it in the real feature; the chip the draft matches
-    // shows the draft itself.
+    // Tapping a chip shows it in the real feature; the draft's home chip shows
+    // the draft itself.
     fun show(chip: String, draft: CardStyle, setDraft: (CardStyle) -> Unit) {
-        val target = if (chip == draftMatch(draft)) "draft" else chip
+        val target = if (chip == home(draft)) "draft" else chip
         if (target == "draft") {
             stash?.let(setDraft)
             stash = null
@@ -371,13 +378,14 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
         uiTuningLabLog("UITUNINGLAB_CANDIDATE_REMOVED", uiTuningLabJson(mapOf("name" to name)))
     }
 
-    // Choose picks the highlighted chip and finishes; returns the code for the
-    // clipboard. Picking again replaces the result: the newest pick wins.
+    // Choose picks what the feature shows (a pin, Shipped, or the draft while it
+    // holds unpinned edits) and finishes; returns the code for the clipboard.
+    // Picking again replaces the result: the newest pick wins.
     fun useThis(draft: CardStyle, resultFile: File): String {
-        val chip = current(draft)
+        val chip = if (shown == "draft") draftMatch(draft) else shown
         val picked = list.firstOrNull { it.name == chip }
-        val winner = picked?.name ?: if (chip == "original") "original" else "draft"
-        val values = picked?.values ?: if (chip == "original") emptyMap<String, Any>() else uiTuningLabChanged(draft)
+        val winner = if (chip == null) "draft" else picked?.name ?: "original"
+        val values = if (chip == null) uiTuningLabChanged(draft) else picked?.values ?: emptyMap<String, Any>()
         val done = mapOf("candidates" to list.map { it.asMap() }, "values" to values, "winner" to winner)
         val line = uiTuningLabJson(done)
         // Logcat cuts entries near 4 KB. When the Done line may be cut, repeat each
@@ -484,16 +492,20 @@ fun UITuningLabPanel(
                 }
                 TextButton(onClick = onClose) { Text("Close") }
             }
-            // The chips: Shipped, each pin, then the draft chip while the draft holds
-            // unpinned changes. Highlighted = shown.
+            // The chips: Shipped, then each pin. The selected chip is outlined.
             val current = lab.current(draft)
             val unpinned = lab.draftMatch(draft) == null
+            val outline = MaterialTheme.colorScheme.primary
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 FilterChip(selected = current == "original", onClick = { lab.show("original", draft, setDraft) },
-                    label = { Text("Shipped") }, modifier = Modifier.padding(end = 8.dp))
+                    label = { Text("Shipped") }, modifier = Modifier.padding(end = 8.dp),
+                    border = FilterChipDefaults.filterChipBorder(enabled = true, selected = current == "original",
+                        selectedBorderColor = outline, selectedBorderWidth = 2.dp))
                 for (c in lab.list) {
                     InputChip(selected = current == c.name, onClick = { lab.show(c.name, draft, setDraft) },
                         label = { Text(c.name) }, modifier = Modifier.padding(end = 8.dp),
+                        border = InputChipDefaults.inputChipBorder(enabled = true, selected = current == c.name,
+                            selectedBorderColor = outline, selectedBorderWidth = 2.dp),
                         trailingIcon = {
                             IconButton(onClick = { lab.remove(c.name, draft, setDraft) },
                                 modifier = Modifier.size(24.dp).semantics { contentDescription = "Remove ${c.name}" }) {
@@ -501,15 +513,12 @@ fun UITuningLabPanel(
                             }
                         })
                 }
-                if (unpinned) {
-                    FilterChip(selected = current == "draft", onClick = { lab.show("draft", draft, setDraft) },
-                        label = { Text(lab.draftTitle) }, modifier = Modifier.padding(end = 8.dp))
-                }
             }
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                 Row {
                     for (name in uiTuningLabPresets.keys) {
                         OutlinedButton(enabled = editable, onClick = { lab.applyPreset(name, setDraft) },
+                            border = if (lab.presetOn(name)) BorderStroke(2.dp, outline) else ButtonDefaults.outlinedButtonBorder(editable),
                             modifier = Modifier.padding(end = 8.dp)) { Text(name.replaceFirstChar(Char::uppercase)) }
                     }
                 }

@@ -27,9 +27,10 @@ A good lab feels like this:
 - **It reads as its own surface.** The panel has a visible outline against the
   screen, even when the app's background is the same color; a shadow alone does
   not count.
-- **Chips** flip the real feature between Shipped, each pin, and the draft
-  (shown as "Shipped + edits" or "compact + edits" only while it holds unpinned
-  changes); **Replay** and **Speed** make motion judgeable.
+- **Chips** flip the real feature between Shipped and each pin; the selected
+  chip, and the preset the draft started from, are outlined like any selected
+  option. Unpinned edits stay under the chip they started from, with no chip of
+  their own. **Replay** and **Speed** make motion judgeable.
 - **Pin** saves the draft as a pin; **Choose** picks what is shown
   and hands it to the agent, with no paste: log line, result file, and a
   `land <name>` code on the clipboard. One hint line says how to finish.

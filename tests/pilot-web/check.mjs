@@ -100,18 +100,26 @@ async function devChecks(engineName, engine, viewportName) {
     await page.locator(".card").last().click({ timeout: 3000 });
     record(scope, "clicking the feature keeps the lab open", await dialog.isVisible());
 
+    // Unpinned edits sit under Shipped, their home chip, so Shipped cannot show
+    // the baseline until they are pinned.
     const draft = await cardStyles(page);
+    record(scope, "unpinned edits have no chip of their own",
+      (await page.getByRole("button", { name: /\+ edits$/ }).count()) === 0);
+    record(scope, "the selected chip is outlined",
+      (await page.getByRole("button", { name: "Shipped", exact: true }).evaluate(
+        el => getComputedStyle(el).outlineStyle)) === "solid");
+    await page.getByRole("button", { name: "Pin" }).click();
     await page.getByRole("button", { name: "Shipped", exact: true }).click();
     record(scope, "the Shipped chip renders the baseline", same(before, await cardStyles(page)));
     record(scope, "editing is disabled while Shipped is shown",
       await page.getByRole("button", { name: "Compact" }).isDisabled());
-    await page.getByRole("button", { name: "compact + edits" }).click();
-    record(scope, "the draft chip restores the draft", same(draft, await cardStyles(page)));
+    await page.getByRole("button", { name: "compact", exact: true }).click();
+    record(scope, "the pin chip restores its look", same(draft, await cardStyles(page)));
 
     // Change exactly one field so an over-reporting Copy cannot pass.
     await menuItem(page, "Reset");
-    record(scope, "after Reset the draft chip is hidden",
-      (await page.getByRole("button", { name: /\+ edits$/ }).count()) === 0);
+    record(scope, "after Reset Shipped is the selected chip",
+      (await page.getByRole("button", { name: "Shipped", exact: true }).getAttribute("aria-pressed")) === "true");
     await setRange(page, /Radius/, 20);
     logs.length = 0;
     await menuItem(page, "Copy values");
@@ -159,7 +167,9 @@ async function devChecks(engineName, engine, viewportName) {
       `${reopenLine ?? "no UITUNINGLAB_VALUES line"}; expected ${sorted(expectedDraft)}`);
     await setRange(page, /Radius/, 6);
     const draftAgain = await cardStyles(page);
-    // Closing while Shipped is shown must bring the draft back.
+    // Pin the draft so Shipped is a separate look, then close while it is shown:
+    // the draft must come back.
+    await page.getByRole("button", { name: "Pin" }).click();
     await page.getByRole("button", { name: "Shipped", exact: true }).click();
     record(scope, "after reopening, Shipped shows the declared default",
       same(before, await cardStyles(page)) && !same(before, draftAgain));

@@ -11,8 +11,8 @@ material setup question, plus how the lab should open. Activation has an agent
 path, one or more human fast paths the user picks, and a visible fallback; shake
 is offered only when inspection proves it free. Ephemeral labs need
 no configuration file. Every lab lets you pin finalists (Pin), flip between
-them with the chips (Shipped, each pin, and the draft while it has unpinned
-edits), and press Choose to hand the pick to the agent; a footer hint says how
+them with the chips (Shipped and each pin; the selected one is outlined, and
+unpinned edits stay under the chip they started from), and press Choose to hand the pick to the agent; a footer hint says how
 to finish. Pins stay in memory unless you ask to save them; saved ones live under `uiTuningLab.*` or `.ui-tuning-lab/`,
 and finalists you keep at landing are seeded into the lab next time.
 

@@ -5,7 +5,7 @@
       "id": 1,
       "name": "ephemeral-web-lab",
       "prompt": "In this Vite + React app, I want to tune the card radius and gap on the home screen live in the browser. Set up whatever you need.",
-      "expected_output": "A development-only lab module next to the feature, loaded through a gated dynamic import, with presets, sliders, the Shipped and draft chips, Pin, Choose, Reset, and Copy values, and no storage writer besides the result file.",
+      "expected_output": "A development-only lab module next to the feature, loaded through a gated dynamic import, with presets, sliders, the Shipped chip, Pin, Choose, Reset, and Copy values, and no storage writer besides the result file.",
       "files": [
         "pilots/web-vite"
       ],
@@ -13,7 +13,7 @@
         "Lab code lives in a *.ui-tuning-lab.tsx module",
         "The host loads the lab only via import() inside if (import.meta.env.DEV) {",
         "scripts/verify.sh source-gates on the feature directory exits 0",
-        "The lab has at least two presets, the Shipped chip, a draft chip shown as '<source> + edits' only while the draft holds unpinned changes, Pin, Choose, Reset, and Copy values",
+        "The lab has at least two presets, the Shipped chip with the selected chip outlined and no chip for unpinned edits, Pin, Choose, Reset, and Copy values",
         "No localStorage, sessionStorage, or IndexedDB writes exist in the lab",
         "vite build output contains no UITuningLab, uiTuningLab, or ui-tuning-lab strings"
       ]

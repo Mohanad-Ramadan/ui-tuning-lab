@@ -9,13 +9,13 @@ the agent path (`references/activation.md`). **Copy values** puts the fields tha
 from the baseline on the pasteboard and logs them as one
 `UITUNINGLAB_VALUES {...}` line for landing (`references/landing-protocol.md`).
 The chips, **Pin**, **Choose**, and the **⋯** menu (Reset, Copy values)
-follow `references/candidates.md`. The chip row shows Shipped, each pin, and,
-last, the draft chip ("Shipped + edits", "compact + edits"), which appears only
-while the draft holds unpinned changes; clicking a chip shows it in the real
-toolbar, and the draft is stashed meanwhile and restored when its chip is
-clicked or the panel closes. The controls are disabled while Shipped is shown;
-moving one while a pin is shown copies that pin into the draft first. **Pin** is
-disabled while the draft matches Shipped or a pin. **Choose** logs
+follow `references/candidates.md`. The chip row shows Shipped and each pin; the
+selected chip is outlined, and so is the preset the draft started from. Unpinned
+edits stay under the chip they started from, with no chip of their own; clicking
+another chip stashes them until that chip is clicked again or the panel closes.
+The controls are disabled while Shipped is shown away from the draft; moving one
+while a pin is shown copies that pin into the draft first. **Pin** is disabled
+while the draft matches Shipped or a pin. **Choose** logs
 `UITUNINGLAB_DONE`, writes Application Support
 `<bundle-id>/.ui-tuning-lab/result.json`, copies `land <name>`, and collapses
 the panel to a `Chosen:` bar whose Change button reopens it. The coordinator
@@ -24,8 +24,9 @@ survive closing the panel; in the default candidate they live in memory and in
 the log, and a name is never reused within a run. The hint is pinned below the
 controls. To reopen a session, seed the store's `initial:` array; each seeded
 pin logs its own `UITUNINGLAB_CANDIDATE` line. The default candidate saves no
-pins. Every
-lab type carries the `UITuningLab` prefix and lives in a file wrapped in
+pins. The panel
+carries its own fixed size, because the window follows its content (see the note
+in `UITuningLabPanel`). Every lab type carries the `UITuningLab` prefix and lives in a file wrapped in
 `#if DEBUG`, so `source-gates` can find it and Release builds compile it out.
 
 <!-- file: ExampleApp.swift -->
@@ -230,7 +231,7 @@ struct UITuningLabPanel: View {
                 if let status { Text(status).font(.footnote) }
             }
             .padding()
-            .frame(width: 300)
+            .frame(width: 320)
         } else {
             panel
         }
@@ -264,14 +265,12 @@ struct UITuningLabPanel: View {
                                 .accessibilityLabel("Remove \(pin.name)")
                         }
                     }
-                    // The draft chip comes last, and only while the draft holds unpinned changes.
-                    if draftMatch == nil { chip(candidates.draftTitle, id: "draft") }
                 }
             }
             Group {
                 HStack {
-                    Button("Compact") { edit(Self.compact, basedOn: "compact") }
-                    Button("Spacious") { edit(Self.spacious, basedOn: "spacious") }
+                    Button("Compact") { edit(Self.compact, basedOn: "compact") }.uiTuningLabSelected(presetOn("compact"))
+                    Button("Spacious") { edit(Self.spacious, basedOn: "spacious") }.uiTuningLabSelected(presetOn("spacious"))
                 }
                 LabeledContent("Height", value: "\(Int(model.style.height)) pt")
                     .accessibilityHidden(true)  // the slider reports its own value
@@ -300,20 +299,34 @@ struct UITuningLabPanel: View {
                 .background(.bar)
         }
         .padding()
+        // The window follows its content, so this branch carries its own size:
+        // without it the panel comes back from the result bar only as tall as
+        // its header and chips, with no controls. Keep it when the controls
+        // become a ScrollView, whose ideal height is close to zero.
+        .frame(width: 320, height: 420)
     }
 
     /// The chip the draft matches (`original` for Shipped, or a pin), or nil
-    /// while it holds unpinned changes and shows its own chip.
+    /// while it holds unpinned changes.
     private var draftMatch: String? { candidates.match(lab.stashedDraft ?? model.style) }
 
-    /// The highlighted chip: the one shown, or the one the draft matches.
-    private var current: String { lab.shown == "draft" ? draftMatch ?? "draft" : lab.shown }
+    /// The chip the draft sits under: the chip it matches, else the pin it was
+    /// copied from, else Shipped. Unpinned edits stay under it; they have no chip
+    /// of their own.
+    private var home: String { candidates.home(lab.stashedDraft ?? model.style) }
+
+    /// The selected chip: the one shown, or the draft's home.
+    private var current: String { lab.shown == "draft" ? home : lab.shown }
+
+    /// A preset is selected while the draft, with or without edits, started from it.
+    private func presetOn(_ name: String) -> Bool { lab.shown == "draft" && candidates.basedOn == name }
 
     /// One chip; the highlighted chip is the one the feature shows.
     private func chip(_ title: String, id: String) -> some View {
         Button(title) { show(id) }
             .buttonStyle(.bordered)
             .tint(current == id ? .accentColor : .secondary)
+            .uiTuningLabSelected(current == id)
             .accessibilityAddTraits(current == id ? .isSelected : [])
     }
 
@@ -321,7 +334,7 @@ struct UITuningLabPanel: View {
     /// chip is shown and restored when its chip, or the chip it matches, is
     /// clicked, or the panel closes.
     private func show(_ id: String) {
-        let target = id == draftMatch ? "draft" : id
+        let target = id == home ? "draft" : id
         if target == "draft" {
             if let draft = lab.stashedDraft { model.style = draft }
             lab.stashedDraft = nil
@@ -371,9 +384,10 @@ struct UITuningLabPanel: View {
         }
     }
 
-    /// Choose picks the highlighted chip: a pin, `original` for Shipped, or `draft`.
+    /// Choose picks what the feature shows: a pin, `original` for Shipped, or
+    /// `draft` while the draft holds unpinned edits.
     private func useThis() {
-        let winner = current
+        let winner = (lab.shown == "draft" ? draftMatch : lab.shown) ?? "draft"
         status = candidates.use(model.style, winner: winner)
         lab.sent = winner
     }
@@ -470,7 +484,7 @@ struct UITuningLabPanel: View {
                 if let status { Text(status).font(.footnote) }
             }
             .padding()
-            .frame(width: 300)
+            .frame(width: 320)
         } else {
             panel
         }
@@ -504,14 +518,12 @@ struct UITuningLabPanel: View {
                                 .accessibilityLabel("Remove \(pin.name)")
                         }
                     }
-                    // The draft chip comes last, and only while the draft holds unpinned changes.
-                    if draftMatch == nil { chip(candidates.draftTitle, id: "draft") }
                 }
             }
             Group {
                 HStack {
-                    Button("Compact") { edit(Self.compact, basedOn: "compact") }
-                    Button("Spacious") { edit(Self.spacious, basedOn: "spacious") }
+                    Button("Compact") { edit(Self.compact, basedOn: "compact") }.uiTuningLabSelected(presetOn("compact"))
+                    Button("Spacious") { edit(Self.spacious, basedOn: "spacious") }.uiTuningLabSelected(presetOn("spacious"))
                 }
                 LabeledContent("Height", value: "\(Int(model.style.height)) pt")
                     .accessibilityHidden(true)  // the slider reports its own value
@@ -540,21 +552,32 @@ struct UITuningLabPanel: View {
                 .background(.bar)
         }
         .padding()
+        // The window follows its content; see the default variant's note.
+        .frame(width: 320, height: 420)
         .onAppear(perform: loadSaved)
     }
 
     /// The chip the draft matches (`original` for Shipped, or a pin), or nil
-    /// while it holds unpinned changes and shows its own chip.
+    /// while it holds unpinned changes.
     private var draftMatch: String? { candidates.match(lab.stashedDraft ?? model.style) }
 
-    /// The highlighted chip: the one shown, or the one the draft matches.
-    private var current: String { lab.shown == "draft" ? draftMatch ?? "draft" : lab.shown }
+    /// The chip the draft sits under: the chip it matches, else the pin it was
+    /// copied from, else Shipped. Unpinned edits stay under it; they have no chip
+    /// of their own.
+    private var home: String { candidates.home(lab.stashedDraft ?? model.style) }
+
+    /// The selected chip: the one shown, or the draft's home.
+    private var current: String { lab.shown == "draft" ? home : lab.shown }
+
+    /// A preset is selected while the draft, with or without edits, started from it.
+    private func presetOn(_ name: String) -> Bool { lab.shown == "draft" && candidates.basedOn == name }
 
     /// One chip; the highlighted chip is the one the feature shows.
     private func chip(_ title: String, id: String) -> some View {
         Button(title) { show(id) }
             .buttonStyle(.bordered)
             .tint(current == id ? .accentColor : .secondary)
+            .uiTuningLabSelected(current == id)
             .accessibilityAddTraits(current == id ? .isSelected : [])
     }
 
@@ -562,7 +585,7 @@ struct UITuningLabPanel: View {
     /// chip is shown and restored when its chip, or the chip it matches, is
     /// clicked, or the panel closes.
     private func show(_ id: String) {
-        let target = id == draftMatch ? "draft" : id
+        let target = id == home ? "draft" : id
         if target == "draft" {
             if let draft = lab.stashedDraft { model.style = draft }
             lab.stashedDraft = nil
@@ -620,9 +643,10 @@ struct UITuningLabPanel: View {
         }
     }
 
-    /// Choose picks the highlighted chip: a pin, `original` for Shipped, or `draft`.
+    /// Choose picks what the feature shows: a pin, `original` for Shipped, or
+    /// `draft` while the draft holds unpinned edits.
     private func useThis() {
-        let winner = current
+        let winner = (lab.shown == "draft" ? draftMatch : lab.shown) ?? "draft"
         status = candidates.use(model.style, winner: winner)
         lab.sent = winner
     }

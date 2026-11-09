@@ -1,5 +1,6 @@
 import Foundation
 import os
+import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -73,17 +74,20 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
     }
 
     /// The chip the draft already matches: `original` for Shipped, a pin's
-    /// name, or nil when the draft holds unpinned changes. The draft chip is
-    /// shown only while this is nil.
+    /// name, or nil when the draft holds unpinned changes. Pin is enabled only
+    /// while this is nil.
     func match(_ draft: Value) -> String? {
         guard let values = try? uiTuningLabChangedValues(from: baseline, to: draft) else { return nil }
         if values == "{}" { return "original" }
         return all.first { (try? uiTuningLabChangedValues(from: baseline, to: $0.value)) == values }?.name
     }
 
-    /// The draft chip's label: where the draft came from, plus edits
-    /// ("Shipped + edits", "compact + edits", "capsule + edits").
-    var draftTitle: String { "\(basedOn == "baseline" ? "Shipped" : basedOn) + edits" }
+    /// The chip the draft sits under: the chip it matches, else the pin it was
+    /// copied from, else Shipped (`original`). Unpinned edits stay under it;
+    /// they have no chip of their own.
+    func home(_ draft: Value) -> String {
+        match(draft) ?? (named(basedOn) != nil ? basedOn : "original")
+    }
 
     /// Marks names as used, such as every file in storage, so Pin never issues them.
     func reserve(_ names: some Sequence<String>) { taken.formUnion(names) }
@@ -273,6 +277,15 @@ private func uiTuningLabNormalized(_ field: Any) -> Any {
         return NSDecimalNumber(string: "\(rounded)")
     default:
         return field
+    }
+}
+
+extension View {
+    /// Outlines a selected chip or preset, so it reads as selected without a
+    /// label: a 2 pt accent ring around the control.
+    func uiTuningLabSelected(_ on: Bool) -> some View {
+        overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .strokeBorder(Color.accentColor, lineWidth: on ? 2 : 0))
     }
 }
 #endif

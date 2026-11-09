@@ -9,15 +9,14 @@ development module (`references/activation.md`). The baseline is the declared
 default, `appDefault`; closing unmounts the popover and its listener.
 
 The panel follows `references/candidates.md`. A chip row under the header shows
-**Shipped**, each pin, and, last, the draft chip, which appears only while the
-draft holds unpinned changes and is labeled after where it came from
-(`Shipped + edits`, `compact + edits`); tapping a chip shows it in the real
-feature, and the highlighted chip is the one shown. The draft is stashed while
-another chip is shown and restored when its chip is tapped or the lab closes.
-The controls edit the draft and are disabled while Shipped is shown; moving one
-while a pin is shown copies that pin into the draft first. **Pin** pins the
+**Shipped** and each pin; the selected chip is outlined, and so is the preset the
+draft started from. Unpinned edits stay under the chip they started from, with no
+chip of their own, and tapping another chip stashes them until that chip is
+tapped again or the lab closes. The controls edit the draft and are disabled
+while Shipped is shown away from the draft; moving one while a pin is shown
+copies that pin into the draft first. **Pin** pins the
 draft, named after the last preset applied or `tweak`, and is disabled while the
-draft matches Shipped or a pin. **Choose** picks the shown chip: it logs
+draft matches Shipped or a pin. **Choose** picks what the feature shows: it logs
 `UITUNINGLAB_DONE`, writes the same object to the `localStorage` key
 `uiTuningLab.result`, copies `land <name>` to the clipboard, and shrinks the
 panel to `Chosen: <name>` with **Change** to reopen it. The **⋯** menu holds
@@ -97,6 +96,10 @@ const panelStyle = {
 } as const;
 const triggerStyle = { position: "fixed", insetBlockEnd: 16, insetInlineEnd: 16 } as const;
 const rowStyle = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, margin: "4px 0" } as const;
+// A selected chip or preset is outlined, so it reads as selected without a label.
+// Highlight follows color-scheme, so the outline holds in light and dark mode.
+const selectedStyle = (on: boolean) =>
+  on ? { outline: "2px solid Highlight", outlineOffset: 1, fontWeight: 600 } as const : undefined;
 
 // A pin: the fields that differ from the baseline, plus where it started.
 type Candidate = { name: string; basedOn: string; values: Partial<CardConfig> };
@@ -105,8 +108,8 @@ type Candidate = { name: string; basedOn: string; values: Partial<CardConfig> };
 const initialCandidates: Candidate[] = [];
 // Choose writes the pick here, so it survives quitting the app.
 const resultKey = "uiTuningLab.result";
-// Never issued as a pin's name: "draft" and "baseline" are the draft and
-// Shipped chips.
+// Never issued as a pin's name: "draft" and "baseline" name the working copy and
+// the Shipped chip.
 const reservedNames = ["draft", "now", "original", "baseline"];
 
 // Preset keys are kebab-case: the key is what a pin records as basedOn and is
@@ -187,14 +190,18 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const [sent, setSent] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   // The chip the draft matches ("baseline" for Shipped, or a pin), or null while
-  // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+  // it holds unpinned changes.
   const draft = stashedDraft.current ?? config;
   const draftValues = changedValues(baseline, draft);
   const draftMatch = Object.keys(draftValues).length === 0 ? "baseline"
     : candidates.find(c => sortedJson(c.values) === sortedJson(draftValues))?.name ?? null;
-  // The highlighted chip: the one shown, or the one the draft matches.
-  const current = shown === "draft" ? draftMatch ?? "draft" : shown;
-  const draftTitle = `${basedOn === "baseline" ? "Shipped" : basedOn} + edits`;
+  // The draft's home chip: the chip it matches, else the pin it was copied from,
+  // else Shipped. Unpinned edits stay under it; there is no chip of their own.
+  const home = draftMatch ?? (candidates.some(c => c.name === basedOn) ? basedOn : "baseline");
+  // The selected chip: the one shown, or the draft's home.
+  const current = shown === "draft" ? home : shown;
+  // A preset is selected while the draft, with or without edits, started from it.
+  const presetOn = (name: string) => shown === "draft" && basedOn === name;
 
   // Read the host's setter through a ref so an unstable setter never re-runs the
   // open effect, which would re-show the panel and steal focus.
@@ -260,9 +267,9 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
 
   function openLab() { setStatus(null); setOpen(true); }
   // Shows a chip in the real feature. The draft is stashed on the way out and
-  // restored when its chip, or the chip it matches, is shown or the lab closes.
+  // restored when its home chip is shown again, or the lab closes.
   function show(chip: string) {
-    const target = chip === draftMatch ? "draft" : chip;
+    const target = chip === home ? "draft" : chip;
     if (target === "draft") {
       if (stashedDraft.current) setConfig(stashedDraft.current);
       stashedDraft.current = null;
@@ -325,12 +332,13 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
     if (shown === name) show("draft");
   }
-  // Choose picks the highlighted chip and finishes. Picking again replaces the
-  // result.
+  // Choose picks what the feature shows and finishes: a pin, Shipped, or the
+  // draft while it holds unpinned edits. Picking again replaces the result.
   async function pickShown() {
-    const pin = candidates.find(c => c.name === current);
-    const winner = pin ? pin.name : current === "baseline" ? "original" : "draft";
-    const values = pin ? pin.values : current === "baseline" ? {} : draftValues;
+    const picked = shown === "draft" ? draftMatch : shown;
+    const pin = candidates.find(c => c.name === picked);
+    const winner = picked === null ? "draft" : pin ? pin.name : "original";
+    const values = picked === null ? draftValues : pin ? pin.values : {};
     const result = { candidates, values, winner };
     console.info(`UITUNINGLAB_DONE ${sortedJson(result)}`);
     const problems: string[] = [];
@@ -371,18 +379,20 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         </div>}
         <div role="group" aria-label="Shown in the feature" style={rowStyle}>
           <button ref={firstControl} type="button" aria-pressed={current === "baseline"}
+            style={selectedStyle(current === "baseline")}
             onClick={() => show("baseline")}>Shipped</button>
           {candidates.map(c => <span key={c.name}>
-            <button type="button" aria-pressed={current === c.name} onClick={() => show(c.name)}>{c.name}</button>
+            <button type="button" aria-pressed={current === c.name} style={selectedStyle(current === c.name)}
+              onClick={() => show(c.name)}>{c.name}</button>
             <button type="button" aria-label={`Remove ${c.name}`} onClick={() => remove(c.name)}>×</button>
           </span>)}
-          {draftMatch === null && <button type="button" aria-pressed={current === "draft"}
-            onClick={() => show("draft")}>{draftTitle}</button>}
         </div>
         <fieldset disabled={shown === "baseline"} aria-label="Controls"
           style={{ border: 0, margin: 0, padding: 0 }}>
-          <button type="button" onClick={() => applyPreset("compact")}>Compact</button>
-          <button type="button" onClick={() => applyPreset("relaxed")}>Relaxed</button>
+          <button type="button" aria-pressed={presetOn("compact")} style={selectedStyle(presetOn("compact"))}
+            onClick={() => applyPreset("compact")}>Compact</button>
+          <button type="button" aria-pressed={presetOn("relaxed")} style={selectedStyle(presetOn("relaxed"))}
+            onClick={() => applyPreset("relaxed")}>Relaxed</button>
           <label>Radius <input type="range" min="0" max="32"
             value={config.radius}
             onChange={e => edit(c => ({ ...c, radius: Number(e.target.value) }))}/>
@@ -453,6 +463,10 @@ const panelStyle = {
 } as const;
 const triggerStyle = { position: "fixed", insetBlockEnd: 16, insetInlineEnd: 16 } as const;
 const rowStyle = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, margin: "4px 0" } as const;
+// A selected chip or preset is outlined, so it reads as selected without a label.
+// Highlight follows color-scheme, so the outline holds in light and dark mode.
+const selectedStyle = (on: boolean) =>
+  on ? { outline: "2px solid Highlight", outlineOffset: 1, fontWeight: 600 } as const : undefined;
 
 type UITuningLabProfile = {
   basedOn: string;
@@ -475,8 +489,8 @@ type Candidate = { name: string; basedOn: string; values: Partial<CardConfig> };
 const initialCandidates: Candidate[] = [];
 // Choose writes the pick here, so it survives quitting the app.
 const resultKey = "uiTuningLab.result";
-// Never issued as a pin's name: "draft" and "baseline" are the draft and
-// Shipped chips.
+// Never issued as a pin's name: "draft" and "baseline" name the working copy and
+// the Shipped chip.
 const reservedNames = ["draft", "now", "original", "baseline"];
 
 // Preset keys are kebab-case: the key is what a pin records as basedOn and is
@@ -598,14 +612,18 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const [sent, setSent] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   // The chip the draft matches ("baseline" for Shipped, or a pin), or null while
-  // it holds unpinned changes and shows its own chip, last, as "<source> + edits".
+  // it holds unpinned changes.
   const draft = stashedDraft.current ?? config;
   const draftValues = changedValues(baseline, draft);
   const draftMatch = Object.keys(draftValues).length === 0 ? "baseline"
     : candidates.find(c => sortedJson(c.values) === sortedJson(draftValues))?.name ?? null;
-  // The highlighted chip: the one shown, or the one the draft matches.
-  const current = shown === "draft" ? draftMatch ?? "draft" : shown;
-  const draftTitle = `${basedOn === "baseline" ? "Shipped" : basedOn} + edits`;
+  // The draft's home chip: the chip it matches, else the pin it was copied from,
+  // else Shipped. Unpinned edits stay under it; there is no chip of their own.
+  const home = draftMatch ?? (candidates.some(c => c.name === basedOn) ? basedOn : "baseline");
+  // The selected chip: the one shown, or the draft's home.
+  const current = shown === "draft" ? home : shown;
+  // A preset is selected while the draft, with or without edits, started from it.
+  const presetOn = (name: string) => shown === "draft" && basedOn === name;
 
   // Read the host's setter through a ref so an unstable setter never re-runs the
   // open effect, which would re-show the panel and steal focus.
@@ -686,9 +704,9 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
 
   function openLab() { setStatus(null); setOpen(true); }
   // Shows a chip in the real feature. The draft is stashed on the way out and
-  // restored when its chip, or the chip it matches, is shown or the lab closes.
+  // restored when its home chip is shown again, or the lab closes.
   function show(chip: string) {
-    const target = chip === draftMatch ? "draft" : chip;
+    const target = chip === home ? "draft" : chip;
     if (target === "draft") {
       if (stashedDraft.current) setConfig(stashedDraft.current);
       stashedDraft.current = null;
@@ -778,12 +796,13 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
     if (shown === name) show("draft");
   }
-  // Choose picks the highlighted chip and finishes. Picking again replaces the
-  // result.
+  // Choose picks what the feature shows and finishes: a pin, Shipped, or the
+  // draft while it holds unpinned edits. Picking again replaces the result.
   async function pickShown() {
-    const pin = candidates.find(c => c.name === current);
-    const winner = pin ? pin.name : current === "baseline" ? "original" : "draft";
-    const values = pin ? pin.values : current === "baseline" ? {} : draftValues;
+    const picked = shown === "draft" ? draftMatch : shown;
+    const pin = candidates.find(c => c.name === picked);
+    const winner = picked === null ? "draft" : pin ? pin.name : "original";
+    const values = picked === null ? draftValues : pin ? pin.values : {};
     const result = { candidates, values, winner };
     console.info(`UITUNINGLAB_DONE ${sortedJson(result)}`);
     const problems: string[] = [];
@@ -824,18 +843,20 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         </div>}
         <div role="group" aria-label="Shown in the feature" style={rowStyle}>
           <button ref={firstControl} type="button" aria-pressed={current === "baseline"}
+            style={selectedStyle(current === "baseline")}
             onClick={() => show("baseline")}>Shipped</button>
           {candidates.map(c => <span key={c.name}>
-            <button type="button" aria-pressed={current === c.name} onClick={() => show(c.name)}>{c.name}</button>
+            <button type="button" aria-pressed={current === c.name} style={selectedStyle(current === c.name)}
+              onClick={() => show(c.name)}>{c.name}</button>
             <button type="button" aria-label={`Remove ${c.name}`} onClick={() => remove(c.name)}>×</button>
           </span>)}
-          {draftMatch === null && <button type="button" aria-pressed={current === "draft"}
-            onClick={() => show("draft")}>{draftTitle}</button>}
         </div>
         <fieldset disabled={shown === "baseline"} aria-label="Controls"
           style={{ border: 0, margin: 0, padding: 0 }}>
-          <button type="button" onClick={() => applyPreset("compact")}>Compact</button>
-          <button type="button" onClick={() => applyPreset("relaxed")}>Relaxed</button>
+          <button type="button" aria-pressed={presetOn("compact")} style={selectedStyle(presetOn("compact"))}
+            onClick={() => applyPreset("compact")}>Compact</button>
+          <button type="button" aria-pressed={presetOn("relaxed")} style={selectedStyle(presetOn("relaxed"))}
+            onClick={() => applyPreset("relaxed")}>Relaxed</button>
           <label>Radius <input type="range" min="0" max="32"
             value={config.radius}
             onChange={e => edit(c => ({ ...c, radius: Number(e.target.value) }))}/>

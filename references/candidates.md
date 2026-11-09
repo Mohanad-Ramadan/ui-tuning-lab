@@ -22,13 +22,13 @@ the log. The one write an ephemeral lab makes is the result file below.
 | Control | What it does |
 |---|---|
 | **Toggle** | The pill, button, or menu item that opens the lab is named after the feature: **Nav Lab**, **Card Lab**. |
-| **Chips** | One row under the header: **Shipped** (the baseline), then each pin, then the draft chip. Tapping a chip shows it in the real feature. The shown chip is highlighted. Example: Shipped · capsule · compact-2 · capsule + edits |
-| **Draft chip** | Hidden while the draft equals Shipped or a pin. It appears only while the draft holds unpinned changes, last in the row, labeled `<source> + edits` from `basedOn`: "Shipped + edits" when `basedOn` is `baseline`, otherwise the preset or pin name ("compact + edits", "capsule + edits"). |
-| **Pin** | Pins the draft: the new pin chip replaces the draft chip, which hides until the next change. Disabled while there is nothing unpinned, that is, while the draft matches Shipped or a pin (a status may say "Same as Shipped" or "Same as capsule"). |
-| **Choose** | Picks whatever chip is shown (Shipped, a pin, or the draft chip) and finishes: logs the result, writes the result file, copies `land <name>` to the clipboard, and shrinks the panel to one bar. |
+| **Chips** | One row under the header: **Shipped** (the baseline), then each pin. Tapping a chip shows it in the real feature. The selected chip has a visible outline, like any selected option; a label such as "+ edits" is never used to say what is selected. Example: Shipped · capsule · compact-2 |
+| **Presets** | The preset buttons in the controls are outlined while the draft, with or without edits, started from that preset. |
+| **Pin** | Pins the draft: the new pin gets a chip and is selected. Disabled while there is nothing unpinned, that is, while the draft matches Shipped or a pin (a status may say "Same as Shipped" or "Same as capsule"). |
+| **Choose** | Picks what the feature shows (Shipped, a pin, or the draft while it holds unpinned edits) and finishes: logs the result, writes the result file, copies `land <name>` to the clipboard, and shrinks the panel to one bar. Change brings back the same panel at its original size, controls included. |
 | **Result bar** | `Chosen: capsule · Change`. Change reopens the panel. Picking again replaces the result: the newest pick wins. No confirmation step. |
 | **× on a pin chip** | Removes it, with an accessible name such as "Remove capsule". |
-| **⋯ menu** | Reset (the draft back to Shipped, so the draft chip hides and Shipped is shown) and Copy values. |
+| **⋯ menu** | Reset (the draft back to Shipped, which is shown and selected) and Copy values. |
 | **Hint** | One line pinned below the controls: *Pin looks to compare · Choose to finish* |
 
 Labels are plain words: no star or check-mark glyphs anywhere in the panel.
@@ -39,11 +39,14 @@ Rules:
   frozen snapshots; Shipped is read-only, so the controls are disabled while it
   is shown. Moving a control while a pin is shown first copies that pin into the
   draft, so a pin can be refined; the pin itself does not change.
-- While the draft equals Shipped or a pin, that chip is highlighted instead of
-  a draft chip, the controls stay live, and moving one starts from that look.
+- The draft has no chip of its own. It sits under its **home** chip: the chip it
+  matches (Shipped or a pin), else the pin it was copied from, else Shipped.
+  That chip is the selected one while the draft is shown, with or without
+  unpinned edits; the controls stay live, and moving one starts from that look.
+  To compare unpinned edits with Shipped, Pin them first.
 - Show baseline, Compare, and Load are not separate controls: the chips are all
   three. The draft is stashed while another chip is shown and restored when its
-  chip is tapped or the lab closes.
+  home chip is tapped again or the lab closes.
 - `basedOn` records where the draft came from: the kebab-case name of the last
   preset applied, `baseline` after Reset or when the lab first opens, or a pin's
   name after it was copied into the draft. Edits keep the same `basedOn`.
@@ -76,9 +79,9 @@ UITUNINGLAB_DONE {"candidates":[{"basedOn":"compact","name":"capsule","values":{
 
 - **Choose** logs `UITUNINGLAB_DONE`. `winner` is the pin that was shown,
   `original` when Shipped was shown (land nothing), or `draft` when the draft
-  chip was shown; `values` is the winner's values (`{}` for `original`). The
-  wire names predate the labels: the Shipped chip logs winner `original` and the
-  draft chip logs `draft`.
+  was shown holding unpinned edits; `values` is the winner's values (`{}` for
+  `original`). The wire names predate the labels: the Shipped chip logs winner
+  `original` and unpinned edits log `draft`.
 - `candidates` holds every pin still in the panel, oldest first, so the line
   alone is enough to land or keep any of them.
 - A pin loaded from storage or seeded from the project logs its own
