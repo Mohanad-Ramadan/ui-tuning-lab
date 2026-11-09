@@ -1,8 +1,8 @@
-# Pins and Choose
+# Looks, Duplicate, and Choose
 
-The user flips between looks, pins the ones they like, and picks one. The panel
-makes that two buttons and a row of chips, and the pick reaches the agent on its
-own.
+The user works on a few looks side by side, flips between them, and picks one.
+The panel makes that a row of chips and two buttons, and the pick reaches the
+agent on its own.
 
 ## Contents
 
@@ -22,34 +22,31 @@ the log. The one write an ephemeral lab makes is the result file below.
 | Control | What it does |
 |---|---|
 | **Toggle** | The pill, button, or menu item that opens the lab is named after the feature: **Nav Lab**, **Card Lab**. |
-| **Chips** | One row under the header: **Shipped** (the baseline), then each pin. Tapping a chip shows it in the real feature. The selected chip has a visible outline, like any selected option; selection is never shown by changing the label text. Example: Shipped · capsule · compact-2 |
-| **Presets** | The preset buttons in the controls are outlined while the draft, with or without edits, started from that preset. |
-| **Pin** | Pins the draft: the new pin gets a chip and is selected. Disabled while there is nothing unpinned, that is, while the draft matches Shipped or a pin (a status may say "Same as Shipped" or "Same as capsule"). |
-| **Choose** | Picks what the feature shows (Shipped, a pin, or the draft while it holds unpinned edits) and finishes: logs the result, writes the result file, copies `land <name>` to the clipboard, and shrinks the panel to one bar. Change brings back the same panel at its original size, controls included. |
+| **Chips** | One row under the header: **Shipped** (the baseline), then each pin. Tapping a chip shows it in the real feature. Exactly one chip is selected, and it is always the look the feature shows; it has a visible outline, like any selected option, and is marked selected for assistive tech. Selection is never shown by label text. Example: Shipped · capsule · compact-2 |
+| **Controls** | Presets, sliders, toggles. Always enabled; they show and edit the selected look. Presets are actions, never outlined. |
+| **Duplicate** | Copies the selected pin into a new pin and selects it, so two versions can be compared. Disabled while Shipped is selected. |
+| **Choose** | Picks the selected chip and finishes: logs the result, writes the result file, copies `land <name>` to the clipboard, and shrinks the panel to one bar. Change brings back the same panel at its full size, controls included. |
 | **Result bar** | `Chosen: capsule · Change`. Change reopens the panel. Picking again replaces the result: the newest pick wins. No confirmation step. |
-| **× on a pin chip** | Removes it, with an accessible name such as "Remove capsule". |
-| **⋯ menu** | Reset (the draft back to Shipped, which is shown and selected) and Copy values. |
-| **Hint** | One line pinned below the controls: *Pin looks to compare · Choose to finish* |
+| **× on a pin chip** | Removes it, with an accessible name such as "Remove capsule". Removing the selected pin selects Shipped. |
+| **⋯ menu** | Copy values (the selected look). |
+| **Hint** | One line pinned at the bottom: *Duplicate to compare · Choose to finish* |
 
 Labels are plain words: no star or check-mark glyphs anywhere in the panel.
 
 Rules:
 
-- There is exactly one draft, the working copy the controls edit. Pins are
-  frozen snapshots; Shipped is read-only, so the controls are disabled while it
-  is shown. Moving a control while a pin is shown first copies that pin into the
-  draft, so a pin can be refined; the pin itself does not change.
-- The draft has no chip of its own. It sits under its **home** chip: the chip it
-  matches (Shipped or a pin), else the pin it was copied from, else Shipped.
-  That chip is the selected one while the draft is shown, with or without
-  unpinned edits; the controls stay live, and moving one starts from that look.
-  To compare unpinned edits with Shipped, Pin them first.
-- Show baseline, Compare, and Load are not separate controls: the chips are all
-  three. The draft is stashed while another chip is shown and restored when its
-  home chip is tapped again or the lab closes.
-- `basedOn` records where the draft came from: the kebab-case name of the last
-  preset applied, `baseline` after Reset or when the lab first opens, or a pin's
-  name after it was copied into the draft. Edits keep the same `basedOn`.
+- There is no draft, no stash, and no compare mode. The lab holds the pins and
+  one selection, and the feature always renders the selected look. Switching
+  chips is the comparison.
+- A pin is a look being worked on: while it is selected, every control edits it
+  in place.
+- Shipped is read-only. Moving a control or applying a preset while Shipped is
+  selected starts a new pin from the result and selects it.
+- Closing the lab leaves the feature on the selected look; reopening keeps the
+  pins and the selection. Shipped is one tap away, so there is no Reset.
+- `basedOn` records where a pin came from: `baseline` when it was started from
+  Shipped, the kebab-case preset key when a preset was last applied to it, or the
+  pin it was duplicated from.
 - Keyboard shortcuts for the chips (Command-1 to Command-9 on macOS) are optional
   and only added when inspection shows they are free.
 
@@ -58,8 +55,9 @@ Rules:
 A pin is named after what it is, so the chip is readable and the name works as
 a code in chat (`land capsule`):
 
-1. In a design-variant lab, the design key when it is not `original`
-   (`capsule`); otherwise the last preset applied (`compact`); otherwise `tweak`.
+1. A pin started from Shipped: in a design-variant lab, the design key when it
+   is not `original` (`capsule`); otherwise the preset applied (`compact`);
+   otherwise `tweak`. A duplicate: its source's name without a `-N` suffix.
 2. If the name is taken, add `-2`, `-3`, … (`capsule-2`).
 3. Names are kebab-case, never reused within a run of the app (a removed name
    stays taken), and never `draft`, `now`, `original`, or `baseline`. In a
@@ -77,11 +75,13 @@ UITUNINGLAB_CANDIDATE_REMOVED {"name":"tweak"}
 UITUNINGLAB_DONE {"candidates":[{"basedOn":"compact","name":"capsule","values":{"cornerRadius":14,"design":"capsule"}}],"values":{"cornerRadius":14,"design":"capsule"},"winner":"capsule"}
 ```
 
-- **Choose** logs `UITUNINGLAB_DONE`. `winner` is the pin that was shown,
-  `original` when Shipped was shown (land nothing), or `draft` when the draft
-  was shown holding unpinned edits; `values` is the winner's values (`{}` for
-  `original`). The wire names predate the labels: the Shipped chip logs winner
-  `original` and unpinned edits log `draft`.
+- A pin logs `UITUNINGLAB_CANDIDATE` when it is created, and again with its
+  current values when it is left after an edit (another chip is selected, the
+  lab closes, or Choose). The latest line for a name wins.
+- **Choose** logs `UITUNINGLAB_DONE`. `winner` is the selected pin, or
+  `original` when Shipped was selected (land nothing); `values` is the winner's
+  values (`{}` for `original`). The Shipped chip's wire name is `original`.
+  Older labs could log winner `draft`; treat its `values` like a pin's.
 - `candidates` holds every pin still in the panel, oldest first, so the line
   alone is enough to land or keep any of them.
 - A pin loaded from storage or seeded from the project logs its own
@@ -134,14 +134,14 @@ name, and loads them into the list when it opens:
 | Web | `uiTuningLab.candidates.<name>` in `localStorage` |
 | Other platforms | `references/platform-handoff.md`, "Where persisted candidates live" |
 
-`savedAt` keeps fractional seconds, so two quick Pins load in the order they
-were made. Remove deletes that candidate's file or key and nothing else. A
-failed write refuses the Pin: the status line shows the error and the
-candidate is not added, so the panel never shows a candidate that storage does
-not hold. An entry that fails to decode, has the wrong `schemaVersion` or
-`platform`, or whose `name` does not match its file or key, is reported in the
-status line, skipped, and left untouched; its name stays taken. A stored
-candidate that now matches the baseline is skipped and reported the same way.
+A pin is written when it is created and again whenever it logs new values; a
+rewrite keeps the first `savedAt`, which keeps fractional seconds, so pins load
+in the order they were made. Remove deletes that candidate's file or key and
+nothing else. A failed write shows in the status line; the pin stays in the
+panel and in the log. An entry that fails to decode, has the wrong
+`schemaVersion` or `platform`, or whose `name` does not match its file or key,
+is reported in the status line, skipped, and left untouched; its name stays
+taken.
 
 ## Keeping finalists for later
 

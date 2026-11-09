@@ -12,7 +12,7 @@ requires one screenshot or clip captured in the real container.
    container detached second, then one in-situ check. Two labs at once
    fight over focus and persistence.
 3. Baseline includes container chrome: geometry, detent, position, shortcut.
-   Reset must restore it.
+   The Shipped chip must restore it.
 4. Self-measure ban (concrete): no `ResizeObserver` or `onGeometryChange`
    targeting the lab container itself. Measure only the feature view via a
    passed `DOMRect` / `CGRect`. Asserted in verify.

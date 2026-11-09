@@ -4,7 +4,7 @@ Use this when the user asks for alternative designs of a feature ("make three
 better versions of this list", "try a card layout and a timeline") rather than
 new values for the existing one. The variants are different widget or view
 trees, so they cannot be reached by sliders alone, but they still go through
-the same lab: the same panel, chips, Pin, Choose,
+the same lab: the same panel, chips, Duplicate, Choose,
 and landing. A row of chips or tabs dropped into the screen is not a lab.
 
 ## Where ideas come from
@@ -24,9 +24,9 @@ accessibility, right-to-left, light and dark).
    `*.ui-tuning-lab.*` file (or files), named with a kebab-case key such as
    `timeline`, `strip`, `focus`. Production files gain no variant code before
    landing; the host only lets the lab replace the feature's subtree.
-3. **The design is a field in the draft.** Add `design` (a string, baseline
-   `original`) to the lab's draft, next to any values being tuned. The lab
-   renders the variant whose key matches `draft.design` in place of the
+3. **The design is a field in each look.** Add `design` (a string, baseline
+   `original`) to the lab's configuration, next to any values being tuned. The
+   lab renders the variant whose key matches the selected look's `design` in place of the
    feature, and the original otherwise.
 4. **The picker lives in the panel.** Put a **Design** picker (segmented
    control or choice chips, one option per key, Shipped first) at the top of
@@ -46,9 +46,9 @@ accessibility, right-to-left, light and dark).
    knob against the selected design's defaults, and landing writes the winning
    design with those defaults plus the changed values.
 6. **Everything else is unchanged.** The Shipped chip renders `original`
-   with the baseline values; Reset returns to it; Copy values reports only what
-   differs (`{"design":"strip","cardRadius":16}`); Pin records the design in
-   `values` and names the pin after it (`strip`); the chips flip the real
+   with the baseline values; Copy values reports only what differs
+   (`{"design":"strip","cardRadius":16}`); a pin records the design in
+   `values`, and one started from Shipped is named after it (`strip`); the chips flip the real
    screen between pins of different designs; Choose hands the pick
    over (`references/candidates.md`). A saved profile
    keeps `design` inside `overrides` like any other field, so a persisted or

@@ -6,7 +6,7 @@ ephemeral lab.
 | Document | Purpose | Written by | Location | Validator |
 |---|---|---|---|---|
 | Lab config | A reusable lab definition: target, scope, baseline, presets, optional activation | The agent, when a lab is meant to be reused | `.ui-tuning-lab/lab.json` in the project | `verify.sh config` |
-| Saved profile | Values the user kept from a running lab: a candidate (`schemaVersion: 2`) or a legacy single save (`schemaVersion: 1`) | The lab's Pin when persistence was requested, or the agent keeping finalists at landing | `.ui-tuning-lab/candidates/<name>.json` (in the project, or in Application Support on Apple platforms) or `uiTuningLab.candidates.<name>` in web storage | `verify.sh profile` |
+| Saved profile | Values the user kept from a running lab: a candidate (`schemaVersion: 2`) or a legacy single save (`schemaVersion: 1`) | A lab's pins when persistence was requested, or the agent keeping finalists at landing | `.ui-tuning-lab/candidates/<name>.json` (in the project, or in Application Support on Apple platforms) or `uiTuningLab.candidates.<name>` in web storage | `verify.sh profile` |
 
 A lab config uses `schemaVersion: 1`; a saved profile uses `2` (a candidate) or
 `1` (a legacy single save). Either is written as an integer literal. Both reject
@@ -55,9 +55,9 @@ Template: `assets/profile.template.json`, a candidate. The examples'
 `schemaVersion`, `platform`, and the shape of `overrides`; the example loaders
 ignore unknown fields and do not range-check values, so validate a hand-edited
 file with `verify.sh profile` before loading it. On any mismatch the lab shows an
-error, keeps the current draft, and leaves the stored profile untouched
-(`references/edge-cases.md`). Loading applies `overrides` to the draft only; the
-baseline does not change, so Reset still returns to it.
+error, keeps the current look, and leaves the stored profile untouched
+(`references/edge-cases.md`). Loading adds a pin; the baseline does not change,
+so Shipped still shows it.
 
 Validate a web profile by copying the stored value to a file first. Validate an
 iOS profile from the app container, for example

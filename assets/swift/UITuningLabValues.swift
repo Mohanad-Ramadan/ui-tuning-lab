@@ -37,108 +37,132 @@ func uiTuningLabCopyValues<Value: Encodable>(from baseline: Value, to draft: Val
     return values == "{}" ? "No changes from baseline" : "Copied \(values)"
 }
 
-/// A pinned look: a frozen snapshot of the draft (references/candidates.md).
-/// It lives in memory, and in storage only when the lab persists it.
+/// A look the lab holds (references/candidates.md): a pin the controls edit in
+/// place while it is selected. It lives in memory, and in storage only when the
+/// lab persists it.
 struct UITuningLabCandidate<Value: Codable>: Identifiable {
     var name: String
-    var basedOn: String  // a preset's kebab-case name, `baseline`, or a pin's name
+    var basedOn: String  // a preset's kebab-case name, `baseline`, or the pin it was duplicated from
     var value: Value
     var id: String { name }
 }
 
-/// Why Pin did not add a look, worded for the panel's status line.
-struct UITuningLabNotKept: LocalizedError {
-    let errorDescription: String?
-}
-
-/// The pinned looks, oldest first, owned beside the draft so they survive
-/// closing the lab. Every change logs one line the agent can replay:
-/// `UITUNINGLAB_CANDIDATE {...}` and `UITUNINGLAB_CANDIDATE_REMOVED {...}`.
+/// The looks, oldest first, and the selected chip, owned beside the feature so
+/// they survive closing the lab. The feature always shows the selected look:
+/// switching chips is the comparison, and there is no draft and no stash.
+/// Shipped (`original`) is read-only, so an edit on it starts a new pin; a pin
+/// changes in place. Lines the agent can replay: `UITUNINGLAB_CANDIDATE {...}`
+/// when a pin is created and again when an edited pin is left, and
+/// `UITUNINGLAB_CANDIDATE_REMOVED {...}`.
 @MainActor
 final class UITuningLabCandidates<Value: Codable>: ObservableObject {
     @Published private(set) var all: [UITuningLabCandidate<Value>] = []
-    /// Where the draft came from: `baseline` until a preset, Reset, or a pin
-    /// copied into the draft changes it.
-    @Published var basedOn = "baseline"
+    /// The selected chip: `original` for Shipped, or a pin's name.
+    @Published private(set) var selected = "original"
+    /// What the last action reported, for the panel's status line.
+    @Published var status: String?
     let baseline: Value
+    /// Set by a persisting lab: writes a pin's profile whenever it logs, and
+    /// deletes it on remove. A failure shows in `status`; the pin stays.
+    var store: ((UITuningLabCandidate<Value>) throws -> Void)?
+    var unstore: ((String) throws -> Void)?
     private var taken: Set<String> = []  // every name issued or reserved this run
+    private var logged: [String: String] = [:]  // the line each pin last logged
 
     /// Seed with finalists kept in the project to reopen a session; empty by default.
     init(baseline: Value, initial: [UITuningLabCandidate<Value>] = []) {
         self.baseline = baseline
-        for candidate in initial { _ = try? adopt(candidate) }
+        for candidate in initial { adopt(candidate) }
     }
 
     func named(_ name: String) -> UITuningLabCandidate<Value>? {
         all.first { $0.name == name }
     }
 
-    /// The chip the draft already matches: `original` for Shipped, a pin's
-    /// name, or nil when the draft holds unpinned changes. Pin is enabled only
-    /// while this is nil.
-    func match(_ draft: Value) -> String? {
-        guard let values = try? uiTuningLabChangedValues(from: baseline, to: draft) else { return nil }
-        if values == "{}" { return "original" }
-        return all.first { (try? uiTuningLabChangedValues(from: baseline, to: $0.value)) == values }?.name
-    }
+    var selectedPin: UITuningLabCandidate<Value>? { named(selected) }
 
-    /// The chip the draft sits under: the chip it matches, else the pin it was
-    /// copied from, else Shipped (`original`). Unpinned edits stay under it;
-    /// they have no chip of their own.
-    func home(_ draft: Value) -> String {
-        match(draft) ?? (named(basedOn) != nil ? basedOn : "original")
-    }
+    /// The look the feature shows: the baseline for Shipped, else the selected pin.
+    var selectedLook: Value { selectedPin?.value ?? baseline }
 
-    /// Marks names as used, such as every file in storage, so Pin never issues them.
+    /// Marks names as used, such as every file in storage, so no pin takes them.
     func reserve(_ names: some Sequence<String>) { taken.formUnion(names) }
 
-    /// Pins the draft, named after what it is: the design key in a
-    /// design-variant lab, else the last preset, else `tweak`, never a name used
-    /// before in this run. A look that matches Shipped or a pin is not pinned.
-    /// `store` runs before the pin is added; if it throws, nothing is added or logged.
-    func keep(_ draft: Value, design: String? = nil,
-              store: (UITuningLabCandidate<Value>) throws -> Void = { _ in })
-        throws -> UITuningLabCandidate<Value> {
-        let stem = design.flatMap { $0 == "original" ? nil : $0 } ?? stem(of: basedOn)
-        let candidate = UITuningLabCandidate(
-            name: uiTuningLabFavoriteName(stem, excluding: taken), basedOn: basedOn, value: draft)
-        let line = try checked(candidate)
-        do { try store(candidate) } catch {
-            throw UITuningLabNotKept(errorDescription: "Not pinned: \(error.localizedDescription)")
-        }
-        add(candidate, line: line)
-        return candidate
+    /// Selects a chip and returns the look the feature must now show.
+    @discardableResult
+    func select(_ name: String) -> Value {
+        guard name != selected else { return selectedLook }
+        leave()
+        selected = named(name) == nil ? "original" : name
+        return selectedLook
     }
 
-    /// Adds a seeded or stored pin and logs it. Returns false, silently,
-    /// when the name is already in the list; throws when it now matches the
-    /// baseline or another pin.
+    /// Every control edits the selected look. On Shipped it starts a new pin,
+    /// named after the design key in a design-variant lab, else the preset, else
+    /// `tweak`; a pin changes in place, and a preset becomes its `basedOn`.
+    func edit(_ value: Value, preset: String? = nil, design: String? = nil) {
+        guard let index = all.firstIndex(where: { $0.name == selected }) else {
+            let stem = design.flatMap { $0 == "original" ? nil : $0 } ?? preset ?? "tweak"
+            add(stem: stem, basedOn: preset ?? "baseline", value: value)
+            return
+        }
+        all[index].value = value
+        if let preset { all[index].basedOn = preset }
+    }
+
+    /// Branches the selected pin into a new one, so the two can be compared.
+    func duplicate() {
+        guard let pin = selectedPin else { return }
+        add(stem: Self.stem(of: pin.name), basedOn: pin.name, value: pin.value)
+    }
+
+    /// Removes a pin and returns the look the feature must now show.
     @discardableResult
-    func adopt(_ candidate: UITuningLabCandidate<Value>) throws -> Bool {
+    func remove(_ name: String) -> Value {
+        guard named(name) != nil else { return selectedLook }
+        do { try unstore?(name) } catch {
+            status = "\(name) not removed: \(error.localizedDescription)"
+            return selectedLook
+        }
+        all.removeAll { $0.name == name }
+        logged[name] = nil
+        uiTuningLabLogLine("UITUNINGLAB_CANDIDATE_REMOVED", ["name": name])
+        if selected == name { selected = "original" }
+        status = "Removed \(name)"
+        return selectedLook
+    }
+
+    /// Logs the selected pin again when it changed since it last logged. Runs
+    /// when it is left: another chip, closing the lab, or Choose.
+    func leave() {
+        if let pin = selectedPin { log(pin) }
+    }
+
+    /// Adds a seeded or stored pin and logs it, without storing it again.
+    /// Returns false when the name is already in the list.
+    @discardableResult
+    func adopt(_ candidate: UITuningLabCandidate<Value>) -> Bool {
         taken.insert(candidate.name)
         guard named(candidate.name) == nil else { return false }
-        add(candidate, line: try checked(candidate))
+        all.append(candidate)
+        log(candidate, storing: false)
         return true
     }
 
-    func remove(_ name: String) {
-        guard named(name) != nil else { return }
-        all.removeAll { $0.name == name }
-        uiTuningLabLogLine("UITUNINGLAB_CANDIDATE_REMOVED", ["name": name])
-    }
-
-    /// Choose. `winner` is the pin shown, `original` for Shipped, or `draft`, and
-    /// `shown` is the look on screen. Logs `UITUNINGLAB_DONE {...}`, replaces the
-    /// result file atomically, and copies `land <winner>`. Returns nil when all
-    /// of that worked, otherwise what did not.
-    func use(_ shown: Value, winner: String) -> String? {
+    /// Choose: picks the selected chip, `original` for Shipped. Logs
+    /// `UITUNINGLAB_DONE {...}`, replaces the result file atomically, and copies
+    /// `land <winner>`. Returns the winner, and sets `status` when part of that
+    /// did not work.
+    func choose() -> String {
+        leave()
+        let winner = selectedPin?.name ?? "original"
         let line: [String: Any]
         do {
-            let values = try uiTuningLabChangedFields(from: baseline, to: winner == "original" ? baseline : shown)
+            let values = try uiTuningLabChangedFields(from: baseline, to: selectedLook)
             let kept = try all.map { try uiTuningLabCandidateFields($0, baseline: baseline) }
             line = ["candidates": kept, "values": values, "winner": winner]
         } catch {
-            return "Not chosen: \(error.localizedDescription)"
+            status = "Not chosen: \(error.localizedDescription)"
+            return winner
         }
         uiTuningLabLogLine("UITUNINGLAB_DONE", line)
         let code = "land \(winner)"
@@ -155,44 +179,41 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
             try FileManager.default.createDirectory(
                 at: uiTuningLabResultURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: uiTuningLabResultURL, options: .atomic)  // temporary file, then rename
+            status = nil
         } catch {
-            return "Result file not written: \(error.localizedDescription)"
+            status = "Result file not written: \(error.localizedDescription)"
         }
-        return nil
+        return winner
     }
 
-    /// The name a pin made from `basedOn` starts from: `tweak` for the
-    /// baseline, and a pin's name without its `-2` suffix.
-    private func stem(of basedOn: String) -> String {
-        if basedOn == "baseline" { return "tweak" }
-        guard taken.contains(basedOn),
-              let suffix = basedOn.range(of: "-[0-9]+$", options: .regularExpression) else { return basedOn }
-        return String(basedOn[..<suffix.lowerBound])
+    /// A pin's name without its `-2` suffix: what its duplicates are named after.
+    private static func stem(of name: String) -> String {
+        guard let suffix = name.range(of: "-[0-9]+$", options: .regularExpression) else { return name }
+        return String(name[..<suffix.lowerBound])
     }
 
-    /// The pin's log line, or why it cannot join the list.
-    private func checked(_ candidate: UITuningLabCandidate<Value>) throws -> [String: Any] {
-        let line: [String: Any]
-        let values: String
-        do {
-            line = try uiTuningLabCandidateFields(candidate, baseline: baseline)
-            values = try uiTuningLabChangedValues(from: baseline, to: candidate.value)
-        } catch {
-            throw UITuningLabNotKept(errorDescription: "Not pinned: \(error.localizedDescription)")
-        }
-        if values == "{}" {
-            throw UITuningLabNotKept(errorDescription: "Same as Shipped")
-        }
-        if let twin = all.first(where: { (try? uiTuningLabChangedValues(from: baseline, to: $0.value)) == values }) {
-            throw UITuningLabNotKept(errorDescription: "Same as \(twin.name)")
-        }
-        return line
-    }
-
-    private func add(_ candidate: UITuningLabCandidate<Value>, line: [String: Any]) {
+    private func add(stem: String, basedOn: String, value: Value) {
+        leave()
+        let candidate = UITuningLabCandidate(
+            name: uiTuningLabFavoriteName(stem, excluding: taken), basedOn: basedOn, value: value)
         taken.insert(candidate.name)
-        uiTuningLabLogLine("UITUNINGLAB_CANDIDATE", line)
         all.append(candidate)
+        selected = candidate.name
+        status = "New look \(candidate.name)"
+        log(candidate)
+    }
+
+    private func log(_ candidate: UITuningLabCandidate<Value>, storing: Bool = true) {
+        guard let fields = try? uiTuningLabCandidateFields(candidate, baseline: baseline),
+              let data = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]),
+              let line = String(data: data, encoding: .utf8),
+              logged[candidate.name] != line else { return }
+        logged[candidate.name] = line
+        uiTuningLabLogLine("UITUNINGLAB_CANDIDATE", fields)
+        guard storing, let store else { return }
+        do { try store(candidate) } catch {
+            status = "\(candidate.name) not saved: \(error.localizedDescription)"
+        }
     }
 }
 

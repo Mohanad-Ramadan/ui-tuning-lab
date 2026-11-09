@@ -86,27 +86,28 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
 - The panel reads as its own surface: with the screen's background set to the
   panel's surface color (or shadows disabled), the hairline outline is visible at
   a glance in light and dark mode, and the result bar keeps it after Choose.
-- Reset restores the baseline (the declared default) exactly, including after the
-  lab has been closed and reopened with a draft still applied.
+- The Shipped chip shows the baseline (the declared default) exactly, including
+  after the lab has been closed and reopened with a pin selected.
 - Copy values copies, and logs as one `UITUNINGLAB_VALUES` line, only the fields
   that differ from the baseline; `{}` when nothing changed. Landing writes those
   values into the feature defaults (`references/landing-protocol.md`).
-- Chips, Pin, and Choose (`references/candidates.md`): Pin logs one
-  `UITUNINGLAB_CANDIDATE` line per new readable name and is disabled while the
-  draft matches Shipped or a pin; the selected chip is outlined, and the draft's
-  unpinned edits stay under the chip they started from; × logs
-  `UITUNINGLAB_CANDIDATE_REMOVED`; each chip renders its look in the real
-  feature and tapping the draft's home chip again restores the draft exactly;
-  closing while another chip is shown restores the draft. Choose, then Change,
-  brings back the whole panel, controls included, at its original size: on
-  desktop windows that follow their content, check the frame after Change. Choose logs one
-  `UITUNINGLAB_DONE` line naming the shown chip as `winner`, writes the result
-  file, copies `land <name>`, and shrinks the panel to the result bar. The hint
-  is visible without scrolling past the controls.
-- When persistence was requested, each Pin writes only its namespaced
+- Chips, Duplicate, and Choose (`references/candidates.md`): exactly one chip is
+  outlined, and it is the look the feature shows; after an edit on Shipped a new
+  pin is outlined, never Shipped. An edit on a pin changes that pin; switching
+  away from it logs its new `UITUNINGLAB_CANDIDATE` line. Duplicate is disabled
+  on Shipped; × logs `UITUNINGLAB_CANDIDATE_REMOVED`. Choose logs one
+  `UITUNINGLAB_DONE` line naming the selected chip as `winner`, writes the result
+  file, copies `land <name>`, and shrinks the panel to the result bar; Change
+  brings back the whole panel, controls included, at its full size (on desktop
+  windows that follow their content, check the frame after Change). The hint is
+  visible without scrolling past the controls.
+- Layout: screenshot the panel after opening, after an edit, and after Choose
+  then Change. Labels and controls line up in one column, no label shows twice,
+  and the hint sits at the bottom. On macOS the panel is never a `Form`.
+- When persistence was requested, each pin writes only its namespaced
   candidate (`.ui-tuning-lab/candidates/<name>.json` or
   `uiTuningLab.candidates.<name>`), which passes `verify.sh profile`, and
-  retains the draft on failure. Remove deletes only that candidate. Reopening
+  keeps the pin in the panel on failure. Remove deletes only that candidate. Reopening
   lists the stored candidates without changing the baseline, and reports
   incompatible data without modifying it. Otherwise, confirm that the only
   storage writer is the result file and record the other storage checks as

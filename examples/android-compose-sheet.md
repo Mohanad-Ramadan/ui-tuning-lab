@@ -19,20 +19,19 @@ Activation (`references/activation.md`):
   screen. If the app has a developer menu or drawer, add a menu entry that sets
   the same `showUITuningLab` state, and keep the pill.
 
-The host owns the `UITuningLabCandidates` store beside the draft, so pins,
-`basedOn`, and the stashed draft survive closing the panel. The default lab is
-ephemeral: pins live in memory and in logcat only, and a name is never reused
-within a process. The chip row under the header shows Shipped and each pin; the
-selected chip is outlined, and so is the preset the draft started from. Unpinned
-edits stay under the chip they started from, with no chip of their own; tapping
-another chip stashes them until that chip is tapped again or the panel closes.
-While Shipped is shown away from the draft the presets and sliders are disabled;
-moving one while a pin is shown copies that pin into the draft first. **Pin**
-pins the draft and is disabled while the draft matches Shipped or a pin,
-**Choose** picks what the feature shows and shrinks the panel to the result bar,
-and the **⋯** menu holds Reset and Copy values. The panel's height is capped and
-the hint sits below the scrolling controls, so it is visible at any panel or
-screen size.
+The host owns the `UITuningLabCandidates` store, so pins, `basedOn`, and the
+selection survive closing the panel. The default lab is ephemeral: pins live in
+memory and in logcat only, and a name is never reused within a process. The
+panel follows `references/candidates.md`. The chip row under the header shows
+**Shipped** and each pin; the selected chip is outlined, and the feature always
+shows it. Switching chips is the comparison: there is no draft and nothing is
+stashed. Moving a slider or applying a preset edits the selected pin in place;
+on Shipped, which is read-only, it starts a new pin named after the preset or
+`tweak` and selects it. **Duplicate** branches the selected pin (it is disabled
+on Shipped), **Choose** picks the selected chip and shrinks the panel to the
+result bar, and the **⋯** menu holds Copy values. Closing keeps the selected
+look on screen. The panel's height is capped and the hint sits below the
+scrolling controls, so it is visible at any panel or screen size.
 
 ## Host change (main source set)
 
@@ -188,9 +187,11 @@ fun TuningLabHost(
                     .semantics { contentDescription = "Open UI tuning lab" }) { Text("Card Lab") }
         }
         if (showUITuningLab) {
-            UITuningLabPanel(draft = style, setDraft = onStyleChange, lab = lab,
+            // Closing keeps the selected look on screen: it is real state, so
+            // there is nothing to restore. An edited pin logs its new values.
+            UITuningLabPanel(style = style, setStyle = onStyleChange, lab = lab,
                 modifier = Modifier.align(Alignment.BottomEnd), onClose = {
-                    lab.restoreDraft(onStyleChange)
+                    lab.leave()
                     showUITuningLab = false
                 })
         }
@@ -225,10 +226,10 @@ val uiTuningLabPresets = linkedMapOf(
 fun CardStyle.uiTuningLabMap(): Map<String, Any> =
     mapOf("cornerRadius" to cornerRadius, "spacing" to spacing)
 
-// The draft fields that differ from the baseline.
-fun uiTuningLabChanged(draft: CardStyle): Map<String, Any> {
+// The fields of a look that differ from the baseline.
+fun uiTuningLabChanged(look: CardStyle): Map<String, Any> {
     val base = baseline.uiTuningLabMap()
-    return draft.uiTuningLabMap().filter { (key, value) -> base[key] != value }
+    return look.uiTuningLabMap().filter { (key, value) -> base[key] != value }
 }
 
 fun uiTuningLabApply(values: Map<String, Any>) = CardStyle(
@@ -268,124 +269,111 @@ private fun writeResult(file: File, done: Map<String, Any>) {
 class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
     val list = mutableStateListOf<UITuningLabCandidate>().apply { addAll(initial) }
     // Every name issued in this process, removed ones included, plus the names a
-    // pin never takes.
-    private val issued = (initial.map { it.name } + listOf("draft", "now", "original", "baseline")).toMutableSet()
-    private val logged = mutableSetOf<String>()
-    // Where the draft came from: a preset, "baseline", or a pin's name.
-    var basedOn by mutableStateOf("baseline")
-    private var lastPreset: String? = null
-    // The shown chip: "draft", "original" (Shipped), or a pin's name.
-    var shown by mutableStateOf("draft")
+    // pin never takes. The persist variant adds every stored name.
+    internal val issued = (initial.map { it.name } + listOf("draft", "now", "original", "baseline")).toMutableSet()
+    // The line each pin last logged, so a pin logs again only after it changed.
+    private val logged = mutableMapOf<String, String>()
+    // The selected chip: "original" (Shipped) or a pin's name. The feature always
+    // shows it; there is no draft and nothing is stashed.
+    var selected by mutableStateOf("original")
     var status by mutableStateOf<String?>(null)
     // The last pick; while set, the panel is the result bar.
     var result by mutableStateOf<String?>(null)
-    // Holds the draft while another chip is shown.
-    private var stash: CardStyle? = null
+    // The persist variant sets these; the default lab writes only the result file.
+    var store: ((UITuningLabCandidate) -> Unit)? = null
+    var unstore: ((String) -> Unit)? = null
 
-    // The chip the draft matches ("original" for Shipped, or a pin), or null while
-    // it holds unpinned changes.
-    fun draftMatch(onScreen: CardStyle): String? {
-        val values = uiTuningLabChanged(stash ?: onScreen)
-        if (values.isEmpty()) return "original"
-        return list.firstOrNull { it.values == values }?.name
+    val selectedPin: UITuningLabCandidate? get() = list.firstOrNull { it.name == selected }
+
+    // Logs a pin's line when it is new or changed since it last logged, and
+    // stores it in the persist variant. A failed write shows in the status line;
+    // the pin stays in the panel.
+    private fun log(candidate: UITuningLabCandidate, storing: Boolean = true) {
+        val line = uiTuningLabJson(candidate.asMap())
+        if (logged[candidate.name] == line) return
+        logged[candidate.name] = line
+        uiTuningLabLog("UITUNINGLAB_CANDIDATE", line)
+        if (!storing) return
+        try { store?.invoke(candidate) } catch (e: Exception) { status = "${candidate.name} not saved: ${e.message}" }
     }
-
-    // The draft's home chip: the chip it matches, else the pin it was copied from,
-    // else Shipped. Unpinned edits stay under it; there is no chip of their own.
-    fun home(onScreen: CardStyle) =
-        draftMatch(onScreen) ?: if (list.any { it.name == basedOn }) basedOn else "original"
-
-    // The selected chip: the one shown, or the draft's home.
-    fun current(onScreen: CardStyle) = if (shown == "draft") home(onScreen) else shown
-
-    // A preset is selected while the draft, with or without edits, started from it.
-    fun presetOn(name: String) = shown == "draft" && basedOn == name
 
     // Seeded or stored pins log their own line the first time the lab shows them.
     fun logUnlogged() {
-        for (c in list) if (logged.add(c.name)) uiTuningLabLog("UITUNINGLAB_CANDIDATE", uiTuningLabJson(c.asMap()))
+        for (c in list.toList()) if (c.name !in logged) log(c, storing = false)
     }
 
-    // Tapping a chip shows it in the real feature; the draft's home chip shows
-    // the draft itself.
-    fun show(chip: String, draft: CardStyle, setDraft: (CardStyle) -> Unit) {
-        val target = if (chip == home(draft)) "draft" else chip
-        if (target == "draft") {
-            stash?.let(setDraft)
-            stash = null
-        } else {
-            if (stash == null) stash = draft
-            val candidate = list.firstOrNull { it.name == target }
-            setDraft(if (candidate == null) baseline else uiTuningLabApply(candidate.values))
-        }
-        shown = target
+    // A pin edited in place logs its new values once it is left: another chip is
+    // selected, the lab closes, or Choose.
+    fun leave() { selectedPin?.let { log(it) } }
+
+    // Tapping a chip shows its look in the real feature. Switching chips is the
+    // comparison.
+    fun select(chip: String, setStyle: (CardStyle) -> Unit) {
+        if (chip == selected) return
+        leave()
+        val pin = list.firstOrNull { it.name == chip }
+        setStyle(if (pin == null) baseline else uiTuningLabApply(pin.values))
+        selected = chip
     }
 
-    fun restoreDraft(setDraft: (CardStyle) -> Unit) = show("draft", baseline, setDraft)
-
-    // Every control edits the draft. Moved while a pin is shown, it copies that
-    // pin into the draft first; the pin itself does not change. Editing a draft
-    // that matches Shipped or a pin starts from that look.
-    fun edit(next: CardStyle, setDraft: (CardStyle) -> Unit, from: String? = null, before: CardStyle = next) {
-        val match = if (shown == "draft") draftMatch(before) else shown
-        val source = from ?: when (match) { null -> basedOn; "original" -> "baseline"; else -> match }
-        stash = null
-        setDraft(next)
-        basedOn = source
-        shown = "draft"
+    // Adds a pin, selects it, and shows it. `stem`, or `stem-2`, `stem-3`, ...
+    // when taken.
+    private fun add(stem: String, basedOn: String, look: CardStyle, setStyle: (CardStyle) -> Unit) {
+        leave()
+        val name = generateSequence(1) { it + 1 }.map { if (it == 1) stem else "$stem-$it" }.first { it !in issued }
+        val candidate = UITuningLabCandidate(name, basedOn, uiTuningLabChanged(look))
+        issued.add(name)
+        list.add(candidate)
+        status = "New look $name"
+        log(candidate)
+        setStyle(look)
+        selected = name
     }
 
-    fun reset(setDraft: (CardStyle) -> Unit) { lastPreset = null; edit(baseline, setDraft, "baseline") }
-
-    fun applyPreset(name: String, setDraft: (CardStyle) -> Unit) {
-        lastPreset = name
-        edit(uiTuningLabPresets.getValue(name), setDraft, name)
+    // Every control edits the selected look. Shipped is read-only, so an edit on
+    // it starts a new pin; a pin changes in place, and a preset becomes its basedOn.
+    fun edit(next: CardStyle, setStyle: (CardStyle) -> Unit, preset: String? = null) {
+        val index = list.indexOfFirst { it.name == selected }
+        if (index < 0) { add(preset ?: "tweak", preset ?: "baseline", next, setStyle); return }
+        val pin = list[index]
+        list[index] = UITuningLabCandidate(pin.name, preset ?: pin.basedOn, uiTuningLabChanged(next))
+        setStyle(next)
     }
 
-    // Always reports the draft, whichever chip is shown.
-    fun copyValues(draft: CardStyle): String {
-        val json = uiTuningLabJson(uiTuningLabChanged(stash ?: draft))
+    fun applyPreset(name: String, setStyle: (CardStyle) -> Unit) =
+        edit(uiTuningLabPresets.getValue(name), setStyle, name)
+
+    // Duplicate branches the selected pin, so the two can be compared.
+    fun duplicate(setStyle: (CardStyle) -> Unit) {
+        val pin = selectedPin ?: return
+        add(pin.name.replace(Regex("-[0-9]+$"), ""), pin.name, uiTuningLabApply(pin.values), setStyle)
+    }
+
+    // Reports the selected look: {} for Shipped.
+    fun copyValues(): String {
+        val json = uiTuningLabJson(selectedPin?.values ?: emptyMap<String, Any>())
         uiTuningLabLog("UITUNINGLAB_VALUES", json)
-        status = if (json == "{}") "No changes from Shipped" else "Copied $json"
+        status = if (json == "{}") "Same as Shipped" else "Copied $json"
         return json
     }
 
-    // Returns the new pin, or null with a status. Pin is enabled only while the
-    // draft holds unpinned changes. The persist variant writes it before commit().
-    fun prepareKeep(draft: CardStyle): UITuningLabCandidate? {
-        val values = uiTuningLabChanged(draft)
-        if (values.isEmpty()) { status = "Same as Shipped"; return null }
-        list.firstOrNull { it.values == values }?.let { status = "Same as ${it.name}"; return null }
-        val stem = lastPreset ?: "tweak"
-        val name = generateSequence(1) { it + 1 }.map { if (it == 1) stem else "$stem-$it" }.first { it !in issued }
-        return UITuningLabCandidate(name, basedOn, values)
-    }
-
-    fun commit(candidate: UITuningLabCandidate) {
-        list.add(candidate)
-        issued.add(candidate.name)
-        logged.add(candidate.name)
-        uiTuningLabLog("UITUNINGLAB_CANDIDATE", uiTuningLabJson(candidate.asMap()))
-        status = "Pinned ${candidate.name}"
-    }
-
-    // Pins the draft, stashed or on screen.
-    fun keep(draft: CardStyle) { prepareKeep(stash ?: draft)?.let(::commit) }
-
-    fun remove(name: String, draft: CardStyle, setDraft: (CardStyle) -> Unit) {
-        if (shown == name) show("draft", draft, setDraft)
+    // Removing the selected pin selects Shipped.
+    fun remove(name: String, setStyle: (CardStyle) -> Unit) {
+        try { unstore?.invoke(name) } catch (e: Exception) { status = "$name not removed: ${e.message}"; return }
         list.removeAll { it.name == name }
+        logged.remove(name)
         uiTuningLabLog("UITUNINGLAB_CANDIDATE_REMOVED", uiTuningLabJson(mapOf("name" to name)))
+        if (selected == name) { selected = "original"; setStyle(baseline) }
     }
 
-    // Choose picks what the feature shows (a pin, Shipped, or the draft while it
-    // holds unpinned edits) and finishes; returns the code for the clipboard.
-    // Picking again replaces the result: the newest pick wins.
-    fun useThis(draft: CardStyle, resultFile: File): String {
-        val chip = if (shown == "draft") draftMatch(draft) else shown
-        val picked = list.firstOrNull { it.name == chip }
-        val winner = if (chip == null) "draft" else picked?.name ?: "original"
-        val values = if (chip == null) uiTuningLabChanged(draft) else picked?.values ?: emptyMap<String, Any>()
+    // Choose picks the selected chip ("original" for Shipped) and finishes;
+    // returns the code for the clipboard. Picking again replaces the result: the
+    // newest pick wins.
+    fun choose(resultFile: File): String {
+        leave()
+        val pin = selectedPin
+        val winner = pin?.name ?: "original"
+        val values = pin?.values ?: emptyMap<String, Any>()
         val done = mapOf("candidates" to list.map { it.asMap() }, "values" to values, "winner" to winner)
         val line = uiTuningLabJson(done)
         // Logcat cuts entries near 4 KB. When the Done line may be cut, repeat each
@@ -439,22 +427,21 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UITuningLabPanel(
-    draft: CardStyle,
-    setDraft: (CardStyle) -> Unit,
+    style: CardStyle,
+    setStyle: (CardStyle) -> Unit,
     lab: UITuningLabCandidates,
     modifier: Modifier = Modifier,
     onClose: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
     val resultFile = File(LocalContext.current.noBackupFilesDir, ".ui-tuning-lab/result.json")
-    val editable = lab.shown != "original" // never edit the baseline
     val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
     var menuOpen by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { lab.logUnlogged() }
     // System back closes the lab first, like Escape on the web.
     BackHandler(onBack = onClose)
 
-    // After Choose the panel is one bar; Change reopens it.
+    // After Choose the panel is one bar; Change restores the whole panel.
     lab.result?.let { name ->
         Surface(modifier.padding(16.dp), shape = MaterialTheme.shapes.extraLarge,
             tonalElevation = 3.dp, shadowElevation = 8.dp,
@@ -482,76 +469,76 @@ fun UITuningLabPanel(
                         Text("⋯", Modifier.clearAndSetSemantics { })
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(text = { Text("Reset") },
-                            onClick = { menuOpen = false; lab.reset(setDraft) })
                         DropdownMenuItem(text = { Text("Copy values") }, onClick = {
                             menuOpen = false
-                            clipboard.setText(AnnotatedString(lab.copyValues(draft)))
+                            clipboard.setText(AnnotatedString(lab.copyValues()))
                         })
                     }
                 }
                 TextButton(onClick = onClose) { Text("Close") }
             }
-            // The chips: Shipped, then each pin. The selected chip is outlined.
-            val current = lab.current(draft)
-            val unpinned = lab.draftMatch(draft) == null
+            // The chips: Shipped, then each pin. The selected chip is outlined and
+            // is what the feature shows; exactly one is selected at a time.
+            val selected = lab.selected
             val outline = MaterialTheme.colorScheme.primary
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                FilterChip(selected = current == "original", onClick = { lab.show("original", draft, setDraft) },
+                FilterChip(selected = selected == "original", onClick = { lab.select("original", setStyle) },
                     label = { Text("Shipped") }, modifier = Modifier.padding(end = 8.dp),
-                    border = FilterChipDefaults.filterChipBorder(enabled = true, selected = current == "original",
+                    border = FilterChipDefaults.filterChipBorder(enabled = true, selected = selected == "original",
                         selectedBorderColor = outline, selectedBorderWidth = 2.dp))
                 for (c in lab.list) {
-                    InputChip(selected = current == c.name, onClick = { lab.show(c.name, draft, setDraft) },
+                    InputChip(selected = selected == c.name, onClick = { lab.select(c.name, setStyle) },
                         label = { Text(c.name) }, modifier = Modifier.padding(end = 8.dp),
-                        border = InputChipDefaults.inputChipBorder(enabled = true, selected = current == c.name,
+                        border = InputChipDefaults.inputChipBorder(enabled = true, selected = selected == c.name,
                             selectedBorderColor = outline, selectedBorderWidth = 2.dp),
                         trailingIcon = {
-                            IconButton(onClick = { lab.remove(c.name, draft, setDraft) },
+                            IconButton(onClick = { lab.remove(c.name, setStyle) },
                                 modifier = Modifier.size(24.dp).semantics { contentDescription = "Remove ${c.name}" }) {
                                 Text("×", Modifier.clearAndSetSemantics { })
                             }
                         })
                 }
             }
+            // Always enabled: they show the selected look and edit it. On Shipped,
+            // the first change starts a new pin.
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                 Row {
+                    // Presets are actions, not states, so they are never outlined.
                     for (name in uiTuningLabPresets.keys) {
-                        OutlinedButton(enabled = editable, onClick = { lab.applyPreset(name, setDraft) },
-                            border = if (lab.presetOn(name)) BorderStroke(2.dp, outline) else ButtonDefaults.outlinedButtonBorder(editable),
+                        OutlinedButton(onClick = { lab.applyPreset(name, setStyle) },
                             modifier = Modifier.padding(end = 8.dp)) { Text(name.replaceFirstChar(Char::uppercase)) }
                     }
                 }
-                UITuningLabSlider("Corner radius", draft.cornerRadius, 32, editable) {
-                    lab.edit(draft.copy(cornerRadius = it), setDraft, before = draft)
+                UITuningLabSlider("Corner radius", style.cornerRadius, 32) {
+                    lab.edit(style.copy(cornerRadius = it), setStyle)
                 }
-                UITuningLabSlider("Spacing", draft.spacing, 24, editable) {
-                    lab.edit(draft.copy(spacing = it), setDraft, before = draft)
+                UITuningLabSlider("Spacing", style.spacing, 24) {
+                    lab.edit(style.copy(spacing = it), setStyle)
                 }
                 lab.status?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
             }
             Row(Modifier.padding(top = 8.dp)) {
-                OutlinedButton(enabled = unpinned, onClick = { lab.keep(draft) },
-                    modifier = Modifier.padding(end = 8.dp)) { Text("Pin") }
-                Button(onClick = { clipboard.setText(AnnotatedString(lab.useThis(draft, resultFile))) }) {
+                OutlinedButton(enabled = lab.selectedPin != null, onClick = { lab.duplicate(setStyle) },
+                    modifier = Modifier.padding(end = 8.dp)) { Text("Duplicate") }
+                Button(onClick = { clipboard.setText(AnnotatedString(lab.choose(resultFile))) }) {
                     Text("Choose")
                 }
             }
             // Pinned below the controls, visible however long the panel grows.
-            Text("Pin looks to compare · Choose to finish",
+            Text("Duplicate to compare · Choose to finish",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 12.dp))
         }
     }
 }
 
 @Composable
-private fun UITuningLabSlider(label: String, value: Int, max: Int, enabled: Boolean, onChange: (Int) -> Unit) {
+private fun UITuningLabSlider(label: String, value: Int, max: Int, onChange: (Int) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f))
         // The slider already reports its value to TalkBack; hide the readout.
         Text("$value dp", Modifier.clearAndSetSemantics { })
     }
-    Slider(value = value.toFloat(), onValueChange = { onChange(it.roundToInt()) }, enabled = enabled,
+    Slider(value = value.toFloat(), onValueChange = { onChange(it.roundToInt()) },
         valueRange = 0f..max.toFloat(), steps = max - 1,
         modifier = Modifier.semantics { contentDescription = label })
 }
@@ -580,8 +567,9 @@ its one launch request and the extra is ignored.
 ## Teardown
 
 Closing (Close or system back) sets `showUITuningLab` to false, which removes
-the panel, its `BackHandler`, and its state from composition and restores any
-stashed draft. The lab registers no listeners,
+the panel, its `BackHandler`, and its state from composition. The feature keeps
+the selected look, and reopening shows the same chips and selection. The lab
+registers no listeners,
 sensors, or timers; `LaunchedEffect` scopes are cancelled with the composition.
 Confirm with Layout Inspector that no panel node remains after closing.
 
@@ -593,12 +581,13 @@ both variants.
 
 ## Persistence variant, only when requested
 
-Add this file and call it from the store; everything else stays the same. It
-writes one `schemaVersion: 2` profile per candidate to
+Add this file and hand it to the store; everything else stays the same. It
+writes one `schemaVersion: 2` profile per pin to
 `context.noBackupFilesDir/.ui-tuning-lab/candidates/<name>.json`
-(`references/platform-handoff.md`), never over an existing file. A failed write
-refuses the Pin. Unreadable or incompatible files are reported, skipped, and
-left untouched, and their names stay reserved.
+(`references/platform-handoff.md`) when the pin is created and again whenever it
+logs new values, and × deletes it. A failed write shows in the status line; the
+pin stays in the panel. Unreadable or incompatible files are reported, skipped,
+and left untouched, and their names stay reserved.
 
 `app/src/debug/java/com/example/cards/UITuningLabStorage.kt`
 
@@ -610,31 +599,39 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Instant
 
 class UITuningLabStorage(context: Context) {
     private val dir = File(context.noBackupFilesDir, ".ui-tuning-lab/candidates")
 
-    // Atomic: write a temporary file, then move it into place. Files.move without
-    // REPLACE_EXISTING fails if the target exists, so nothing is overwritten.
-    fun write(candidate: UITuningLabCandidate, overrides: CardStyle) {
+    // Atomic: write a temporary file, then move it over the pin's last profile,
+    // so a reader never sees half a file.
+    fun write(candidate: UITuningLabCandidate) {
         if (!dir.isDirectory && !dir.mkdirs()) throw IOException("cannot create $dir")
         val target = File(dir, "${candidate.name}.json")
-        if (target.exists()) throw IOException("${candidate.name} already exists in storage")
         val profile = mapOf(
             "basedOn" to candidate.basedOn, "container" to "FeatureScreen.panel",
-            "name" to candidate.name, "notes" to "", "overrides" to overrides.uiTuningLabMap(),
+            "name" to candidate.name, "notes" to "",
+            "overrides" to uiTuningLabApply(candidate.values).uiTuningLabMap(),
             "platform" to "android", "savedAt" to Instant.now().toString(), "schemaVersion" to 2,
             "scope" to listOf("appearance", "layout"),
         )
         val temp = File(dir, ".${candidate.name}.json.tmp")
         temp.writeText(uiTuningLabJson(profile))
-        try { Files.move(temp.toPath(), target.toPath()) } finally { temp.delete() }
+        try {
+            Files.move(temp.toPath(), target.toPath(),
+                StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        } finally { temp.delete() }
     }
 
-    fun delete(name: String) { File(dir, "$name.json").delete() }
+    fun delete(name: String) {
+        val file = File(dir, "$name.json")
+        if (file.exists() && !file.delete()) throw IOException("cannot delete $file")
+    }
 
-    // Every stored name goes into `reserved`, readable or not, so Pin never reuses it.
+    // Every stored name goes into `reserved`, readable or not, so a new pin never
+    // reuses it.
     fun readAll(reserved: MutableSet<String>): Pair<List<UITuningLabCandidate>, List<String>> {
         val found = mutableListOf<Pair<Instant, UITuningLabCandidate>>()
         val problems = mutableListOf<String>()
@@ -660,12 +657,17 @@ class UITuningLabStorage(context: Context) {
 }
 ```
 
-Wiring, in the store: give `UITuningLabCandidates` a `storage` parameter.
-`keep` becomes `val pinned = stash ?: draft; prepareKeep(pinned)?.let { c -> try { storage.write(c, pinned); commit(c) } catch (e: Exception) { status = "Pin failed: ${e.message}" } }`;
-`remove` calls `storage.delete(name)` first; and the panel's `LaunchedEffect`
-calls `readAll(issued)` (make `issued` internal), adds the found candidates
-that are not already listed, shows the problems in `status`, then calls
-`logUnlogged()`. Do file work off the main thread in a real app
+Wiring, in `TuningLabHost`: add `val context = LocalContext.current` and
+`val storage = remember { UITuningLabStorage(context) }` before the store, and
+create the store with
+`remember { UITuningLabCandidates(initial = emptyList()).apply { store = storage::write; unstore = storage::delete } }`.
+The store already calls them: `store` whenever a pin logs its
+`UITUNINGLAB_CANDIDATE` line (creation, and leaving it after an edit), with a
+failure shown in `status`; `unstore` before × removes a pin, which stays if the
+delete fails. The panel's `LaunchedEffect` calls `storage.readAll(lab.issued)`,
+adds the found candidates that are not already in `lab.list`, shows the
+problems in `lab.status`, then calls `logUnlogged()`, which logs loaded pins
+without writing them again. Do file work off the main thread in a real app
 (`withContext(Dispatchers.IO)`). Validate a pulled file with
 `sh <skill-dir>/scripts/verify.sh profile <file>` after
 `adb exec-out run-as <pkg> cat no_backup/.ui-tuning-lab/candidates/tweak.json > tweak.json`.

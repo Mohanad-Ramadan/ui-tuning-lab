@@ -38,11 +38,11 @@ Common checks:
 - On compact iOS, account for popover-to-sheet adaptation.
 - Ignore lab chrome when measuring the feature.
 - Make hot reload registration idempotent.
-- On save failure, show the error and retain the draft.
+- On save failure, show the error and keep the pin in the panel.
 - On corrupt or incompatible saved data, keep the file untouched, keep the
-  current draft, and report the incompatibility.
-- Reset and Choose need no confirmation: Shipped is one tap away, Pin
-  preserves a draft worth keeping, and a new pick replaces the old one.
+  current look, and report the incompatibility.
+- Choose and × need no confirmation: Shipped is one tap away, Duplicate keeps
+  a version worth keeping, and a new pick replaces the old one.
 - A seeded candidate that now matches the baseline, or whose fields no longer
   exist in the configuration, is dropped from the lab and reported, never
   silently rewritten.

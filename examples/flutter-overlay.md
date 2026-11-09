@@ -8,9 +8,9 @@ The host wraps only the feature, but the pill and panel live in the app's
 `Overlay` through an `OverlayPortal`, the declarative form of an
 `OverlayEntry`, so they pin to the screen corner even when the feature sits
 inside a scroll view. The overlay child is built as part of the host's own
-build, so it follows every draft change without `markNeedsBuild` calls. While
-the lab is closed it builds only the pill; the panel is not built at all (the
-`maintainState: false` behavior). It is not opaque, so the feature outside the
+build, so it follows every change to the shown look without `markNeedsBuild`
+calls. While the lab is closed it builds only the pill; the panel is not built
+at all (the `maintainState: false` behavior). It is not opaque, so the feature outside the
 panel stays visible and touchable.
 
 Activation (`references/activation.md`):
@@ -22,18 +22,18 @@ Activation (`references/activation.md`):
   has a debug drawer or developer menu, add an entry that calls the same open
   method, and keep the pill.
 
-The host's lab state owns the pins, so pins, `basedOn`, and the stashed draft
-survive closing the overlay. The default lab is ephemeral: pins live in memory
-and the log only, and a name is never reused within an isolate. The chip row
-under the header shows Shipped and each pin; the selected chip is outlined, and
-so is the preset the draft started from. Unpinned edits stay under the chip they
-started from, with no chip of their own; tapping another chip stashes them until
-that chip is tapped again or the panel closes. While Shipped is shown away from
-the draft the presets and sliders are disabled; moving one while a pin is shown
-copies that pin into the draft first. **Pin** pins the draft and is disabled
-while the draft matches Shipped or a pin, **Choose** picks what the feature
-shows and collapses the panel to the result bar, and the **⋯** menu holds Reset
-and Copy values. The hint sits below the scrolling controls.
+The host's lab state owns the pins and the selection, so both survive closing
+the overlay. The default lab is ephemeral: pins live in memory and the log only,
+and a name is never reused within an isolate. The panel follows
+`references/candidates.md`. The chip row under the header shows **Shipped** and
+each pin; the selected chip is outlined, and the feature always shows it.
+Switching chips is the comparison: there is no draft and nothing is stashed.
+The presets and sliders edit the selected pin in place; on Shipped, which is
+read-only, they start a new pin named after the preset or `tweak`.
+**Duplicate** branches the selected pin, **Choose** picks the selected chip and
+collapses the panel to the result bar (**Change** restores it), and the **⋯**
+menu holds **Copy values** for the selected look. Closing keeps the selected
+look in the feature. The hint sits below the scrolling controls.
 
 ## Host change
 
@@ -133,16 +133,17 @@ bool uiTuningLabConsumeRequest() {
 
 // The declared default, never the value on screen when the lab opens.
 const _baseline = CardStyle.appDefault;
-// Preset keys are kebab-case: the key is what a candidate records as basedOn.
+// Preset keys are kebab-case: the key is what a pin records as basedOn and is
+// named after.
 const _presets = {
   'compact': CardStyle(cornerRadius: 4, spacing: 4),
   'relaxed': CardStyle(cornerRadius: 24, spacing: 16),
 };
 
 Map<String, double> _asMap(CardStyle s) => {'cornerRadius': s.cornerRadius, 'spacing': s.spacing};
-Map<String, double> _changed(CardStyle draft) {
+Map<String, double> _changed(CardStyle look) {
   final base = _asMap(_baseline);
-  return Map.fromEntries(_asMap(draft).entries.where((e) => base[e.key] != e.value));
+  return Map.fromEntries(_asMap(look).entries.where((e) => base[e.key] != e.value));
 }
 CardStyle _apply(Map<String, double> v) => CardStyle(
     cornerRadius: v['cornerRadius'] ?? _baseline.cornerRadius, spacing: v['spacing'] ?? _baseline.spacing);
@@ -163,6 +164,14 @@ String _sortedJson(Object? v) {
 
 void _log(String tag, Object? payload) {
   if (kDebugMode) debugPrint('$tag ${_sortedJson(payload)}');
+}
+
+// `stem`, or `stem-2`, `stem-3`, ... when taken. Removed names stay in `issued`,
+// so a name is never reused in this isolate.
+String _nextName(String stem, Set<String> issued) {
+  var name = stem;
+  for (var i = 2; issued.contains(name); i++) { name = '$stem-$i'; }
+  return name;
 }
 
 class _Candidate {
@@ -188,39 +197,21 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   final List<_Candidate> candidates = [];
   // Every name issued, removed ones included, plus the names a pin never takes.
   final Set<String> issued = {'draft', 'now', 'original', 'baseline'};
-  final Set<String> logged = {};
-  String basedOn = 'baseline';
-  String? lastPreset;
-  String shown = 'draft'; // the shown chip: "draft", "original" (Shipped), or a pin's name
-  CardStyle? stash; // the draft, while another chip is shown
+  // The line each pin last logged, so a pin logs again only after it changed.
+  final Map<String, String> logged = {};
+  // The selected chip: 'original' (Shipped) or a pin's name. The feature always
+  // shows it; there is no draft and nothing is stashed.
+  String selected = 'original';
   String? status;
   String? result; // the last pick; while set, the panel is the result bar
   // Hidden means the panel is not built: nothing of it stays in the tree.
   final portal = OverlayPortalController();
   bool isOpen = false;
 
-  CardStyle get draft => widget.style;
+  CardStyle get look => widget.style;
+  _Candidate? get selectedPin => candidates.where((c) => c.name == selected).firstOrNull;
 
-  // The chip the draft matches ('original' for Shipped, or a pin), or null while
-  // it holds unpinned changes.
-  String? get draftMatch {
-    final values = _changed(stash ?? draft);
-    if (values.isEmpty) return 'original';
-    return candidates.where((c) => _sortedJson(c.values) == _sortedJson(values)).firstOrNull?.name;
-  }
-
-  // The draft's home chip: the chip it matches, else the pin it was copied from,
-  // else Shipped. Unpinned edits stay under it; there is no chip of their own.
-  String get home =>
-      draftMatch ?? (candidates.any((c) => c.name == basedOn) ? basedOn : 'original');
-
-  // The selected chip: the one shown, or the draft's home.
-  String get current => shown == 'draft' ? home : shown;
-
-  // A preset is selected while the draft, with or without edits, started from it.
-  bool presetOn(String name) => shown == 'draft' && basedOn == name;
-
-  // A selected chip or preset is outlined, so it reads as selected without a label.
+  // The selected chip is outlined, so it reads as selected without a label.
   BorderSide? outline(bool on) =>
       on ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2) : null;
 
@@ -240,94 +231,105 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   // and a new widget.style from the parent reaches it the same way.
   void update(VoidCallback change) => setState(change);
 
+  // Logs a pin's line when it is new or changed since it last logged. The
+  // persist variant also writes the pin here.
+  void logPin(_Candidate c) {
+    final line = _sortedJson(c.toJson());
+    if (logged[c.name] == line) return;
+    logged[c.name] = line;
+    _log('UITUNINGLAB_CANDIDATE', c.toJson());
+  }
+
+  // A pin edited in place logs its new values once it is left: another chip is
+  // selected, the lab closes, or Choose.
+  void leave() {
+    final pin = selectedPin;
+    if (pin != null) logPin(pin);
+  }
+
   void open() {
     if (isOpen) return;
-    for (final c in candidates) { if (logged.add(c.name)) _log('UITUNINGLAB_CANDIDATE', c.toJson()); }
+    for (final c in candidates) { if (!logged.containsKey(c.name)) logPin(c); }
     update(() { isOpen = true; status = null; });
   }
 
+  // Closing keeps the selected look in the feature; reopening keeps the chips.
   void close() {
-    show('draft');
+    leave();
     update(() => isOpen = false);
   }
 
-  // Tapping a chip shows it in the real feature; the draft is stashed meanwhile.
-  // The draft's home chip shows the draft itself.
-  void show(String chip) {
-    final target = chip == home ? 'draft' : chip;
-    if (target == 'draft') {
-      if (stash != null) widget.onChanged(stash!);
-      stash = null;
-    } else {
-      stash ??= draft;
-      final c = candidates.where((c) => c.name == target).firstOrNull;
-      widget.onChanged(c == null ? _baseline : _apply(c.values));
-    }
-    update(() => shown = target);
+  // Tapping a chip shows its look in the real feature. Switching chips is the
+  // comparison.
+  void select(String chip) {
+    if (chip == selected) return;
+    leave();
+    final c = candidates.where((c) => c.name == chip).firstOrNull;
+    widget.onChanged(c == null ? _baseline : _apply(c.values));
+    update(() => selected = chip);
   }
 
-  // Every control edits the draft. Moved while a pin is shown, it copies that pin
-  // into the draft first; the pin itself does not change. Editing a draft that
-  // matches Shipped or a pin starts from that look.
-  void edit(CardStyle next, [String? from]) {
-    final match = shown == 'draft' ? draftMatch : shown;
-    final source = from ?? (match == null ? basedOn : match == 'original' ? 'baseline' : match);
-    stash = null;
+  // Adds a pin, selects it, and shows it.
+  void add(String stem, String basedOn, CardStyle next) {
+    leave();
+    final name = _nextName(stem, issued);
+    final c = _Candidate(name, basedOn, _changed(next));
+    issued.add(name);
+    logPin(c);
     widget.onChanged(next);
-    update(() { basedOn = source; shown = 'draft'; });
+    update(() { candidates.add(c); selected = name; status = 'New look $name'; });
   }
 
-  void applyPreset(String name) { lastPreset = name; edit(_presets[name]!, name); }
-  void reset() { lastPreset = null; edit(_baseline, 'baseline'); }
+  // Every control edits the selected look. Shipped is read-only, so an edit on it
+  // starts a new pin; a pin changes in place.
+  void edit(CardStyle next, [String? preset]) {
+    final i = candidates.indexWhere((c) => c.name == selected);
+    if (i < 0) { add(preset ?? 'tweak', preset ?? 'baseline', next); return; }
+    final old = candidates[i];
+    widget.onChanged(next);
+    update(() => candidates[i] = _Candidate(old.name, preset ?? old.basedOn, _changed(next)));
+  }
 
-  // Always reports the draft, whichever chip is shown.
+  void applyPreset(String name) => edit(_presets[name]!, name);
+
+  // Duplicate branches the selected pin, so the two can be compared. It copies
+  // the pin's own values, never widget.style, which updates only after the
+  // parent rebuilds.
+  void duplicate() {
+    final pin = selectedPin;
+    if (pin == null) return;
+    add(pin.name.replaceFirst(RegExp(r'-[0-9]+$'), ''), pin.name, _apply(pin.values));
+  }
+
+  // Reports the selected look.
   Future<void> copyValues() async {
-    final values = _changed(stash ?? draft);
+    final values = selectedPin?.values ?? <String, double>{};
     final json = _sortedJson(values);
     _log('UITUNINGLAB_VALUES', values);
     await Clipboard.setData(ClipboardData(text: json));
-    update(() => status = json == '{}' ? 'No changes from Shipped' : 'Copied $json');
+    update(() => status = json == '{}' ? 'Same as Shipped' : 'Copied $json');
   }
-
-  // Returns the new pin, or null with a status. Pin is enabled only while the
-  // draft holds unpinned changes. The persist variant writes the pin before
-  // calling commit().
-  _Candidate? prepareKeep() {
-    final values = _changed(stash ?? draft);
-    if (values.isEmpty) { update(() => status = 'Same as Shipped'); return null; }
-    final same = candidates.where((c) => _sortedJson(c.values) == _sortedJson(values)).firstOrNull;
-    if (same != null) { update(() => status = 'Same as ${same.name}'); return null; }
-    final stem = lastPreset ?? 'tweak';
-    var name = stem;
-    for (var i = 2; issued.contains(name); i++) { name = '$stem-$i'; }
-    return _Candidate(name, basedOn, values);
-  }
-
-  void commit(_Candidate c) {
-    issued.add(c.name);
-    logged.add(c.name);
-    _log('UITUNINGLAB_CANDIDATE', c.toJson());
-    update(() { candidates.add(c); status = 'Pinned ${c.name}'; });
-  }
-
-  void keep() { final c = prepareKeep(); if (c != null) commit(c); }
 
   void remove(String name) {
-    if (shown == name) show('draft');
     _log('UITUNINGLAB_CANDIDATE_REMOVED', {'name': name});
-    update(() => candidates.removeWhere((c) => c.name == name));
+    logged.remove(name);
+    final wasSelected = selected == name;
+    if (wasSelected) widget.onChanged(_baseline);
+    update(() {
+      candidates.removeWhere((c) => c.name == name);
+      if (wasSelected) selected = 'original';
+    });
   }
 
-  // Choose picks what the feature shows (a pin, Shipped, or the draft while it
-  // holds unpinned edits) and finishes. Picking again replaces the result.
-  Future<void> useThis() async {
-    final chip = shown == 'draft' ? draftMatch : shown;
-    final picked = candidates.where((c) => c.name == chip).firstOrNull;
-    final winner = chip == null ? 'draft' : picked?.name ?? 'original';
-    final values = chip == null ? _changed(draft) : picked?.values ?? <String, double>{};
+  // Choose picks the selected chip and finishes. Picking again replaces the
+  // result.
+  Future<void> choose() async {
+    leave();
+    final pin = selectedPin;
+    final winner = pin?.name ?? 'original';
     final done = <String, Object?>{
       'candidates': [for (final c in candidates) c.toJson()],
-      'values': values,
+      'values': pin?.values ?? <String, double>{},
       'winner': winner,
     };
     _log('UITUNINGLAB_DONE', done);
@@ -370,17 +372,16 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     )));
   }
 
-  Widget slider(String label, double value, double max, bool editable, ValueChanged<double> onChanged) {
+  Widget slider(String label, double value, double max, ValueChanged<double> onChanged) {
     return Row(children: [
       SizedBox(width: 96, child: Text(label)),
       Expanded(child: Slider(value: value, max: max, divisions: max.toInt(), label: label,
-          onChanged: editable ? (v) => onChanged(v.roundToDouble()) : null)),
+          onChanged: (v) => onChanged(v.roundToDouble()))),
       ExcludeSemantics(child: Text('${value.round()}')),
     ]);
   }
 
   Widget panel(BuildContext overlayContext) {
-    final editable = shown != 'original'; // never edit the baseline
     final size = MediaQuery.sizeOf(overlayContext);
     // Phones: a full-width panel docked to the bottom, at most 45% tall, so the
     // feature stays visible above it. Wider screens: a 320-wide corner panel.
@@ -405,10 +406,9 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
               Row(children: [
                 Expanded(child: Semantics(header: true, child: const Text('UI tuning lab'))),
                 PopupMenuButton<String>(
-                  tooltip: 'More', icon: const Icon(Icons.more_horiz),
-                  onSelected: (choice) { if (choice == 'reset') { reset(); } else { copyValues(); } },
+                  tooltip: 'More actions', icon: const Icon(Icons.more_horiz),
+                  onSelected: (_) => copyValues(),
                   itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'reset', child: Text('Reset')),
                     PopupMenuItem(value: 'copy', child: Text('Copy values')),
                   ],
                 ),
@@ -416,37 +416,37 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
               ]),
               // The chips: Shipped, then each pin. The selected chip is outlined.
               Wrap(spacing: 8, runSpacing: 4, children: [
-                ChoiceChip(label: const Text('Shipped'), selected: current == 'original',
-                    side: outline(current == 'original'), showCheckmark: false,
-                    onSelected: (_) => show('original')),
+                ChoiceChip(label: const Text('Shipped'), selected: selected == 'original',
+                    side: outline(selected == 'original'), showCheckmark: false,
+                    onSelected: (_) => select('original')),
                 for (final c in candidates)
-                  InputChip(label: Text(c.name), selected: current == c.name,
-                      side: outline(current == c.name), showCheckmark: false,
-                      onSelected: (_) => show(c.name),
+                  InputChip(label: Text(c.name), selected: selected == c.name,
+                      side: outline(selected == c.name), showCheckmark: false,
+                      onSelected: (_) => select(c.name),
                       deleteIcon: const Icon(Icons.close, size: 16),
                       deleteButtonTooltipMessage: 'Remove ${c.name}',
                       onDeleted: () => remove(c.name)),
               ]),
               Flexible(child: SingleChildScrollView(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                // Presets are actions, never outlined.
                 Wrap(spacing: 8, children: [
                   for (final name in _presets.keys)
-                    OutlinedButton(onPressed: editable ? () => applyPreset(name) : null,
-                        style: presetOn(name) ? OutlinedButton.styleFrom(side: outline(true)) : null,
+                    OutlinedButton(onPressed: () => applyPreset(name),
                         child: Text(name[0].toUpperCase() + name.substring(1))),
                 ]),
-                slider('Radius', draft.cornerRadius, 32, editable,
-                    (v) => edit(draft.copyWith(cornerRadius: v))),
-                slider('Spacing', draft.spacing, 24, editable,
-                    (v) => edit(draft.copyWith(spacing: v))),
+                slider('Radius', look.cornerRadius, 32,
+                    (v) => edit(look.copyWith(cornerRadius: v))),
+                slider('Spacing', look.spacing, 24,
+                    (v) => edit(look.copyWith(spacing: v))),
                 if (status != null) Semantics(liveRegion: true, child: Text(status!)),
               ]))),
               Wrap(spacing: 8, children: [
-                OutlinedButton(onPressed: draftMatch == null ? keep : null, child: const Text('Pin')),
-                FilledButton(onPressed: useThis, child: const Text('Choose')),
+                OutlinedButton(onPressed: selectedPin == null ? null : duplicate, child: const Text('Duplicate')),
+                FilledButton(onPressed: choose, child: const Text('Choose')),
               ]),
               // Pinned below the controls, visible however long the panel grows.
-              const Padding(padding: EdgeInsets.only(top: 8), child: Text('Pin looks to compare · Choose to finish')),
+              const Padding(padding: EdgeInsets.only(top: 8), child: Text('Duplicate to compare · Choose to finish')),
             ]),
           ),
         ),
@@ -468,7 +468,7 @@ variants from it, still inside the host's `kDebugMode` branch.
 Changes to `lib/feature_screen.ui-tuning-lab.dart`:
 
 ```dart
-// Each variant renders the feature's real data with the draft style. The
+// Each variant renders the feature's real data with the shown style. The
 // original stays the production widget, so it has no entry here. The titles
 // below stand in for the feature's real inputs (variantInputs, bloc state).
 typedef _DesignBuilder = Widget Function(BuildContext context, CardStyle style);
@@ -485,8 +485,8 @@ final Map<String, _DesignBuilder> _designs = {
 const _designLabels = {'original': 'Shipped', 'grid': 'Grid'};
 
 // The design joins the values: present only when it differs from 'original'.
-Map<String, Object> _changedWith(String design, CardStyle draft) =>
-    {if (design != 'original') 'design': design, ..._changed(draft)};
+Map<String, Object> _changedWith(String design, CardStyle look) =>
+    {if (design != 'original') 'design': design, ..._changed(look)};
 String _designOf(Map<String, Object> v) => v['design'] as String? ?? 'original';
 CardStyle _styleOf(Map<String, Object> v) => _apply({
       for (final e in v.entries) if (e.value is num) e.key: (e.value as num).toDouble(),
@@ -495,12 +495,11 @@ CardStyle _styleOf(Map<String, Object> v) => _apply({
 
 In the host state:
 
-- Add `String design = 'original';` and `String? stashDesign;` beside `stash`.
-- `_Candidate.values` becomes `Map<String, Object>`. `prepareKeep` and
-  `draftMatch` use `_changedWith(stashDesign ?? design, stash ?? draft)`, and
-  `copyValues` reports the draft the same way.
-- A pin is named after its design when that is not `original`, so
-  `prepareKeep` takes `final stem = design != 'original' ? design : lastPreset ?? 'tweak';`.
+- Add `String design = 'original';`, the selected look's design.
+- `_Candidate.values` becomes `Map<String, Object>`, and `copyValues` and
+  `choose` fall back to `<String, Object>{}` for Shipped.
+- A new pin is named after its design when that is not `original`, else after
+  the preset, else `tweak`.
 - Presets carry a design: `Map<String, ({String design, CardStyle style})>`,
   and `applyPreset` passes both to `edit`.
 - Fields that are not numbers (a bool toggle, a string choice) go in the same
@@ -510,58 +509,67 @@ In the host state:
   bloc, `context.watch<HomeBloc>().state` inside the builder works, since a
   variant renders where the feature did. The panel, in the overlay, inherits
   from the host's location too.
-- `reset()` becomes `lastPreset = null; edit(_baseline, from: 'baseline', design: 'original');`.
+- `remove` also sets `design = 'original'` when it removes the selected pin.
 
-`show`, `edit`, and `useThis` move the design with the style:
+`select`, `add`, `edit`, and `duplicate` move the design with the style:
 
 ```dart
-void show(String chip) {
-  final target = chip == home ? 'draft' : chip;
-  if (target == 'draft') {
-    if (stash != null) widget.onChanged(stash!);
-    design = stashDesign ?? design;
-    stash = null;
-    stashDesign = null;
-  } else {
-    stash ??= draft;
-    stashDesign ??= design;
-    final c = candidates.where((c) => c.name == target).firstOrNull;
-    design = c == null ? 'original' : _designOf(c.values);
-    widget.onChanged(c == null ? _baseline : _styleOf(c.values));
-  }
-  update(() => shown = target);
+void select(String chip) {
+  if (chip == selected) return;
+  leave();
+  final c = candidates.where((c) => c.name == chip).firstOrNull;
+  widget.onChanged(c == null ? _baseline : _styleOf(c.values));
+  update(() { selected = chip; design = c == null ? 'original' : _designOf(c.values); });
 }
 
-// While a pin is shown, design already holds its design, so copying it into
-// the draft keeps it unless the control changes the design itself.
-void edit(CardStyle next, {String? from, String? design}) {
-  final match = shown == 'draft' ? draftMatch : shown;
-  final source = from ?? (match == null ? basedOn : match == 'original' ? 'baseline' : match);
-  stash = null;
-  stashDesign = null;
-  if (design != null) this.design = design;
+void add(String stem, String basedOn, CardStyle next, String nextDesign) {
+  leave();
+  final name = _nextName(stem, issued);
+  final c = _Candidate(name, basedOn, _changedWith(nextDesign, next));
+  issued.add(name);
+  logPin(c);
   widget.onChanged(next);
-  update(() { basedOn = source; shown = 'draft'; });
+  update(() { candidates.add(c); selected = name; design = nextDesign; status = 'New look $name'; });
+}
+
+// A control that does not change the design keeps the selected look's design.
+void edit(CardStyle next, {String? preset, String? design}) {
+  final nextDesign = design ?? this.design;
+  final i = candidates.indexWhere((c) => c.name == selected);
+  if (i < 0) {
+    add(nextDesign != 'original' ? nextDesign : preset ?? 'tweak', preset ?? 'baseline', next, nextDesign);
+    return;
+  }
+  final old = candidates[i];
+  widget.onChanged(next);
+  update(() {
+    this.design = nextDesign;
+    candidates[i] = _Candidate(old.name, preset ?? old.basedOn, _changedWith(nextDesign, next));
+  });
 }
 
 void applyPreset(String name) {
   final p = _presets[name]!;
-  lastPreset = name;
-  edit(p.style, from: name, design: p.design);
+  edit(p.style, preset: name, design: p.design);
 }
 
-// In useThis(): a pin's values come from the pin itself, never from
-// widget.style, which updates only after the parent rebuilds.
-final values = chip == null ? _changedWith(design, draft) : picked?.values ?? <String, Object>{};
+// The pin's own values, never widget.style, which updates only after the
+// parent rebuilds.
+void duplicate() {
+  final pin = selectedPin;
+  if (pin == null) return;
+  add(pin.name.replaceFirst(RegExp(r'-[0-9]+$'), ''), pin.name, _styleOf(pin.values), _designOf(pin.values));
+}
 ```
 
-The sliders call `edit(draft.copyWith(...))` as before.
+The sliders call `edit(look.copyWith(...))` as before.
 
 - `build` renders the variant in place of the feature:
-  `final body = _designs[design]?.call(context, draft) ?? widget.child;` and
+  `final body = _designs[design]?.call(context, look) ?? widget.child;` and
   uses `body` where it used `widget.child`.
-- The panel's first row under the chips is the Design picker, disabled while
-  Shipped is shown like every other control:
+- The panel's first row under the chips is the Design picker. Like every other
+  control it is always enabled: on Shipped it starts a new pin named after the
+  design.
 
 ```dart
 const Text('Design'),
@@ -569,7 +577,7 @@ Wrap(spacing: 8, children: [
   for (final key in _designLabels.keys)
     ChoiceChip(label: Text(_designLabels[key]!), selected: design == key,
         side: outline(design == key), showCheckmark: false,
-        onSelected: editable ? (_) => edit(draft, design: key) : null),
+        onSelected: (_) => edit(look, design: key)),
 ]),
 ```
 
@@ -630,7 +638,7 @@ Future<void> _uiTuningLabWriteResult(Map<String, Object?> done) async {
 }
 ```
 
-In `useThis()`, right after `_log('UITUNINGLAB_DONE', done)`:
+In `choose()`, right after `_log('UITUNINGLAB_DONE', done)`:
 `try { await _uiTuningLabWriteResult(done); } catch (e) { status = 'Result file failed: $e'; }`.
 The pick still goes through the log and the clipboard, and the status shows
 after Change. Read it with
@@ -639,8 +647,9 @@ or the iOS Simulator command in `references/platform-handoff.md`.
 
 ## Persistence variant, only when requested
 
-Writes one `schemaVersion: 2` profile per candidate to
+Writes one `schemaVersion: 2` profile per pin to
 `getApplicationSupportDirectory()/.ui-tuning-lab/candidates/<name>.json`
+when the pin is created and again whenever it logs new values
 (`references/platform-handoff.md`). Ask before adding `path_provider` if the
 app lacks it. On Android that directory is the app's `files` directory, which
 Android Auto Backup includes by default: exclude `.ui-tuning-lab/` in the app's
@@ -655,30 +664,19 @@ import 'package:path_provider/path_provider.dart';
 Future<Directory> _uiTuningLabDir() async =>
     Directory('${(await getApplicationSupportDirectory()).path}/.ui-tuning-lab/candidates');
 
-// Never over an existing file. File.rename replaces its target on POSIX, so the
-// name is first claimed with an exclusive create, which fails if the file
-// exists; the rename then replaces only that empty placeholder.
-Future<void> _uiTuningLabWrite(_Candidate c, CardStyle overrides) async {
+// Writes the pin's own file: temporary file, then rename, so a reader never
+// sees half a profile. Stored names are reserved, so a new pin never lands on
+// another pin's file.
+Future<void> _uiTuningLabWrite(_Candidate c) async {
   final dir = await (await _uiTuningLabDir()).create(recursive: true);
-  final target = File('${dir.path}/${c.name}.json');
-  try {
-    await target.create(exclusive: true);
-  } on FileSystemException {
-    throw FileSystemException('${c.name} already exists in storage');
-  }
-  final temp = File('${target.path}.tmp');
-  try {
-    await temp.writeAsString(_sortedJson({
-      'basedOn': c.basedOn, 'container': 'FeatureScreen.OverlayPortal', 'name': c.name, 'notes': '',
-      'overrides': _asMap(overrides), 'platform': 'flutter',
-      'savedAt': DateTime.now().toUtc().toIso8601String(), 'schemaVersion': 2,
-      'scope': ['appearance', 'layout'],
-    }), flush: true);
-    await temp.rename(target.path);
-  } catch (_) {
-    await target.delete(); // release the claimed name; the Pin is refused
-    rethrow;
-  }
+  final temp = File('${dir.path}/${c.name}.json.tmp');
+  await temp.writeAsString(_sortedJson({
+    'basedOn': c.basedOn, 'container': 'FeatureScreen.OverlayPortal', 'name': c.name, 'notes': '',
+    'overrides': _asMap(_apply(c.values)), 'platform': 'flutter',
+    'savedAt': DateTime.now().toUtc().toIso8601String(), 'schemaVersion': 2,
+    'scope': ['appearance', 'layout'],
+  }), flush: true);
+  await temp.rename('${dir.path}/${c.name}.json');
 }
 
 // Every stored name is reserved, readable or not. Unusable files are reported and left alone.
@@ -712,11 +710,14 @@ Future<(List<_Candidate>, List<String>)> _uiTuningLabReadAll(Set<String> reserve
 }
 ```
 
-Wiring: `keep()` becomes `Future<void> keep() async { final c = prepareKeep(); if (c == null) return; try { await _uiTuningLabWrite(c, stash ?? draft); commit(c); } catch (e) { update(() => status = 'Pin failed: $e'); } }`,
-so a failed write refuses the Pin. In a design-variant lab, write
-`{..._asMap(overrides), 'design': design}` as `overrides` and read `design`
-back with `_designOf`, so a saved candidate reopens on its design. `remove()` deletes
-`<dir>/<name>.json` first and stops with a status on failure. `open()` awaits
+Wiring: `logPin()`, right after its log line, calls
+`_uiTuningLabWrite(c).catchError((Object e) { if (mounted) update(() => status = '${c.name} not saved: $e'); });`,
+so a pin is written when it is created and whenever it logs new values; a
+failed write leaves the pin in the panel. In a design-variant lab, write
+`{..._asMap(_styleOf(c.values)), 'design': _designOf(c.values)}` as `overrides` and read `design`
+back with `_designOf`, so a saved pin reopens on its design. `remove()` becomes
+async, deletes `<dir>/<name>.json` first, and on failure stops with a status and
+keeps the chip. `open()` awaits
 `_uiTuningLabReadAll(issued)`, adds found candidates not already listed, shows
 the problems in `status`, then logs unlogged candidates. Pull a file with
 `adb exec-out run-as <pkg> cat files/.ui-tuning-lab/candidates/tweak.json` (the

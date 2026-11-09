@@ -1,6 +1,7 @@
 // Hands-on checks for the web pilot lab, run in Chromium, Firefox, and WebKit at
 // desktop and mobile sizes, plus production-bundle activation checks.
-// Usage: node check.mjs <dev-url> <preview-url>
+// Usage: sh run.sh (builds the web example into the pilot and runs this), or
+// node check.mjs <dev-url> <preview-url>
 import { chromium, firefox, webkit } from "playwright";
 
 const [devUrl, previewUrl] = process.argv.slice(2);
@@ -24,8 +25,9 @@ function record(scope, name, passed, detail = "") {
 // Computed card styles: what the user actually sees.
 async function cardStyles(page) {
   return page.evaluate(() => {
-    const list = document.querySelector(".cards");
-    const card = document.querySelector(".card");
+    // The web example's cards are articles in one grid.
+    const card = document.querySelector("article");
+    const list = card.parentElement;
     const cs = getComputedStyle(card);
     return {
       radius: cs.borderTopLeftRadius,
@@ -46,7 +48,7 @@ async function setRange(page, label, value) {
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-// Reset and Copy values live in the ⋯ menu, which closes after each action.
+// Copy values lives in the ⋯ menu, which closes after each action.
 async function menuItem(page, name) {
   const item = page.getByRole("button", { name, exact: true });
   if (!(await item.isVisible())) await page.getByRole("button", { name: "More actions" }).click();
@@ -89,38 +91,47 @@ async function devChecks(engineName, engine, viewportName) {
     ).then(() => true, () => false);
     record(scope, "focus moves into the panel", focused);
 
+    const pressed = async () => page.locator("[aria-label=Looks] button[aria-pressed=true]").allInnerTexts();
+    const outline = name => page.getByRole("button", { name, exact: true })
+      .evaluate(el => getComputedStyle(el).outlineStyle);
+    record(scope, "Shipped starts selected and outlined",
+      same(await pressed(), ["Shipped"]) && (await outline("Shipped")) === "solid");
+
+    // An edit on Shipped starts a new pin; Shipped is never edited.
     await page.getByRole("button", { name: "Compact" }).click();
     const compact = await cardStyles(page);
     record(scope, "preset changes the real feature", !same(compact, before), JSON.stringify(compact));
+    record(scope, "a preset on Shipped starts a new selected pin",
+      same(await pressed(), ["compact"]) && (await outline("Shipped")) === "none");
 
     await setRange(page, /Radius/, 20);
-    record(scope, "radius slider edits the feature", (await cardStyles(page)).radius === "20px");
-
-    // A real click: it fails if the panel covers the feature.
-    await page.locator(".card").last().click({ timeout: 3000 });
-    record(scope, "clicking the feature keeps the lab open", await dialog.isVisible());
-
-    // Unpinned edits sit under Shipped, their home chip, so Shipped cannot show
-    // the baseline until they are pinned.
-    const draft = await cardStyles(page);
+    record(scope, "radius slider edits the selected pin", (await cardStyles(page)).radius === "20px");
     record(scope, "unpinned edits have no chip of their own",
       (await page.getByRole("button", { name: /\+ edits$/ }).count()) === 0);
-    record(scope, "the selected chip is outlined",
-      (await page.getByRole("button", { name: "Shipped", exact: true }).evaluate(
-        el => getComputedStyle(el).outlineStyle)) === "solid");
-    await page.getByRole("button", { name: "Pin" }).click();
+
+    // A real click: it fails if the panel covers the feature.
+    await page.locator("article").last().click({ timeout: 3000 });
+    record(scope, "clicking the feature keeps the lab open", await dialog.isVisible());
+
+    // Switching chips is the comparison.
+    const tuned = await cardStyles(page);
     await page.getByRole("button", { name: "Shipped", exact: true }).click();
     record(scope, "the Shipped chip renders the baseline", same(before, await cardStyles(page)));
-    record(scope, "editing is disabled while Shipped is shown",
-      await page.getByRole("button", { name: "Compact" }).isDisabled());
     await page.getByRole("button", { name: "compact", exact: true }).click();
-    record(scope, "the pin chip restores its look", same(draft, await cardStyles(page)));
+    record(scope, "the pin chip renders its look", same(tuned, await cardStyles(page)));
+
+    // Duplicate branches the selected pin; editing the copy leaves the source.
+    await page.getByRole("button", { name: "Duplicate" }).click();
+    await setRange(page, /Radius/, 6);
+    record(scope, "Duplicate selects a new pin", same(await pressed(), ["compact-2"]));
+    await page.getByRole("button", { name: "compact", exact: true }).click();
+    record(scope, "editing a duplicate leaves its source", same(tuned, await cardStyles(page)));
 
     // Change exactly one field so an over-reporting Copy cannot pass.
-    await menuItem(page, "Reset");
-    record(scope, "after Reset Shipped is the selected chip",
-      (await page.getByRole("button", { name: "Shipped", exact: true }).getAttribute("aria-pressed")) === "true");
-    await setRange(page, /Radius/, 20);
+    await page.getByRole("button", { name: "Shipped", exact: true }).click();
+    record(scope, "Duplicate is disabled on Shipped",
+      await page.getByRole("button", { name: "Duplicate" }).isDisabled());
+    await setRange(page, /Gap/, 20);
     logs.length = 0;
     await menuItem(page, "Copy values");
     await page.waitForTimeout(300);
@@ -128,14 +139,10 @@ async function devChecks(engineName, engine, viewportName) {
     let copied = null;
     try { copied = line && JSON.parse(line.slice("UITUNINGLAB_VALUES ".length)); } catch { /* reported below */ }
     record(scope, "Copy values logs only the changed fields",
-      copied !== null && JSON.stringify(copied) === JSON.stringify({ radius: 20 }),
+      copied !== null && JSON.stringify(copied) === JSON.stringify({ gap: 20 }),
       line ?? "no UITUNINGLAB_VALUES line");
 
-    await menuItem(page, "Reset");
-    record(scope, "Reset restores the baseline exactly", same(before, await cardStyles(page)));
-
     // Escape must close the lab even when focus is on the page, not the panel.
-    await page.getByRole("button", { name: "Compact" }).click();
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
@@ -143,39 +150,26 @@ async function devChecks(engineName, engine, viewportName) {
       (await page.locator("[role=dialog]").count()) === 0 && (await page.locator("[popover]").count()) === 0);
     record(scope, "focus returns to Card Lab after Escape",
       await page.evaluate(() => document.activeElement?.textContent?.trim() === "Card Lab"));
-    record(scope, "closing keeps the tuned draft", !same(before, await cardStyles(page)));
+    record(scope, "closing keeps the selected look", (await cardStyles(page)).gap === "20px");
 
-    // Reopen with the draft still applied. The baseline is the declared default,
-    // so the draft must still count as a change.
+    // Reopening keeps the pins and the selection; Choose then Change brings the
+    // whole panel back.
     await page.getByRole("button", { name: "Card Lab" }).click();
     await dialog.waitFor();
-    // `before` is the declared default: it was read before any tuning, and the
-    // app starts at its defaults. The copied fields must be exactly the ones the
-    // kept draft changed.
-    const kept = await cardStyles(page);
-    const expectedDraft = Object.fromEntries(Object.keys(kept)
-      .filter(key => kept[key] !== before[key]).map(key => [key, parseFloat(kept[key])]));
+    record(scope, "reopening keeps the pins and the selection",
+      same(await pressed(), ["tweak"]) &&
+      (await page.locator("[aria-label=Looks] button[aria-pressed]").count()) === 4);
     logs.length = 0;
-    await menuItem(page, "Copy values");
+    await page.getByRole("button", { name: "Choose" }).click();
     await page.waitForTimeout(300);
-    const reopenLine = logs.find(text => text.startsWith("UITUNINGLAB_VALUES "));
-    let reopened = null;
-    try { reopened = reopenLine && JSON.parse(reopenLine.slice("UITUNINGLAB_VALUES ".length)); } catch { /* reported below */ }
-    const sorted = value => JSON.stringify(Object.fromEntries(Object.entries(value ?? {}).sort()));
-    record(scope, "after reopening, Copy values reports exactly the kept draft",
-      Object.keys(expectedDraft).length > 0 && sorted(reopened) === sorted(expectedDraft),
-      `${reopenLine ?? "no UITUNINGLAB_VALUES line"}; expected ${sorted(expectedDraft)}`);
-    await setRange(page, /Radius/, 6);
-    const draftAgain = await cardStyles(page);
-    // Pin the draft so Shipped is a separate look, then close while it is shown:
-    // the draft must come back.
-    await page.getByRole("button", { name: "Pin" }).click();
-    await page.getByRole("button", { name: "Shipped", exact: true }).click();
-    record(scope, "after reopening, Shipped shows the declared default",
-      same(before, await cardStyles(page)) && !same(before, draftAgain));
+    const done = logs.find(text => text.startsWith("UITUNINGLAB_DONE "));
+    record(scope, "Choose logs the selected chip as winner", !!done && done.includes('"winner":"tweak"'), done ?? "no DONE line");
+    await page.getByRole("button", { name: "Change" }).click();
+    record(scope, "Change brings back the controls",
+      (await dialog.getByRole("slider").count()) === 2 &&
+      (await page.getByRole("button", { name: "Duplicate" }).isVisible()));
     await page.getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(200);
-    record(scope, "closing while Shipped is shown restores the draft", same(draftAgain, await cardStyles(page)));
 
     // Keyboard-only path: every control is reachable by Tab.
     await page.getByRole("button", { name: "Card Lab" }).click();
@@ -192,7 +186,7 @@ async function devChecks(engineName, engine, viewportName) {
     }
     const sliders = await dialog.getByRole("slider").evaluateAll(inputs =>
       inputs.map(input => input.closest("label")?.textContent?.trim().split(/\s+/)[0]));
-    const expected = ["Close", "More actions", "Shipped", "Compact", "Relaxed", "Pin", "Choose", ...sliders];
+    const expected = ["Close", "More actions", "Shipped", "Compact", "Relaxed", "Duplicate", "Choose", ...sliders];
     const missing = expected.filter(name => !reachable.has(name));
     record(scope, "keyboard reaches every control", missing.length === 0, missing.length ? `missing ${missing.join(", ")}` : "");
   } catch (error) {
@@ -217,7 +211,7 @@ async function productionChecks(engineName, engine) {
       try { localStorage.setItem("uiTuningLab.open", "1"); localStorage.setItem("uiTuningLab.default", "{}"); } catch { /* storage blocked */ }
     });
     await page.goto(`${previewUrl}/?ui-tuning-lab=1&uiTuningLab=1&tune=1`);
-    await page.locator(".card").first().waitFor();
+    await page.locator("article").first().waitFor();
     await page.keyboard.press("Control+Shift+L");
     await page.keyboard.press("Meta+Shift+L");
     await page.keyboard.press("Escape");

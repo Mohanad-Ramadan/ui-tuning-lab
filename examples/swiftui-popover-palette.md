@@ -11,22 +11,20 @@ Every lab type carries the `UITuningLab` prefix and lives in a file wrapped in
 **Copy values** puts the fields that differ from the baseline on the pasteboard
 and logs them as one `UITUNINGLAB_VALUES {...}` line for landing
 (`references/landing-protocol.md`).
-The chips, **Pin**, **Choose**, and the **⋯** menu (Reset, Copy values)
-follow `references/candidates.md`. The chip row shows Shipped and each pin; the
-selected chip is outlined, and so is the preset the draft started from. Unpinned
-edits stay under the chip they started from, with no chip of their own; tapping
-another chip stashes them until that chip is tapped again or the lab closes. The
-controls are disabled while Shipped is shown away from the draft; moving one
-while a pin is shown copies that pin into the draft first. **Pin** is disabled
-while the draft matches Shipped or a pin. **Choose** logs
+The chips, **Duplicate**, **Choose**, and the **⋯** menu (Copy values) follow
+`references/candidates.md`. The chip row shows Shipped and each pin; the
+selected chip is outlined, and the feature always shows it, so switching chips is
+the comparison. The controls edit the selected pin in place; on Shipped, which is
+read-only, they start a new pin named after the preset or `tweak`. **Duplicate**
+branches the selected pin. **Choose** picks the selected chip, logs
 `UITUNINGLAB_DONE`, writes Application Support `.ui-tuning-lab/result.json`,
 copies `land <name>`, and collapses the lab to a `Chosen:` bar whose Change
 button reopens it. The host owns the `UITuningLabCandidates` store beside the
-draft, so pins and `basedOn` survive closing the popover; they live in memory
-and in the log, and a name is never reused within a run. The hint is pinned
-below the scrolling Form, so it shows at the smallest detent. To reopen a
-session, seed the store's `initial:` array; each seeded pin logs its own
-`UITUNINGLAB_CANDIDATE` line.
+feature, so the pins and the selection survive closing the popover; they live in
+memory and in the log, and a name is never reused within a run. Closing the lab
+leaves the feature on the selected look. The hint is pinned below the scrolling
+Form, so it shows at the smallest detent. To reopen a session, seed the store's
+`initial:` array; each seeded pin logs its own `UITUNINGLAB_CANDIDATE` line.
 
 <!-- file: CardFeature.swift -->
 ```swift
@@ -64,8 +62,8 @@ struct FeatureScreen: View {
     #if DEBUG
     @State private var showUITuningLab = false
     @State private var uiTuningLabDetent = PresentationDetent.height(320)
-    // Pins and basedOn live beside the draft and outlive the popover. To
-    // reopen a session, seed the finalists kept in the project here
+    // The looks and the selected chip live beside the feature and outlive the
+    // popover. To reopen a session, seed the finalists kept in the project here
     // (references/candidates.md).
     @StateObject private var uiTuningLabCandidates =
         UITuningLabCandidates<CardStyle>(baseline: .appDefault, initial: [])
@@ -79,7 +77,7 @@ struct FeatureScreen: View {
                     .disabled(showUITuningLab)
             }
             .popover(isPresented: $showUITuningLab) {
-                // The declared default, never the value on screen at open: a draft
+                // The declared default, never the value on screen at open: a look
                 // kept from an earlier session must still count as a change.
                 UITuningLabControls(style: $style, baseline: .appDefault)
                     .environmentObject(uiTuningLabCandidates)
@@ -152,8 +150,8 @@ struct FeatureScreen: View {
     #if DEBUG
     @State private var showUITuningLab = false
     @State private var uiTuningLabDetent = PresentationDetent.height(320)
-    // Pins and basedOn live beside the draft and outlive the popover. To
-    // reopen a session, seed the finalists kept in the project here
+    // The looks and the selected chip live beside the feature and outlive the
+    // popover. To reopen a session, seed the finalists kept in the project here
     // (references/candidates.md).
     @StateObject private var uiTuningLabCandidates =
         UITuningLabCandidates<CardStyle>(baseline: .appDefault, initial: [])
@@ -292,14 +290,11 @@ import SwiftUI
 struct UITuningLabControls: View {
     @Binding var style: CardStyle
     let baseline: CardStyle
-    // Owned by the host beside the draft, so pins and basedOn survive
-    // closing and reopening the lab.
+    // Owned by the host beside the feature, so the looks and the selection
+    // survive closing and reopening the lab.
     @EnvironmentObject private var candidates: UITuningLabCandidates<CardStyle>
     @Environment(\.dismiss) private var dismiss
-    @State private var status: String?
-    @State private var stashedDraft: CardStyle?  // the draft, while another chip is shown
-    @State private var shown = "draft"           // the chip shown: draft, original (Shipped), or a pin's name
-    @State private var sent: String?             // the last pick; set, the lab is one bar
+    @State private var sent: String?  // the last pick; set, the lab is one bar
 
     private static let compact = CardStyle(cornerRadius: 4, spacing: 4)
     private static let relaxed = CardStyle(cornerRadius: 24, spacing: 16)
@@ -315,15 +310,15 @@ struct UITuningLabControls: View {
                     Button("Close") { dismiss() }
                 }
                 .padding()
-                if let status { Text(status).font(.footnote).padding(.horizontal) }
+                if let status = candidates.status { Text(status).font(.footnote).padding(.horizontal) }
                 Spacer(minLength: 0)
             } else {
                 panel
             }
         }
         .frame(minWidth: 280)
-        // Never leave the feature showing Shipped or a pin once the lab is gone.
-        .onDisappear { if let stashedDraft { style = stashedDraft } }
+        // The feature keeps the selected look; an edited pin logs its values.
+        .onDisappear { candidates.leave() }
     }
 
     private var panel: some View {
@@ -332,10 +327,8 @@ struct UITuningLabControls: View {
                 Text("UI tuning lab").font(.headline)
                 Spacer()
                 Menu {
-                    Button("Reset", action: reset)
                     Button("Copy values") {
-                        // Copy values always reports the draft, whatever chip is shown.
-                        status = uiTuningLabCopyValues(from: baseline, to: stashedDraft ?? style)
+                        candidates.status = uiTuningLabCopyValues(from: baseline, to: candidates.selectedLook)
                     }
                 } label: {
                     Text("⋯")
@@ -349,38 +342,37 @@ struct UITuningLabControls: View {
                     ForEach(candidates.all) { pin in
                         HStack(spacing: 2) {
                             chip(pin.name, id: pin.name)
-                            Button("×") { remove(pin.name) }
+                            Button("×") { style = candidates.remove(pin.name) }
                                 .accessibilityLabel("Remove \(pin.name)")
                         }
                     }
                 }
+                .padding(2)  // room for the selected chip's outline
             }
-            Group {
-                HStack {
-                    Button("Compact") { edit(Self.compact, basedOn: "compact") }.uiTuningLabSelected(presetOn("compact"))
-                    Button("Relaxed") { edit(Self.relaxed, basedOn: "relaxed") }.uiTuningLabSelected(presetOn("relaxed"))
-                }
-                LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
-                    .accessibilityHidden(true)  // the slider reports its own value
-                Slider(value: draft.cornerRadius, in: 0...32, step: 1) {
-                    Text("Corner radius")
-                }
-                LabeledContent("Spacing", value: "\(Int(style.spacing)) pt")
-                    .accessibilityHidden(true)  // the slider reports its own value
-                Slider(value: draft.spacing, in: 0...24, step: 1) { Text("Spacing") }
-            }
-            .disabled(shown == "original")
             HStack {
-                // Nothing to pin while the draft matches Shipped or a pin.
-                Button("Pin", action: keep)
-                    .disabled(draftMatch != nil)
-                Button("Choose", action: useThis)
+                Button("Compact") { edit(Self.compact, preset: "compact") }
+                Button("Relaxed") { edit(Self.relaxed, preset: "relaxed") }
             }
-            if let status { Text(status).font(.footnote) }
+            LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
+                .accessibilityHidden(true)  // the slider reports its own value
+            Slider(value: look.cornerRadius, in: 0...32, step: 1) {
+                Text("Corner radius")
+            }
+            LabeledContent("Spacing", value: "\(Int(style.spacing)) pt")
+                .accessibilityHidden(true)  // the slider reports its own value
+            Slider(value: look.spacing, in: 0...24, step: 1) { Text("Spacing") }
+            HStack {
+                // Duplicate branches the selected pin; Shipped has nothing to branch.
+                Button("Duplicate") { candidates.duplicate(); style = candidates.selectedLook }
+                    .disabled(candidates.selectedPin == nil)
+                Spacer()
+                Button("Choose") { sent = candidates.choose() }
+            }
+            if let status = candidates.status { Text(status).font(.footnote) }
         }
         // Pinned below the scrolling controls, so it shows at every detent.
         .safeAreaInset(edge: .bottom) {
-            Text("Pin looks to compare · Choose to finish")
+            Text("Duplicate to compare · Choose to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -392,90 +384,26 @@ struct UITuningLabControls: View {
         .buttonStyle(.borderless)
     }
 
-    /// The chip the draft matches (`original` for Shipped, or a pin), or nil
-    /// while it holds unpinned changes.
-    private var draftMatch: String? { candidates.match(stashedDraft ?? style) }
-
-    /// The chip the draft sits under: the chip it matches, else the pin it was
-    /// copied from, else Shipped. Unpinned edits stay under it; they have no chip
-    /// of their own.
-    private var home: String { candidates.home(stashedDraft ?? style) }
-
-    /// The selected chip: the one shown, or the draft's home.
-    private var current: String { shown == "draft" ? home : shown }
-
-    /// A preset is selected while the draft, with or without edits, started from it.
-    private func presetOn(_ name: String) -> Bool { shown == "draft" && candidates.basedOn == name }
-
-    /// One chip; the highlighted chip is the one the feature shows.
+    /// One chip. The selected chip is outlined and is the look the feature shows.
     private func chip(_ title: String, id: String) -> some View {
-        Button(title) { show(id) }
+        let on = candidates.selected == id
+        return Button(title) { style = candidates.select(id) }
             .buttonStyle(.bordered)
-            .tint(current == id ? .accentColor : .secondary)
-            .uiTuningLabSelected(current == id)
-            .accessibilityAddTraits(current == id ? .isSelected : [])
+            .tint(on ? .accentColor : .secondary)
+            .uiTuningLabSelected(on)
+            .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// Shows a chip in the real feature. The draft is stashed while another
-    /// chip is shown and restored when its chip, or the chip it matches, is
-    /// tapped, or the lab closes.
-    private func show(_ id: String) {
-        let target = id == home ? "draft" : id
-        if target == "draft" {
-            if let stashedDraft { style = stashedDraft }
-            stashedDraft = nil
-        } else {
-            if stashedDraft == nil { stashedDraft = style }
-            style = target == "original" ? baseline : candidates.named(target)?.value ?? style
-        }
-        shown = target
-    }
-
-    /// The controls edit the draft. Moving one while a pin is shown first
-    /// copies that pin into the draft; the pin itself does not change.
-    private var draft: Binding<CardStyle> {
+    /// The sliders show the selected look and edit it.
+    private var look: Binding<CardStyle> {
         Binding(get: { style }, set: { edit($0) })
     }
 
-    private func edit(_ value: CardStyle, basedOn preset: String? = nil) {
-        // Editing a pin, or a draft that matches one, starts from that look.
-        if let source = shown == "draft" ? draftMatch : shown {
-            candidates.basedOn = source == "original" ? "baseline" : source
-        }
-        stashedDraft = nil
-        shown = "draft"
-        style = value
-        if let preset { candidates.basedOn = preset }
-    }
-
-    private func reset() {
-        stashedDraft = nil
-        shown = "draft"
-        style = baseline
-        candidates.basedOn = "baseline"
-    }
-
-    private func remove(_ name: String) {
-        if shown == name { show("draft") }
-        candidates.remove(name)
-        status = "Removed \(name)"
-    }
-
-    private func keep() {
-        do {
-            let kept = try candidates.keep(stashedDraft ?? style)
-            status = "Pinned \(kept.name)"
-        } catch {
-            status = error.localizedDescription
-        }
-    }
-
-    /// Choose picks what the feature shows: a pin, `original` for Shipped, or
-    /// `draft` while the draft holds unpinned edits.
-    private func useThis() {
-        let winner = (shown == "draft" ? draftMatch : shown) ?? "draft"
-        status = candidates.use(style, winner: winner)
-        sent = winner
+    /// Every control edits the selected look: a pin in place, or, on Shipped, a
+    /// new pin.
+    private func edit(_ value: CardStyle, preset: String? = nil) {
+        candidates.edit(value, preset: preset)
+        style = candidates.selectedLook
     }
 }
 #endif
@@ -483,7 +411,7 @@ struct UITuningLabControls: View {
 
 <!-- copy: assets/swift/UITuningLabValues.swift -->
 `UITuningLabValues.swift`: copy `assets/swift/UITuningLabValues.swift` into the
-app's target unchanged. It holds Copy values, the pins store, pin names,
+app's target unchanged. It holds Copy values, the looks store and selection, pin names,
 Choose with its result file, and the log lines every Swift lab shares,
 all inside `#if DEBUG`.
 
@@ -496,15 +424,15 @@ product.
 
 The pins above are ephemeral. If the user explicitly requests persistence,
 replace `UITuningLabControls.swift` with this version. `FeatureScreen.swift` stays
-unchanged, and the envelope, writer, and loader stay development-only. Each Pin
-also writes the look as a `schemaVersion` 2 profile, and × deletes that
-pin's file and nothing else. Opening the lab adds every saved pin as a
-chip, ordered by `savedAt` (which keeps fractional seconds) and then by name,
-and logs each one; the baseline stays the declared default, so Reset still
-returns to it. Every stored file name stays taken, even for a file that was
-skipped. A file that does not decode, has another schema or platform, has a
-name that differs from its file or is not kebab-case, or now matches the
-baseline is reported in the status line, skipped, and left untouched.
+unchanged, and the envelope, writer, and loader stay development-only. Each pin
+is written as a `schemaVersion` 2 profile when it is created and again whenever
+it logs new values, and × deletes that pin's file and nothing else. Opening the
+lab adds every saved pin as a chip, ordered by the `savedAt` of its first write
+(which keeps fractional seconds) and then by name, and logs each one; the
+baseline stays the declared default, so Shipped still shows it. Every stored
+file name stays taken, even for a file that was skipped. A file that does not
+decode, has another schema or platform, or has a name that differs from its file
+or is not kebab-case is reported in the status line, skipped, and left untouched.
 
 <!-- file: UITuningLabControls.swift variant=persist -->
 ```swift
@@ -542,14 +470,11 @@ struct UITuningLabProfileMismatch: LocalizedError {
 struct UITuningLabControls: View {
     @Binding var style: CardStyle
     let baseline: CardStyle
-    // Owned by the host beside the draft, so pins and basedOn survive
-    // closing and reopening the lab.
+    // Owned by the host beside the feature, so the looks and the selection
+    // survive closing and reopening the lab.
     @EnvironmentObject private var candidates: UITuningLabCandidates<CardStyle>
     @Environment(\.dismiss) private var dismiss
-    @State private var status: String?
-    @State private var stashedDraft: CardStyle?  // the draft, while another chip is shown
-    @State private var shown = "draft"           // the chip shown: draft, original (Shipped), or a pin's name
-    @State private var sent: String?             // the last pick; set, the lab is one bar
+    @State private var sent: String?  // the last pick; set, the lab is one bar
 
     private static let compact = CardStyle(cornerRadius: 4, spacing: 4)
     private static let relaxed = CardStyle(cornerRadius: 24, spacing: 16)
@@ -565,15 +490,15 @@ struct UITuningLabControls: View {
                     Button("Close") { dismiss() }
                 }
                 .padding()
-                if let status { Text(status).font(.footnote).padding(.horizontal) }
+                if let status = candidates.status { Text(status).font(.footnote).padding(.horizontal) }
                 Spacer(minLength: 0)
             } else {
                 panel
             }
         }
         .frame(minWidth: 280)
-        // Never leave the feature showing Shipped or a pin once the lab is gone.
-        .onDisappear { if let stashedDraft { style = stashedDraft } }
+        // The feature keeps the selected look; an edited pin logs its values.
+        .onDisappear { candidates.leave() }
     }
 
     private var panel: some View {
@@ -582,10 +507,8 @@ struct UITuningLabControls: View {
                 Text("UI tuning lab").font(.headline)
                 Spacer()
                 Menu {
-                    Button("Reset", action: reset)
                     Button("Copy values") {
-                        // Copy values always reports the draft, whatever chip is shown.
-                        status = uiTuningLabCopyValues(from: baseline, to: stashedDraft ?? style)
+                        candidates.status = uiTuningLabCopyValues(from: baseline, to: candidates.selectedLook)
                     }
                 } label: {
                     Text("⋯")
@@ -599,38 +522,37 @@ struct UITuningLabControls: View {
                     ForEach(candidates.all) { pin in
                         HStack(spacing: 2) {
                             chip(pin.name, id: pin.name)
-                            Button("×") { remove(pin.name) }
+                            Button("×") { style = candidates.remove(pin.name) }
                                 .accessibilityLabel("Remove \(pin.name)")
                         }
                     }
                 }
+                .padding(2)  // room for the selected chip's outline
             }
-            Group {
-                HStack {
-                    Button("Compact") { edit(Self.compact, basedOn: "compact") }.uiTuningLabSelected(presetOn("compact"))
-                    Button("Relaxed") { edit(Self.relaxed, basedOn: "relaxed") }.uiTuningLabSelected(presetOn("relaxed"))
-                }
-                LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
-                    .accessibilityHidden(true)  // the slider reports its own value
-                Slider(value: draft.cornerRadius, in: 0...32, step: 1) {
-                    Text("Corner radius")
-                }
-                LabeledContent("Spacing", value: "\(Int(style.spacing)) pt")
-                    .accessibilityHidden(true)  // the slider reports its own value
-                Slider(value: draft.spacing, in: 0...24, step: 1) { Text("Spacing") }
-            }
-            .disabled(shown == "original")
             HStack {
-                // Nothing to pin while the draft matches Shipped or a pin.
-                Button("Pin", action: keep)
-                    .disabled(draftMatch != nil)
-                Button("Choose", action: useThis)
+                Button("Compact") { edit(Self.compact, preset: "compact") }
+                Button("Relaxed") { edit(Self.relaxed, preset: "relaxed") }
             }
-            if let status { Text(status).font(.footnote) }
+            LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
+                .accessibilityHidden(true)  // the slider reports its own value
+            Slider(value: look.cornerRadius, in: 0...32, step: 1) {
+                Text("Corner radius")
+            }
+            LabeledContent("Spacing", value: "\(Int(style.spacing)) pt")
+                .accessibilityHidden(true)  // the slider reports its own value
+            Slider(value: look.spacing, in: 0...24, step: 1) { Text("Spacing") }
+            HStack {
+                // Duplicate branches the selected pin; Shipped has nothing to branch.
+                Button("Duplicate") { candidates.duplicate(); style = candidates.selectedLook }
+                    .disabled(candidates.selectedPin == nil)
+                Spacer()
+                Button("Choose") { sent = candidates.choose() }
+            }
+            if let status = candidates.status { Text(status).font(.footnote) }
         }
         // Pinned below the scrolling controls, so it shows at every detent.
         .safeAreaInset(edge: .bottom) {
-            Text("Pin looks to compare · Choose to finish")
+            Text("Duplicate to compare · Choose to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -643,111 +565,38 @@ struct UITuningLabControls: View {
         .onAppear(perform: loadSaved)
     }
 
-    /// The chip the draft matches (`original` for Shipped, or a pin), or nil
-    /// while it holds unpinned changes.
-    private var draftMatch: String? { candidates.match(stashedDraft ?? style) }
-
-    /// The chip the draft sits under: the chip it matches, else the pin it was
-    /// copied from, else Shipped. Unpinned edits stay under it; they have no chip
-    /// of their own.
-    private var home: String { candidates.home(stashedDraft ?? style) }
-
-    /// The selected chip: the one shown, or the draft's home.
-    private var current: String { shown == "draft" ? home : shown }
-
-    /// A preset is selected while the draft, with or without edits, started from it.
-    private func presetOn(_ name: String) -> Bool { shown == "draft" && candidates.basedOn == name }
-
-    /// One chip; the highlighted chip is the one the feature shows.
+    /// One chip. The selected chip is outlined and is the look the feature shows.
     private func chip(_ title: String, id: String) -> some View {
-        Button(title) { show(id) }
+        let on = candidates.selected == id
+        return Button(title) { style = candidates.select(id) }
             .buttonStyle(.bordered)
-            .tint(current == id ? .accentColor : .secondary)
-            .uiTuningLabSelected(current == id)
-            .accessibilityAddTraits(current == id ? .isSelected : [])
+            .tint(on ? .accentColor : .secondary)
+            .uiTuningLabSelected(on)
+            .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// Shows a chip in the real feature. The draft is stashed while another
-    /// chip is shown and restored when its chip, or the chip it matches, is
-    /// tapped, or the lab closes.
-    private func show(_ id: String) {
-        let target = id == home ? "draft" : id
-        if target == "draft" {
-            if let stashedDraft { style = stashedDraft }
-            stashedDraft = nil
-        } else {
-            if stashedDraft == nil { stashedDraft = style }
-            style = target == "original" ? baseline : candidates.named(target)?.value ?? style
-        }
-        shown = target
-    }
-
-    /// The controls edit the draft. Moving one while a pin is shown first
-    /// copies that pin into the draft; the pin itself does not change.
-    private var draft: Binding<CardStyle> {
+    /// The sliders show the selected look and edit it.
+    private var look: Binding<CardStyle> {
         Binding(get: { style }, set: { edit($0) })
     }
 
-    private func edit(_ value: CardStyle, basedOn preset: String? = nil) {
-        // Editing a pin, or a draft that matches one, starts from that look.
-        if let source = shown == "draft" ? draftMatch : shown {
-            candidates.basedOn = source == "original" ? "baseline" : source
-        }
-        stashedDraft = nil
-        shown = "draft"
-        style = value
-        if let preset { candidates.basedOn = preset }
+    /// Every control edits the selected look: a pin in place, or, on Shipped, a
+    /// new pin.
+    private func edit(_ value: CardStyle, preset: String? = nil) {
+        candidates.edit(value, preset: preset)
+        style = candidates.selectedLook
     }
 
-    private func reset() {
-        stashedDraft = nil
-        shown = "draft"
-        style = baseline
-        candidates.basedOn = "baseline"
-    }
-
-    private func remove(_ name: String) {
-        if shown == name { show("draft") }
-        candidates.remove(name)
-        let file = UITuningLabProfile.fileURL(name)
-        do {
-            if FileManager.default.fileExists(atPath: file.path) {
-                try FileManager.default.removeItem(at: file)
-            }
-            status = "Removed \(name)"
-        } catch {
-            status = "Removed \(name), file not deleted: \(error.localizedDescription)"
-        }
-    }
-
-    private func keep() {
-        do {
-            let kept = try candidates.keep(stashedDraft ?? style, store: save)
-            status = "Pinned \(kept.name)"
-        } catch {
-            status = error.localizedDescription
-        }
-    }
-
-    /// Choose picks what the feature shows: a pin, `original` for Shipped, or
-    /// `draft` while the draft holds unpinned edits.
-    private func useThis() {
-        let winner = (shown == "draft" ? draftMatch : shown) ?? "draft"
-        status = candidates.use(style, winner: winner)
-        sent = winner
-    }
-
-    /// Writes one new candidate atomically, refusing a name storage already holds.
+    /// Writes a pin atomically. An existing file keeps its `savedAt`, so pins
+    /// load in the order they were made.
     private func save(_ candidate: UITuningLabCandidate<CardStyle>) throws {
         let file = UITuningLabProfile.fileURL(candidate.name)
-        guard !FileManager.default.fileExists(atPath: file.path) else {
-            throw UITuningLabProfileMismatch(errorDescription: "\(file.lastPathComponent) already exists")
-        }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let existing = try? JSONDecoder().decode(UITuningLabProfile.self, from: Data(contentsOf: file))
         let profile = UITuningLabProfile(
             name: candidate.name, basedOn: candidate.basedOn,
-            savedAt: formatter.string(from: .now), overrides: candidate.value)
+            savedAt: existing?.savedAt ?? formatter.string(from: .now), overrides: candidate.value)
         let data = try JSONEncoder().encode(profile)
         try FileManager.default.createDirectory(
             at: UITuningLabProfile.directory, withIntermediateDirectories: true)
@@ -756,9 +605,12 @@ struct UITuningLabControls: View {
 
     /// Adds every saved candidate to the list, oldest first. Every stored name
     /// stays taken. A file that does not decode, has another schema or platform,
-    /// a name that differs from its file or is not kebab-case, or now matches
-    /// the baseline is reported and left untouched.
+    /// or a name that differs from its file or is not kebab-case is reported and
+    /// left untouched.
     private func loadSaved() {
+        // A persisting lab writes each pin whenever it logs, and deletes it on ×.
+        candidates.store = save
+        candidates.unstore = { try FileManager.default.removeItem(at: UITuningLabProfile.fileURL($0)) }
         let files = ((try? FileManager.default.contentsOfDirectory(
             at: UITuningLabProfile.directory, includingPropertiesForKeys: nil)) ?? [])
             .filter { $0.pathExtension == "json" }
@@ -795,22 +647,17 @@ struct UITuningLabControls: View {
                 < ($1.savedAt, $1.profile.name.count, $1.profile.name)
         }
         for (_, profile) in loaded {
-            do {
-                try candidates.adopt(UITuningLabCandidate(
-                    name: profile.name, basedOn: profile.basedOn, value: profile.overrides))
-            } catch {
-                skipped.append("\(profile.name).json (\(error.localizedDescription))")
-            }
+            candidates.adopt(UITuningLabCandidate(
+                name: profile.name, basedOn: profile.basedOn, value: profile.overrides))
         }
         if !skipped.isEmpty {
-            status = "Skipped \(skipped.joined(separator: ", ")). The files were left unchanged."
+            candidates.status = "Skipped \(skipped.joined(separator: ", ")). The files were left unchanged."
         }
     }
 }
 #endif
 ```
 
-Pin atomically writes `<name>.json` under Application Support's
-`.ui-tuning-lab/candidates/` after checking that the file does not exist. A write
-failure refuses the Pin: the status line shows the error, and the pin is
-neither added nor logged.
+Each write replaces `<name>.json` under Application Support's
+`.ui-tuning-lab/candidates/` atomically. A failed write shows in the status line;
+the pin stays in the lab and in the log.

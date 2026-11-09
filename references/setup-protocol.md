@@ -23,18 +23,18 @@ tests. Record these working choices:
   before the activation question is written, so the question names a free
   corner ("Wire the host", "Find a free corner");
 - persistence: none unless the user asks to save or reuse profiles;
-- profiles: one working draft unless named profiles were requested;
+- profiles: pins in memory unless named profiles were requested;
 - baseline: the feature's declared default, the value it ships with (for example
   `CardStyle.appDefault` or `cardDefaults`). Never take it from the screen when the
-  lab opens: the draft survives closing, so a reopened lab would treat the draft as
-  the original, Reset would do nothing, and Copy values would miss earlier changes.
+  lab opens: the selected look survives closing, so a reopened lab would treat it
+  as the original, Shipped would show it, and Copy values would miss earlier changes.
   When the shipped value is computed at runtime (from a theme, a server, or a
   device trait), the declared default is not what the user sees, and using it
-  would make Reset change the feature and Copy values report edits nobody made.
+  would make Shipped change the feature and Copy values report edits nobody made.
   Then capture the rendered value on the first open, before any lab edit, and keep
   it in a DEBUG-only store that outlives the panel (keeping one value is allowed;
   the teardown guarantee is about work and UI). Capture it again if its source
-  changes while the draft still equals it, for example on a theme switch, and key
+  changes while Shipped is selected, for example on a theme switch, and key
   the store to that source. Copy values reports against this captured baseline.
 
 ## Labs already in the project
@@ -79,7 +79,7 @@ Before building a panel, look for one the project already has:
 | React Native `DevSettings.addMenuItem` or Flipper plugins | the existing developer menu |
 
 Reuse changes only the control surface. The four guarantees, the naming rule, a
-baseline, the chips, Pin, Choose with its hint, Copy values
+baseline, the chips, Duplicate, Choose with its hint, Copy values
 (`references/candidates.md`), and landing still apply. When the tool cannot host
 one of them (Storybook renders outside the running app, so its chips would not
 show the real feature), add it as a plain button beside the library's panel or say
@@ -147,7 +147,7 @@ native panel instead and say why.
   short sheet in `references/ios-hosting.md`).
 - **Tabs and routes.** When the screen is one tab of a tab bar or one route of a
   stack, show the pill and panel only while that screen is visible, and keep
-  the draft while it is hidden.
+  the selected look while it is hidden.
 - **Right-to-left apps.** The feature keeps the app's locale and direction;
   never change them for the lab. The panel's own labels may stay in English and
   left-to-right. Pick the pill's corner after mirroring, so it does not cover

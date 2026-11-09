@@ -18,21 +18,18 @@ a list of fields is fine; keep each one labelled.
 | Easing | Presets (ease-in-out, ease-out, linear, spring) plus a custom cubic-bézier only if requested | |
 | Text length | Sample copy: short, typical, long, overflowing | Tests truncation and wrapping without editing strings. |
 | UI state | Forced state picker: empty, loading, error, success | Drive the feature's real state, never a mock view. |
-| Alternative design | **Design** picker at the top of the panel: Shipped (the `original` design) first, then one option per variant | A `design` string in the draft; see `references/design-variants.md`. Never in the feature's layout. |
+| Alternative design | **Design** picker at the top of the panel: Shipped (the `original` design) first, then one option per variant | A `design` string in each look; see `references/design-variants.md`. Never in the feature's layout. |
 
 ## Required in every lab
 
 - **Presets**: at least two meaningful presets that differ clearly from the
   baseline and from each other.
-- **Chips, Pin, and Choose**, with the hint line: see
-  `references/candidates.md`. The Shipped chip is the baseline flip; while it
-  is shown the controls are disabled, so an edit never lands on the baseline.
-  The selected chip and the preset the draft started from are outlined; the draft
-  has no chip of its own, so unpinned edits stay under the chip they started
-  from. Restore the draft if the lab closes while another chip is shown.
-- **⋯ menu** with **Reset** (copies the baseline back into the draft) and
-  **Copy values** (`references/landing-protocol.md`; it always reports the
-  draft).
+- **Chips, Duplicate, and Choose**, with the hint line: see
+  `references/candidates.md`. The selected chip is outlined and is what the
+  feature shows; the controls edit it in place. Shipped is read-only, so an edit
+  on it starts a new pin and never lands on the baseline.
+- **⋯ menu** with **Copy values** (`references/landing-protocol.md`; it reports
+  the selected look).
 - **Target picker**, when the feature has variants to choose between (a theme,
   a mode, a layout variant): at the top of the panel, driving the app's real
   setting, with the current choice in the panel header ("Ember · dark"). An

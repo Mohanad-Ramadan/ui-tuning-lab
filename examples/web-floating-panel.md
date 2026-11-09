@@ -9,18 +9,15 @@ development module (`references/activation.md`). The baseline is the declared
 default, `appDefault`; closing unmounts the popover and its listener.
 
 The panel follows `references/candidates.md`. A chip row under the header shows
-**Shipped** and each pin; the selected chip is outlined, and so is the preset the
-draft started from. Unpinned edits stay under the chip they started from, with no
-chip of their own, and tapping another chip stashes them until that chip is
-tapped again or the lab closes. The controls edit the draft and are disabled
-while Shipped is shown away from the draft; moving one while a pin is shown
-copies that pin into the draft first. **Pin** pins the
-draft, named after the last preset applied or `tweak`, and is disabled while the
-draft matches Shipped or a pin. **Choose** picks what the feature shows: it logs
-`UITUNINGLAB_DONE`, writes the same object to the `localStorage` key
-`uiTuningLab.result`, copies `land <name>` to the clipboard, and shrinks the
+**Shipped** and each pin; the selected chip is outlined, and the feature always
+shows it. Switching chips is the comparison: there is no draft and nothing is
+stashed. Moving a control or applying a preset edits the selected pin in place;
+on Shipped, which is read-only, it starts a new pin named after the preset or
+`tweak`. **Duplicate** branches the selected pin. **Choose** picks the selected
+chip: it logs `UITUNINGLAB_DONE`, writes the same object to the `localStorage`
+key `uiTuningLab.result`, copies `land <name>` to the clipboard, and shrinks the
 panel to `Chosen: <name>` with **Change** to reopen it. The **⋯** menu holds
-**Reset** and **Copy values**, which logs the draft's changed fields as one
+**Copy values**, which logs the selected look's changed fields as one
 `UITUNINGLAB_VALUES {...}` line (`references/landing-protocol.md`).
 
 The default lab is ephemeral: pins live in React state and the console log,
@@ -108,8 +105,8 @@ type Candidate = { name: string; basedOn: string; values: Partial<CardConfig> };
 const initialCandidates: Candidate[] = [];
 // Choose writes the pick here, so it survives quitting the app.
 const resultKey = "uiTuningLab.result";
-// Never issued as a pin's name: "draft" and "baseline" name the working copy and
-// the Shipped chip.
+// Never issued as a pin's name: "original" is the Shipped chip, and the others
+// are kept for older logs.
 const reservedNames = ["draft", "now", "original", "baseline"];
 
 // Preset keys are kebab-case: the key is what a pin records as basedOn and is
@@ -119,7 +116,7 @@ const presets = {
   relaxed: { radius: 24, gap: 16 },
 } satisfies Record<string, CardConfig>;
 // The baseline is the declared default, never the value on screen when the lab
-// opens: a draft kept from an earlier session must still count as a change.
+// opens: a look kept from an earlier session must still count as a change.
 const baseline: CardConfig = appDefault;
 
 // The agent path: `?ui-tuning-lab=1` opens the lab on load. It is parsed here,
@@ -138,9 +135,9 @@ function clearLaunchRequest() {
   window.history.replaceState(window.history.state, "", url);
 }
 
-// The draft fields that differ from the baseline.
-function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
-  return Object.fromEntries(Object.entries(draft).filter(
+// The fields of a look that differ from the baseline.
+function changedValues<T extends object>(baseline: T, look: T): Partial<T> {
+  return Object.fromEntries(Object.entries(look).filter(
     ([key, value]) => value !== baseline[key as keyof T])) as Partial<T>;
 }
 
@@ -171,49 +168,46 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
   const changeButton = useRef<HTMLButtonElement>(null);
-  // Pins live in memory and in the log.
+  // Pins live in memory and in the log. A pin is a
+  // look being worked on: the controls edit the selected pin in place.
   const [candidates, setCandidates] = useState(initialCandidates);
   // Every name issued in this run, removed ones included: names are never reused.
   const issued = useRef(new Set([...reservedNames, ...initialCandidates.map(c => c.name)]));
-  // Pins already written to the log, so seeded ones log once.
-  const logged = useRef(new Set<string>());
-  // Where the draft came from: a preset, "baseline", or a pin's name.
-  const [basedOn, setBasedOn] = useState("baseline");
-  // The last preset applied since the lab opened or Reset; it names pins.
-  const lastPreset = useRef<string | null>(null);
-  // The chip the real feature shows: "draft", "baseline" (Shipped), or a pin's
-  // name.
-  const [shown, setShown] = useState("draft");
-  // Holds the draft while another chip is shown in the feature.
-  const stashedDraft = useRef<CardConfig | null>(null);
+  // The values each pin last logged, so a pin logs again only after it changed.
+  const logged = useRef(new Map<string, string>());
+  // The selected chip: "original" (Shipped) or a pin's name. The feature always
+  // shows it; there is no draft and nothing is stashed.
+  const [selected, setSelected] = useState("original");
   // The winner after Choose; while set, the panel is the result bar.
   const [sent, setSent] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  // The chip the draft matches ("baseline" for Shipped, or a pin), or null while
-  // it holds unpinned changes.
-  const draft = stashedDraft.current ?? config;
-  const draftValues = changedValues(baseline, draft);
-  const draftMatch = Object.keys(draftValues).length === 0 ? "baseline"
-    : candidates.find(c => sortedJson(c.values) === sortedJson(draftValues))?.name ?? null;
-  // The draft's home chip: the chip it matches, else the pin it was copied from,
-  // else Shipped. Unpinned edits stay under it; there is no chip of their own.
-  const home = draftMatch ?? (candidates.some(c => c.name === basedOn) ? basedOn : "baseline");
-  // The selected chip: the one shown, or the draft's home.
-  const current = shown === "draft" ? home : shown;
-  // A preset is selected while the draft, with or without edits, started from it.
-  const presetOn = (name: string) => shown === "draft" && basedOn === name;
+  const selectedPin = candidates.find(c => c.name === selected);
+  const selectedValues = selectedPin?.values ?? {};
 
-  // Read the host's setter through a ref so an unstable setter never re-runs the
-  // open effect, which would re-show the panel and steal focus.
-  const setConfigRef = useRef(setConfig);
-  useLayoutEffect(() => { setConfigRef.current = setConfig; });
+  // Read the latest pins and selection through refs, so the close path, which
+  // runs from an effect, never reads stale state.
+  const latest = useRef({ candidates, selected });
+  useLayoutEffect(() => { latest.current = { candidates, selected }; });
+
+  // Logs a pin's line when it is new or changed since it last logged.
+  function logPin(candidate: Candidate) {
+    const line = sortedJson(candidate);
+    if (logged.current.get(candidate.name) === line) return;
+    logged.current.set(candidate.name, line);
+    console.info(`UITUNINGLAB_CANDIDATE ${line}`);
+  }
+  // A pin edited in place logs its new values once it is left: another chip is
+  // selected, the lab closes, or Choose.
+  function leave() {
+    const { candidates, selected } = latest.current;
+    const pin = candidates.find(c => c.name === selected);
+    if (pin) logPin(pin);
+  }
 
   // The one close path. It runs from the popover's toggle event, or directly
-  // when the browser has no Popover API.
+  // when the browser has no Popover API. The feature keeps the selected look.
   function finishClose() {
-    if (stashedDraft.current) setConfigRef.current(stashedDraft.current);
-    stashedDraft.current = null;
-    setShown("draft");
+    leave();
     setSent(null);
     setMenuOpen(false);
     setOpen(false);
@@ -254,92 +248,73 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   // Choose moves focus to Change, and Change moves it back to the chips.
   useEffect(() => { (sent ? changeButton : firstControl).current?.focus(); }, [sent]);
 
-  // Seeded pins log their own line the first time the lab shows them; the
-  // set also guards StrictMode's repeated effects.
+  // Seeded pins log their own line the first time the lab shows them.
   useEffect(() => {
     if (!open) return;
-    for (const c of candidates) {
-      if (logged.current.has(c.name)) continue;
-      logged.current.add(c.name);
-      console.info(`UITUNINGLAB_CANDIDATE ${sortedJson(c)}`);
-    }
+    for (const c of candidates) if (!logged.current.has(c.name)) logPin(c);
   }, [open, candidates]);
 
   function openLab() { setStatus(null); setOpen(true); }
-  // Shows a chip in the real feature. The draft is stashed on the way out and
-  // restored when its home chip is shown again, or the lab closes.
-  function show(chip: string) {
-    const target = chip === home ? "draft" : chip;
-    if (target === "draft") {
-      if (stashedDraft.current) setConfig(stashedDraft.current);
-      stashedDraft.current = null;
-    } else {
-      if (!stashedDraft.current) stashedDraft.current = config;
-      const candidate = candidates.find(c => c.name === target);
-      setConfig({ ...baseline, ...candidate?.values });
-    }
-    setShown(target);
+  // Selecting a chip shows its look in the real feature. Switching chips is the
+  // comparison.
+  function select(chip: string) {
+    if (chip === selected) return;
+    leave();
+    const pin = candidates.find(c => c.name === chip);
+    setConfig({ ...baseline, ...pin?.values });
+    setSelected(chip);
   }
-  // Controls edit the draft. Moving one while a pin is shown copies that pin
-  // into the draft first; the pin itself does not change. Editing a pin, or a
-  // draft that matches one, starts from that look.
-  function edit(next: (current: CardConfig) => CardConfig) {
-    const source = shown === "draft" ? draftMatch : shown;
-    if (shown !== "draft") stashedDraft.current = null;
-    if (source !== null) setBasedOn(source);
-    setShown("draft");
+  // Adds a pin, selects it, and shows it.
+  function add(stem: string, basedOn: string, look: CardConfig) {
+    leave();
+    const name = nextName(stem, issued.current);
+    const candidate: Candidate = { name, basedOn, values: changedValues(baseline, look) };
+    issued.current.add(name);
+    setCandidates(list => [...list, candidate]);
+    logPin(candidate);
+    setConfig(look);
+    setSelected(name);
+    setStatus(`New look ${name}`);
+  }
+  // Every control edits the selected look. Shipped is read-only, so an edit on it
+  // starts a new pin; a pin changes in place.
+  function edit(next: CardConfig, preset?: string) {
+    if (!selectedPin) { add(preset ?? "tweak", preset ?? "baseline", next); return; }
+    const values = changedValues(baseline, next);
+    setCandidates(list => list.map(c => c.name === selected
+      ? { ...c, values, basedOn: preset ?? c.basedOn } : c));
     setConfig(next);
   }
-  function applyPreset(name: keyof typeof presets) {
-    edit(() => ({ ...presets[name] }));
-    setBasedOn(name);
-    lastPreset.current = name;
+  function applyPreset(name: keyof typeof presets) { edit({ ...presets[name] }, name); }
+  // Duplicate branches the selected pin, so the two can be compared.
+  function duplicate() {
+    if (!selectedPin) return;
+    add(selectedPin.name.replace(/-[0-9]+$/, ""), selectedPin.name, config);
   }
-  function reset() {
-    stashedDraft.current = null;
-    setShown("draft");
-    setConfig({ ...baseline });
-    setBasedOn("baseline");
-    lastPreset.current = null;
-    setMenuOpen(false);
-  }
-  // Reports the draft, whichever chip is shown.
+  // Reports the selected look.
   async function copyValues() {
     setMenuOpen(false);
-    const values = JSON.stringify(changedValues(baseline, stashedDraft.current ?? config));
+    const values = sortedJson(selectedValues);
     console.info(`UITUNINGLAB_VALUES ${values}`);
     try {
       await navigator.clipboard.writeText(values);
-      setStatus(values === "{}" ? "No changes from Shipped" : `Copied ${values}`);
+      setStatus(values === "{}" ? "Same as Shipped" : `Copied ${values}`);
     } catch {
       setStatus(`Clipboard unavailable; values logged to the console: ${values}`);
     }
   }
-  // Pins the draft. Pin is disabled while the draft matches Shipped or a pin.
-  function keep() {
-    if (draftMatch !== null) return;
-    const values = draftValues;
-    const name = nextName(lastPreset.current ?? "tweak", issued.current);
-    const candidate: Candidate = { name, basedOn, values };
-    setCandidates(list => [...list, candidate]);
-    issued.current.add(name);
-    logged.current.add(name);
-    console.info(`UITUNINGLAB_CANDIDATE ${sortedJson(candidate)}`);
-    setStatus(`Pinned ${name}`);
-  }
   function remove(name: string) {
     setCandidates(list => list.filter(c => c.name !== name));
+    logged.current.delete(name);
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
-    if (shown === name) show("draft");
+    if (selected === name) { setConfig({ ...baseline }); setSelected("original"); }
   }
-  // Choose picks what the feature shows and finishes: a pin, Shipped, or the
-  // draft while it holds unpinned edits. Picking again replaces the result.
-  async function pickShown() {
-    const picked = shown === "draft" ? draftMatch : shown;
-    const pin = candidates.find(c => c.name === picked);
-    const winner = picked === null ? "draft" : pin ? pin.name : "original";
-    const values = picked === null ? draftValues : pin ? pin.values : {};
-    const result = { candidates, values, winner };
+  // Choose picks the selected chip and finishes. Picking again replaces the
+  // result.
+  async function pickSelected() {
+    leave();
+    const winner = selectedPin ? selectedPin.name : "original";
+    const result = { candidates, values: selectedValues, winner };
     console.info(`UITUNINGLAB_DONE ${sortedJson(result)}`);
     const problems: string[] = [];
     try {
@@ -374,44 +349,40 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
           <button type="button" onClick={closeLab}>Close</button>
         </div>
         {menuOpen && <div style={rowStyle}>
-          <button type="button" onClick={reset}>Reset</button>
           <button type="button" onClick={copyValues}>Copy values</button>
         </div>}
-        <div role="group" aria-label="Shown in the feature" style={rowStyle}>
-          <button ref={firstControl} type="button" aria-pressed={current === "baseline"}
-            style={selectedStyle(current === "baseline")}
-            onClick={() => show("baseline")}>Shipped</button>
+        <div role="group" aria-label="Looks" style={rowStyle}>
+          <button ref={firstControl} type="button" aria-pressed={selected === "original"}
+            style={selectedStyle(selected === "original")}
+            onClick={() => select("original")}>Shipped</button>
           {candidates.map(c => <span key={c.name}>
-            <button type="button" aria-pressed={current === c.name} style={selectedStyle(current === c.name)}
-              onClick={() => show(c.name)}>{c.name}</button>
+            <button type="button" aria-pressed={selected === c.name} style={selectedStyle(selected === c.name)}
+              onClick={() => select(c.name)}>{c.name}</button>
             <button type="button" aria-label={`Remove ${c.name}`} onClick={() => remove(c.name)}>×</button>
           </span>)}
         </div>
-        <fieldset disabled={shown === "baseline"} aria-label="Controls"
-          style={{ border: 0, margin: 0, padding: 0 }}>
-          <button type="button" aria-pressed={presetOn("compact")} style={selectedStyle(presetOn("compact"))}
-            onClick={() => applyPreset("compact")}>Compact</button>
-          <button type="button" aria-pressed={presetOn("relaxed")} style={selectedStyle(presetOn("relaxed"))}
-            onClick={() => applyPreset("relaxed")}>Relaxed</button>
+        <div role="group" aria-label="Controls">
+          <button type="button" onClick={() => applyPreset("compact")}>Compact</button>
+          <button type="button" onClick={() => applyPreset("relaxed")}>Relaxed</button>
           <label>Radius <input type="range" min="0" max="32"
             value={config.radius}
-            onChange={e => edit(c => ({ ...c, radius: Number(e.target.value) }))}/>
+            onChange={e => edit({ ...config, radius: Number(e.target.value) })}/>
             <output aria-hidden="true">{config.radius}px</output>
           </label>
           <label>Gap <input type="range" min="0" max="24"
             value={config.gap}
-            onChange={e => edit(c => ({ ...c, gap: Number(e.target.value) }))}/>
+            onChange={e => edit({ ...config, gap: Number(e.target.value) })}/>
             <output aria-hidden="true">{config.gap}px</output>
           </label>
-        </fieldset>
+        </div>
         <div style={rowStyle}>
-          <button type="button" disabled={draftMatch !== null} onClick={keep}>Pin</button>
-          <button type="button" onClick={pickShown}>Choose</button>
+          <button type="button" disabled={!selectedPin} onClick={duplicate}>Duplicate</button>
+          <button type="button" onClick={pickSelected}>Choose</button>
         </div>
       </>}
       {status && <p role="status">{status}</p>}
       {!sent && <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
-        Pin looks to compare · Choose to finish</p>}
+        Duplicate to compare · Choose to finish</p>}
     </div>}
   </>;
 }
@@ -434,10 +405,11 @@ Escape, unmounting, and emitted production assets before approval.
 Only when the user explicitly requests saved profiles, replace
 `FeatureScreen.ui-tuning-lab.tsx` with this version. The feature files stay
 unchanged, and the writer and loader live only in the development-only module.
-Pin writes a `schemaVersion: 2` profile under `uiTuningLab.candidates.<name>`,
-× deletes that key, and opening the lab loads every such key into the chips;
-every stored name is taken, readable or not. The baseline stays the declared
-default, so Reset still returns to it. Unreadable or incompatible entries (wrong
+Each pin writes a `schemaVersion: 2` profile under `uiTuningLab.candidates.<name>`
+when it is created and again whenever it logs new values, × deletes that key, and
+opening the lab loads every such key into the chips; every stored name is taken,
+readable or not. The baseline stays the declared default, so Shipped still shows
+it. Unreadable or incompatible entries (wrong
 `schemaVersion` or `platform`) are reported in the status line, skipped, and left
 in storage untouched.
 
@@ -489,8 +461,8 @@ type Candidate = { name: string; basedOn: string; values: Partial<CardConfig> };
 const initialCandidates: Candidate[] = [];
 // Choose writes the pick here, so it survives quitting the app.
 const resultKey = "uiTuningLab.result";
-// Never issued as a pin's name: "draft" and "baseline" name the working copy and
-// the Shipped chip.
+// Never issued as a pin's name: "original" is the Shipped chip, and the others
+// are kept for older logs.
 const reservedNames = ["draft", "now", "original", "baseline"];
 
 // Preset keys are kebab-case: the key is what a pin records as basedOn and is
@@ -500,7 +472,7 @@ const presets = {
   relaxed: { radius: 24, gap: 16 },
 } satisfies Record<string, CardConfig>;
 // The baseline is the declared default, never the value on screen when the lab
-// opens: a draft kept from an earlier session must still count as a change.
+// opens: a look kept from an earlier session must still count as a change.
 const baseline: CardConfig = appDefault;
 
 // The agent path: `?ui-tuning-lab=1` opens the lab on load. It is parsed here,
@@ -519,9 +491,9 @@ function clearLaunchRequest() {
   window.history.replaceState(window.history.state, "", url);
 }
 
-// The draft fields that differ from the baseline.
-function changedValues<T extends object>(baseline: T, draft: T): Partial<T> {
-  return Object.fromEntries(Object.entries(draft).filter(
+// The fields of a look that differ from the baseline.
+function changedValues<T extends object>(baseline: T, look: T): Partial<T> {
+  return Object.fromEntries(Object.entries(look).filter(
     ([key, value]) => value !== baseline[key as keyof T])) as Partial<T>;
 }
 
@@ -550,7 +522,7 @@ function reasonOf(error: unknown): string {
 
 // Reads every stored pin, oldest first. An entry that cannot be used is
 // described in `problems` and left in storage untouched. Every stored name,
-// readable or not, is added to `reserved` so Pin never reuses it.
+// readable or not, is added to `reserved` so a new pin never reuses it.
 function readStored(reserved: Set<string>): { found: Candidate[]; problems: string[] } {
   const keys: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -593,49 +565,47 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
   const changeButton = useRef<HTMLButtonElement>(null);
-  // Pins are mirrored to localStorage, one key each.
+  // Pins live in memory and in the log; each is mirrored to localStorage. A pin is a
+  // look being worked on: the controls edit the selected pin in place.
   const [candidates, setCandidates] = useState(initialCandidates);
   // Every name issued in this run, removed ones included: names are never reused.
   const issued = useRef(new Set([...reservedNames, ...initialCandidates.map(c => c.name)]));
-  // Pins already written to the log, so seeded or stored ones log once.
-  const logged = useRef(new Set<string>());
-  // Where the draft came from: a preset, "baseline", or a pin's name.
-  const [basedOn, setBasedOn] = useState("baseline");
-  // The last preset applied since the lab opened or Reset; it names pins.
-  const lastPreset = useRef<string | null>(null);
-  // The chip the real feature shows: "draft", "baseline" (Shipped), or a pin's
-  // name.
-  const [shown, setShown] = useState("draft");
-  // Holds the draft while another chip is shown in the feature.
-  const stashedDraft = useRef<CardConfig | null>(null);
+  // The values each pin last logged, so a pin logs again only after it changed.
+  const logged = useRef(new Map<string, string>());
+  // The selected chip: "original" (Shipped) or a pin's name. The feature always
+  // shows it; there is no draft and nothing is stashed.
+  const [selected, setSelected] = useState("original");
   // The winner after Choose; while set, the panel is the result bar.
   const [sent, setSent] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  // The chip the draft matches ("baseline" for Shipped, or a pin), or null while
-  // it holds unpinned changes.
-  const draft = stashedDraft.current ?? config;
-  const draftValues = changedValues(baseline, draft);
-  const draftMatch = Object.keys(draftValues).length === 0 ? "baseline"
-    : candidates.find(c => sortedJson(c.values) === sortedJson(draftValues))?.name ?? null;
-  // The draft's home chip: the chip it matches, else the pin it was copied from,
-  // else Shipped. Unpinned edits stay under it; there is no chip of their own.
-  const home = draftMatch ?? (candidates.some(c => c.name === basedOn) ? basedOn : "baseline");
-  // The selected chip: the one shown, or the draft's home.
-  const current = shown === "draft" ? home : shown;
-  // A preset is selected while the draft, with or without edits, started from it.
-  const presetOn = (name: string) => shown === "draft" && basedOn === name;
+  const selectedPin = candidates.find(c => c.name === selected);
+  const selectedValues = selectedPin?.values ?? {};
 
-  // Read the host's setter through a ref so an unstable setter never re-runs the
-  // open effect, which would re-show the panel and steal focus.
-  const setConfigRef = useRef(setConfig);
-  useLayoutEffect(() => { setConfigRef.current = setConfig; });
+  // Read the latest pins and selection through refs, so the close path, which
+  // runs from an effect, never reads stale state.
+  const latest = useRef({ candidates, selected });
+  useLayoutEffect(() => { latest.current = { candidates, selected }; });
+
+  // Logs a pin's line when it is new or changed since it last logged.
+  function logPin(candidate: Candidate) {
+    const line = sortedJson(candidate);
+    if (logged.current.get(candidate.name) === line) return;
+    logged.current.set(candidate.name, line);
+    console.info(`UITUNINGLAB_CANDIDATE ${line}`);
+    store(candidate);
+  }
+  // A pin edited in place logs its new values once it is left: another chip is
+  // selected, the lab closes, or Choose.
+  function leave() {
+    const { candidates, selected } = latest.current;
+    const pin = candidates.find(c => c.name === selected);
+    if (pin) logPin(pin);
+  }
 
   // The one close path. It runs from the popover's toggle event, or directly
-  // when the browser has no Popover API.
+  // when the browser has no Popover API. The feature keeps the selected look.
   function finishClose() {
-    if (stashedDraft.current) setConfigRef.current(stashedDraft.current);
-    stashedDraft.current = null;
-    setShown("draft");
+    leave();
     setSent(null);
     setMenuOpen(false);
     setOpen(false);
@@ -691,99 +661,80 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     }
   }, [open]);
 
-  // Seeded and stored pins log their own line the first time the lab shows them; the
-  // set also guards StrictMode's repeated effects.
+  // Seeded and stored pins log their own line the first time the lab shows them.
   useEffect(() => {
     if (!open) return;
-    for (const c of candidates) {
-      if (logged.current.has(c.name)) continue;
-      logged.current.add(c.name);
-      console.info(`UITUNINGLAB_CANDIDATE ${sortedJson(c)}`);
-    }
+    for (const c of candidates) if (!logged.current.has(c.name)) logPin(c);
   }, [open, candidates]);
 
   function openLab() { setStatus(null); setOpen(true); }
-  // Shows a chip in the real feature. The draft is stashed on the way out and
-  // restored when its home chip is shown again, or the lab closes.
-  function show(chip: string) {
-    const target = chip === home ? "draft" : chip;
-    if (target === "draft") {
-      if (stashedDraft.current) setConfig(stashedDraft.current);
-      stashedDraft.current = null;
-    } else {
-      if (!stashedDraft.current) stashedDraft.current = config;
-      const candidate = candidates.find(c => c.name === target);
-      setConfig({ ...baseline, ...candidate?.values });
-    }
-    setShown(target);
+  // Selecting a chip shows its look in the real feature. Switching chips is the
+  // comparison.
+  function select(chip: string) {
+    if (chip === selected) return;
+    leave();
+    const pin = candidates.find(c => c.name === chip);
+    setConfig({ ...baseline, ...pin?.values });
+    setSelected(chip);
   }
-  // Controls edit the draft. Moving one while a pin is shown copies that pin
-  // into the draft first; the pin itself does not change. Editing a pin, or a
-  // draft that matches one, starts from that look.
-  function edit(next: (current: CardConfig) => CardConfig) {
-    const source = shown === "draft" ? draftMatch : shown;
-    if (shown !== "draft") stashedDraft.current = null;
-    if (source !== null) setBasedOn(source);
-    setShown("draft");
+  // Adds a pin, selects it, and shows it.
+  function add(stem: string, basedOn: string, look: CardConfig) {
+    leave();
+    const name = nextName(stem, issued.current);
+    const candidate: Candidate = { name, basedOn, values: changedValues(baseline, look) };
+    issued.current.add(name);
+    setCandidates(list => [...list, candidate]);
+    logPin(candidate);
+    setConfig(look);
+    setSelected(name);
+    setStatus({ text: `New look ${name}` });
+  }
+  // Every control edits the selected look. Shipped is read-only, so an edit on it
+  // starts a new pin; a pin changes in place.
+  function edit(next: CardConfig, preset?: string) {
+    if (!selectedPin) { add(preset ?? "tweak", preset ?? "baseline", next); return; }
+    const values = changedValues(baseline, next);
+    setCandidates(list => list.map(c => c.name === selected
+      ? { ...c, values, basedOn: preset ?? c.basedOn } : c));
     setConfig(next);
   }
-  function applyPreset(name: keyof typeof presets) {
-    edit(() => ({ ...presets[name] }));
-    setBasedOn(name);
-    lastPreset.current = name;
+  function applyPreset(name: keyof typeof presets) { edit({ ...presets[name] }, name); }
+  // Duplicate branches the selected pin, so the two can be compared.
+  function duplicate() {
+    if (!selectedPin) return;
+    add(selectedPin.name.replace(/-[0-9]+$/, ""), selectedPin.name, config);
   }
-  function reset() {
-    stashedDraft.current = null;
-    setShown("draft");
-    setConfig({ ...baseline });
-    setBasedOn("baseline");
-    lastPreset.current = null;
-    setMenuOpen(false);
-  }
-  // Reports the draft, whichever chip is shown.
-  async function copyValues() {
-    setMenuOpen(false);
-    const values = JSON.stringify(changedValues(baseline, stashedDraft.current ?? config));
-    console.info(`UITUNINGLAB_VALUES ${values}`);
-    try {
-      await navigator.clipboard.writeText(values);
-      setStatus({ text: values === "{}" ? "No changes from Shipped" : `Copied ${values}` });
-    } catch {
-      setStatus({ text: `Clipboard unavailable; values logged to the console: ${values}` });
-    }
-  }
-  // Pins the draft. Pin is disabled while the draft matches Shipped or a pin.
-  // A failed write refuses the Pin, so the chips never show a pin that storage
-  // does not hold.
-  function keep() {
-    if (draftMatch !== null) return;
-    const values = draftValues;
-    const name = nextName(lastPreset.current ?? "tweak", issued.current);
-    const candidate: Candidate = { name, basedOn, values };
+  // Writes a pin's profile under its own key. A failed write is reported; the
+  // pin stays in the panel and the log still has it.
+  function store(candidate: Candidate) {
     const profile: UITuningLabProfile = {
-      basedOn,
+      basedOn: candidate.basedOn,
       container: "FeatureScreen.popover",
-      name,
+      name: candidate.name,
       notes: "",
-      overrides: draft,
+      overrides: { ...baseline, ...candidate.values },
       platform: "web",
       savedAt: new Date().toISOString(),
       schemaVersion: 2,
       scope: ["appearance", "layout"],
     };
     try {
-      const key = candidateKey + name;
-      if (localStorage.getItem(key) !== null) throw new Error(`${name} already exists in storage`);
-      localStorage.setItem(key, JSON.stringify(profile));
+      localStorage.setItem(candidateKey + candidate.name, JSON.stringify(profile));
     } catch (error) {
-      setStatus({ text: `Pin failed: ${reasonOf(error)}`, error: true });
-      return;
+      setStatus({ text: `${candidate.name} not saved: ${reasonOf(error)}`, error: true });
     }
-    setCandidates(list => [...list, candidate]);
-    issued.current.add(name);
-    logged.current.add(name);
-    console.info(`UITUNINGLAB_CANDIDATE ${sortedJson(candidate)}`);
-    setStatus({ text: `Pinned ${name}` });
+  }
+  // Reports the selected look.
+  async function copyValues() {
+    setMenuOpen(false);
+    const values = sortedJson(selectedValues);
+    console.info(`UITUNINGLAB_VALUES ${values}`);
+    try {
+      await navigator.clipboard.writeText(values);
+      setStatus({ text: values === "{}" ? "Same as Shipped" : `Copied ${values}` });
+    } catch {
+      setStatus({ text: `Clipboard unavailable; values logged to the console: ${values}` });
+    }
   }
   function remove(name: string) {
     try {
@@ -793,17 +744,16 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
       return;
     }
     setCandidates(list => list.filter(c => c.name !== name));
+    logged.current.delete(name);
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
-    if (shown === name) show("draft");
+    if (selected === name) { setConfig({ ...baseline }); setSelected("original"); }
   }
-  // Choose picks what the feature shows and finishes: a pin, Shipped, or the
-  // draft while it holds unpinned edits. Picking again replaces the result.
-  async function pickShown() {
-    const picked = shown === "draft" ? draftMatch : shown;
-    const pin = candidates.find(c => c.name === picked);
-    const winner = picked === null ? "draft" : pin ? pin.name : "original";
-    const values = picked === null ? draftValues : pin ? pin.values : {};
-    const result = { candidates, values, winner };
+  // Choose picks the selected chip and finishes. Picking again replaces the
+  // result.
+  async function pickSelected() {
+    leave();
+    const winner = selectedPin ? selectedPin.name : "original";
+    const result = { candidates, values: selectedValues, winner };
     console.info(`UITUNINGLAB_DONE ${sortedJson(result)}`);
     const problems: string[] = [];
     try {
@@ -838,44 +788,40 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
           <button type="button" onClick={closeLab}>Close</button>
         </div>
         {menuOpen && <div style={rowStyle}>
-          <button type="button" onClick={reset}>Reset</button>
           <button type="button" onClick={copyValues}>Copy values</button>
         </div>}
-        <div role="group" aria-label="Shown in the feature" style={rowStyle}>
-          <button ref={firstControl} type="button" aria-pressed={current === "baseline"}
-            style={selectedStyle(current === "baseline")}
-            onClick={() => show("baseline")}>Shipped</button>
+        <div role="group" aria-label="Looks" style={rowStyle}>
+          <button ref={firstControl} type="button" aria-pressed={selected === "original"}
+            style={selectedStyle(selected === "original")}
+            onClick={() => select("original")}>Shipped</button>
           {candidates.map(c => <span key={c.name}>
-            <button type="button" aria-pressed={current === c.name} style={selectedStyle(current === c.name)}
-              onClick={() => show(c.name)}>{c.name}</button>
+            <button type="button" aria-pressed={selected === c.name} style={selectedStyle(selected === c.name)}
+              onClick={() => select(c.name)}>{c.name}</button>
             <button type="button" aria-label={`Remove ${c.name}`} onClick={() => remove(c.name)}>×</button>
           </span>)}
         </div>
-        <fieldset disabled={shown === "baseline"} aria-label="Controls"
-          style={{ border: 0, margin: 0, padding: 0 }}>
-          <button type="button" aria-pressed={presetOn("compact")} style={selectedStyle(presetOn("compact"))}
-            onClick={() => applyPreset("compact")}>Compact</button>
-          <button type="button" aria-pressed={presetOn("relaxed")} style={selectedStyle(presetOn("relaxed"))}
-            onClick={() => applyPreset("relaxed")}>Relaxed</button>
+        <div role="group" aria-label="Controls">
+          <button type="button" onClick={() => applyPreset("compact")}>Compact</button>
+          <button type="button" onClick={() => applyPreset("relaxed")}>Relaxed</button>
           <label>Radius <input type="range" min="0" max="32"
             value={config.radius}
-            onChange={e => edit(c => ({ ...c, radius: Number(e.target.value) }))}/>
+            onChange={e => edit({ ...config, radius: Number(e.target.value) })}/>
             <output aria-hidden="true">{config.radius}px</output>
           </label>
           <label>Gap <input type="range" min="0" max="24"
             value={config.gap}
-            onChange={e => edit(c => ({ ...c, gap: Number(e.target.value) }))}/>
+            onChange={e => edit({ ...config, gap: Number(e.target.value) })}/>
             <output aria-hidden="true">{config.gap}px</output>
           </label>
-        </fieldset>
+        </div>
         <div style={rowStyle}>
-          <button type="button" disabled={draftMatch !== null} onClick={keep}>Pin</button>
-          <button type="button" onClick={pickShown}>Choose</button>
+          <button type="button" disabled={!selectedPin} onClick={duplicate}>Duplicate</button>
+          <button type="button" onClick={pickSelected}>Choose</button>
         </div>
       </>}
       {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
       {!sent && <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
-        Pin looks to compare · Choose to finish</p>}
+        Duplicate to compare · Choose to finish</p>}
     </div>}
   </>;
 }

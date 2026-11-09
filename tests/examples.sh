@@ -101,7 +101,7 @@ require_text examples/swiftui-popover-palette.md 'UITuningLabControls(style: $st
 require_text examples/macos-panel-minimal.md 'baseline: .appDefault)' 'macOS baseline is the declared default'
 require_text examples/web-floating-panel.md 'const baseline: CardConfig = appDefault;' 'web baseline is the declared default'
 require_text examples/animation-spring.md 'const baseline: EntranceMotion = appDefault;' 'web motion baseline is the declared default'
-require_text examples/animation-spring.md 'uiTuningLab.rendered(draft: motion, baseline: .appDefault)' 'SwiftUI motion baseline is the declared default'
+require_text examples/animation-spring.md 'uiTuningLab.rendered(motion)' 'SwiftUI motion renders the selected look'
 require_text examples/swiftui-popover-palette.md '.presentationBackgroundInteraction(.enabled(upThrough: .medium))' 'iOS sheet leaves the feature usable'
 require_text examples/swiftui-popover-palette.md 'Button("Close") { dismiss() }' 'iOS lab has a Close button'
 
@@ -169,7 +169,7 @@ require_text examples/web-floating-panel.md 'role="dialog"' 'web popover exposes
 require_text examples/web-floating-panel.md 'aria-labelledby="ui-tuning-lab-title"' 'web dialog has a labelled heading'
 require_text examples/web-floating-panel.md '{...popoverManual}' 'web lab stays open while the feature is used'
 require_text examples/web-floating-panel.md 'document.addEventListener("keydown", onKeyDown);' 'web lab closes on Escape wherever focus is'
-require_text examples/web-floating-panel.md 'useLayoutEffect(() => { setConfigRef.current = setConfig; });' 'web lab tolerates an unstable host setter'
+require_text examples/web-floating-panel.md 'useLayoutEffect(() => { latest.current = { candidates, selected }; });' 'web close path reads current pins, not stale state'
 require_text examples/macos-panel-minimal.md '@ObservedObject var model: FeatureSceneModel' 'macOS panel observes the model so it redraws'
 if grep -q 'get: { \[weak self\] in self?\.' "$ROOT/examples/macos-panel-minimal.md"; then
   not_ok 'macOS panel does not use a closure Binding to plain properties'
@@ -188,10 +188,11 @@ require_text examples/web-floating-panel.md 'trigger.current?.focus()' 'web dism
 require_text examples/web-floating-panel.md 'cancelAnimationFrame(focusFrame)' 'web cleanup cancels pending initial-focus work'
 require_text examples/web-floating-panel.md 'value={config.gap}' 'web lab controls every config field'
 require_text examples/web-floating-panel.md 'uiTuningLab.candidates.' 'web candidates use the uiTuningLab namespace'
-require_text examples/swiftui-popover-palette.md '.onDisappear { if let stashedDraft { style = stashedDraft } }' 'iOS closing restores the stashed draft'
-require_text examples/macos-panel-minimal.md 'if let draft = lab.stashedDraft { model.style = draft }' 'macOS closing restores the stashed draft'
+require_text examples/swiftui-popover-palette.md '.onDisappear { candidates.leave() }' 'iOS closing keeps the selected look and logs an edited pin'
+require_text examples/macos-panel-minimal.md 'candidates.leave()' 'macOS closing keeps the selected look and logs an edited pin'
+require_text examples/macos-panel-minimal.md '.frame(width: 320, height: 420, alignment: .top)' 'macOS panel keeps its size after Change'
 require_text examples/macos-panel-minimal.md 'override func cancelOperation(_ sender: Any?) { close() }' 'macOS panel closes on Escape'
-require_text examples/web-floating-panel.md 'if (stashedDraft.current) setConfigRef.current(stashedDraft.current);' 'web closing restores the stashed draft'
+require_text examples/web-floating-panel.md 'when the browser has no Popover API. The feature keeps the selected look.' 'web closing keeps the selected look'
 require_text examples/animation-spring.md 'lab.replayToken += 1' 'SwiftUI motion lab can replay'
 require_text examples/animation-spring.md 'motion.duration /= speed' 'SwiftUI motion lab slows the preview by stretching duration'
 require_text examples/animation-spring.md 'accessibilityReduceMotion' 'SwiftUI motion respects Reduce Motion'
@@ -258,22 +259,23 @@ for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; d
   fi
 done
 
-# Chips, Pin, Choose, the draft's home chip, and the result file are in every variant
+# Chips, Duplicate, Choose, and the result file are in every variant
 # users copy (references/candidates.md), the ephemeral default included.
 for example in $EXAMPLES; do
   for variant in $(example_variants "$ROOT/examples/$example"); do
     dir="$WORK/${example%.md}-$variant"
     label="$example [$variant]"
-    for needle in 'Shipped' 'draftMatch' 'Pin' 'Choose' 'Pin looks to compare · Choose to finish' \
+    for needle in 'Shipped' 'Duplicate' 'Choose' 'Duplicate to compare · Choose to finish' \
         'Chosen: ' 'land ' 'result' 'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE'; do
       if grep -rqF "$needle" "$dir"; then ok "$label has $needle"; else not_ok "$label has $needle"; fi
     done
-    # Unpinned edits have no chip of their own: selection is an outline, never a
-    # "<source> + edits" label.
-    if grep -rqF '+ edits' "$dir"; then
-      not_ok "$label has no draft chip label" "$(grep -rnF '+ edits' "$dir")"
+    # There is no draft, stash, or Reset: the selected chip is the look shown,
+    # and selection is an outline, never a "<source> + edits" label.
+    retired='\+ edits|draftMatch|stashedDraft|Pin looks to compare|"Reset"|>Reset<'
+    if grep -rqE "$retired" "$dir"; then
+      not_ok "$label has no draft, stash, or Reset" "$(grep -rnE "$retired" "$dir")"
     else
-      ok "$label has no draft chip label"
+      ok "$label has no draft, stash, or Reset"
     fi
     # The old labels and glyphs are gone from the panel.
     if grep -rqE '★|✓|"Now"|>Now<|Use this|"Original"|>Original<' "$dir"; then

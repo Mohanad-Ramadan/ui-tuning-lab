@@ -2,22 +2,23 @@
 
 ## 1.3.0 — unreleased
 
-### Selection is an outline, and Change no longer loses the controls
+### Looks you edit in place, and a macOS panel that lays out
 
-- **Bug fix (macOS):** after Choose and Change, the lab window came back only as
-  tall as its header and chips, with no controls. A desktop window follows its
-  content's ideal size, and a panel built on a `ScrollView` has almost none, so
-  the window collapsed with the result bar and stayed collapsed. The panel
-  branch now carries its own size (`.frame(width: 320, height: 420)`), and the
-  verify protocol checks the frame after Change.
-- The "<source> + edits" chip is gone. Chips are Shipped and each pin; the
-  selected chip is outlined (and so is the preset the draft started from), like
-  any selected option. Unpinned edits stay under their home chip: the chip the
-  draft matches, else the pin it was copied from, else Shipped. Tapping another
-  chip stashes them until the home chip is tapped again. To compare unpinned
-  edits with Shipped, Pin them first.
-- Choose picks what the feature shows. The wire format is unchanged: Shipped logs
-  `original`, a pin its name, unpinned edits `draft`.
+- The draft, the stash, the "+ edits" chip, Reset, and Pin are gone. Chips are
+  Shipped and each pin; exactly one is selected, outlined, and shown in the
+  feature, so switching chips is the comparison. The controls edit the selected
+  pin in place; on Shipped, which is read-only, they start a new pin named after
+  the preset or `tweak`. **Duplicate** branches the selected pin. **Choose**
+  picks the selected chip, so `draft` is no longer a winner; the hint reads
+  *Duplicate to compare · Choose to finish*.
+- A pin logs `UITUNINGLAB_CANDIDATE` when created and again when it is left after
+  an edit; persisting labs rewrite its profile at the same moments.
+- **Bug fix (macOS):** Shipped no longer stays outlined after an edit, and the
+  panel is a plain stack instead of a `Form`, whose two-column layout pushed the
+  controls right, showed each label twice, and floated the hint mid-window. The
+  panel keeps a fixed size, so Change after Choose brings back the whole panel.
+- `tests/pilot-web/run.sh` builds the web example into the pilot and runs the
+  cross-browser check against it.
 
 ### Plainer labels
 

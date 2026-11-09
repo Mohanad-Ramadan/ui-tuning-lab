@@ -14,7 +14,7 @@ one ("keep this", "ship these values", "that's the one").
 ## 1. Get the values
 
 Every lab has a **Copy values** action. It copies a JSON object containing only
-the draft fields that differ from the baseline, and logs the same object
+the selected look's fields that differ from the baseline, and logs the same object
 on one line:
 
 ```text
@@ -28,16 +28,16 @@ presses Choose, and write the same object to the result file
 1. What the user says in chat wins: values they pasted, or a name they gave
    (`land capsule`).
 2. Otherwise the newest `UITUNINGLAB_DONE` line, else the result file. Land its
-   `winner`: a pin's values, `draft` values (unpinned edits), or nothing for
-   `original` (the Shipped chip).
+   `winner`: a pin's values, or nothing for `original` (the Shipped chip). An
+   older lab's `draft` winner lands its `values` the same way.
 3. Otherwise the newest `UITUNINGLAB_VALUES` line.
 
 Read the lines yourself rather than asking for a paste, with the platform's
 command in `references/platform-handoff.md`, "Emit and read".
 
 If no line is available, ask the user to press Copy values and paste the result.
-`{}` means the draft matches the baseline, so there is nothing to land. `null`
-means the draft cleared an optional field. In the Swift labs, a status starting
+`{}` means the selected look matches the baseline, so there is nothing to land.
+`null` means the look cleared an optional field. In the Swift labs, a status starting
 `Values not copied` means encoding failed (for example a non-finite number); fix
 the value first. The web labs cannot hit that case, because their values are
 plain numbers. A candidate's

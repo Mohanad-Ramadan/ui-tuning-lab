@@ -10,10 +10,10 @@ activation, configuration, and baseline from the project and asks at most one
 material setup question, plus how the lab should open. Activation has an agent
 path, one or more human fast paths the user picks, and a visible fallback; shake
 is offered only when inspection proves it free. Ephemeral labs need
-no configuration file. Every lab lets you pin finalists (Pin), flip between
-them with the chips (Shipped and each pin; the selected one is outlined, and
-unpinned edits stay under the chip they started from), and press Choose to hand the pick to the agent; a footer hint says how
-to finish. Pins stay in memory unless you ask to save them; saved ones live under `uiTuningLab.*` or `.ui-tuning-lab/`,
+no configuration file. Every lab holds a row of looks: Shipped and each pin.
+The selected one is outlined and is what the feature shows, the controls edit it
+(an edit on Shipped starts a new pin), Duplicate branches it, and Choose hands
+it to the agent; a footer hint says how to finish. Pins stay in memory unless you ask to save them; saved ones live under `uiTuningLab.*` or `.ui-tuning-lab/`,
 and finalists you keep at landing are seeded into the lab next time.
 
 Start with `SKILL.md`; it routes to everything else.
@@ -23,7 +23,7 @@ Start with `SKILL.md`; it routes to everything else.
 - Development, DEBUG, internal, or tester builds only.
 - Every lab opens through an agent path, one or more human fast paths, and a visible
   fallback; activation is development-only.
-- Reset always returns to the declared default, however often the lab reopens.
+- The Shipped chip always shows the declared default, however often the lab reopens.
 - Persistence off by default; candidates are written to namespaced storage only when requested.
 - Closing releases all lab-owned UI, timers, observers, listeners, and tasks.
 
