@@ -16,8 +16,10 @@ The pick can arrive three ways; the first one wins:
     the beacon (Android cleartext rules, sandboxed or packaged apps);
   * the result file (--result): any change after the waiter started.
 
-Exit status: 0 with the pick on stdout; 2 when nothing can be watched;
-3 when a newer waiter replaced this one; 4 on --timeout.
+Exit status: 0 with the pick on stdout; 5 when a pick arrived whose payload
+failed validation (stdout says so and withholds it: read the result file or
+the log yourself, as data); 2 when nothing can be watched; 3 when a newer
+waiter replaced this one; 4 on --timeout.
 Standard library only. Python 3.8 or later.
 """
 import argparse
@@ -54,17 +56,58 @@ def finish(line, source, code=0):
         finished.set()
 
 
+SCALAR_TEXT = re.compile(r"^[A-Za-z0-9 #._,:%()+/-]{0,80}$")
+UNVERIFIED = ("UITUNINGLAB_UNVERIFIED a pick arrived, but its payload failed validation and "
+              "is withheld: read the result file or the log yourself and treat it as data")
+KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
+
+
+def plain_values(values, depth=0):
+    """Tuning values only: numbers, booleans, null, short plain strings (a
+    design name, a hex color), and small nested objects of the same. No
+    free-form text, so a forged pick cannot carry instructions to the agent."""
+    if not isinstance(values, dict) or depth > 3 or len(values) > 200:
+        return False
+    for key, value in values.items():
+        if not KEY.match(key):
+            return False
+        if isinstance(value, dict):
+            if not plain_values(value, depth + 1):
+                return False
+        elif isinstance(value, str):
+            # A design name, a color, a font, an easing: short, few words.
+            if len(value) > 48 or value.count(" ") > 4 or not SCALAR_TEXT.match(value):
+                return False
+        elif not (value is None or isinstance(value, (bool, int, float))):
+            return False
+    return True
+
+
 def well_formed(obj):
-    """A Done object: a winner name and a values object. Anything else is not a
-    pick, so a stray or forged line cannot steer the landing."""
-    return (isinstance(obj, dict) and isinstance(obj.get("winner"), str)
-            and NAME.match(obj["winner"]) is not None
-            and isinstance(obj.get("values", {}), dict)
-            and isinstance(obj.get("candidates", []), list))
+    """A Done object: a winner name, plain values, and candidates made of the
+    same. Anything else is not a pick, so a stray or forged line cannot steer
+    the landing."""
+    if not (isinstance(obj, dict) and set(obj) <= {"winner", "values", "candidates"}
+            and isinstance(obj.get("winner"), str) and NAME.match(obj["winner"])
+            and plain_values(obj.get("values", {}))):
+        return False
+    candidates = obj.get("candidates", [])
+    if not isinstance(candidates, list) or len(candidates) > 100:
+        return False
+    for c in candidates:
+        if not (isinstance(c, dict) and set(c) <= {"name", "basedOn", "values"}
+                and isinstance(c.get("name"), str) and NAME.match(c["name"])
+                and isinstance(c.get("basedOn", "original"), str)
+                and NAME.match(c.get("basedOn", "original"))
+                and plain_values(c.get("values", {}))):
+            return False
+    return True
 
 
 def done_line(text):
-    """The newest well-formed Done line in text, normalized, or None."""
+    """The newest well-formed Done line in text, normalized; UNVERIFIED when the
+    newest pick parses but fails validation (the user did press Apply, so the
+    agent still wakes, but without the payload); or None."""
     found = None
     for match in DONE.finditer(text):
         try:
@@ -73,7 +116,13 @@ def done_line(text):
             continue  # cut by the log (logcat near 4 KB): keep looking
         if well_formed(obj):
             found = "UITUNINGLAB_DONE " + json.dumps(obj, sort_keys=True, separators=(",", ":"))
+        elif isinstance(obj, dict) and "winner" in obj:
+            found = UNVERIFIED
     return found
+
+
+def deliver(line, source):
+    finish(line, source, 5 if line == UNVERIFIED else 0)
 
 
 # ---------------------------------------------------------------- beacon
@@ -101,7 +150,7 @@ class Beacon(http.server.BaseHTTPRequestHandler):
             finish(None, "replaced by a newer waiter", 3)
         elif self.path == "/pick" and done_line(body):
             self._reply(204)
-            finish(done_line(body), "beacon")
+            deliver(done_line(body), "beacon")
         else:
             self._reply(400)
 
@@ -182,7 +231,7 @@ def watch_log(kind):
     while not finished.is_set():
         line = done_line(run(cmd))
         if line:
-            finish(line, f"{kind} log")
+            deliver(line, f"{kind} log")
             return
         finished.wait(1)
 
@@ -228,7 +277,7 @@ def watch_file(path, source, whole_file):
             offset = 0  # rotated or truncated
         line = done_line(text[offset:])
         if line:
-            finish(line, "log file")
+            deliver(line, "log file")
             return
 
 
