@@ -1,5 +1,45 @@
 # Changelog — ui-tuning-lab
 
+## 1.4.0 — 2026-11-10
+
+### Apply reaches the agent by itself
+
+- **Choose is now Apply.** Its first press POSTs the Done line to
+  `http://localhost:47321/pick` (development builds only, fire and forget), so
+  the agent resumes and lands the pick without the user typing "done".
+- New `scripts/wait-for-pick.py` (Python standard library). The agent starts it
+  in the background at handover; it listens for that beacon and also polls the
+  platform log (`--log android|ios-sim|macos`), a log file, or the result file,
+  and exits with the pick. Starting the waiter is now a required handover step.
+- The waiter accepts only native apps or loopback web origins
+  (`--allow-origin` for other dev hosts), and only plain tuning values:
+  numbers, booleans, and short plain strings. A pick that fails validation
+  still wakes the agent (exit 5, `UITUNINGLAB_UNVERIFIED`) with the payload
+  withheld.
+- Apply is hidden after its first press; later picks reach the agent as a
+  pasted `land <name>`.
+
+### Save & copy replaces Duplicate
+
+- Editing no longer creates or renames chips. **Save & copy**, present from the
+  first open, saves the current look as **Look 1**, **Look 2**, … (land code
+  `land look-2`), or saves the selected look in place, and copies
+  `land look-N`. Before the first Apply it only keeps a look; after it, it also
+  writes the result file and shows where it saved
+  (`Saved Look 2 in .ui-tuning-lab/result.json`).
+- Saved looks are edited in place and keep their edits when the user switches
+  away. × shows only on the selected look. The hint reads *Save & copy to keep
+  a look · Apply to finish*.
+
+### Panel placement and design checks
+
+- Features at the bottom edge (tab bars, bottom toolbars, floating buttons,
+  input bars) get a panel docked at the top instead of a bottom sheet that
+  covers them. A custom tab bar hides the system one from inside each tab's
+  content.
+- A lab with designs now selects each design once in the smoke launch and
+  confirms by screenshot that the feature changes and is not covered.
+
 ## 1.3.0 — 2026-11-10
 
 First public release, installable with
