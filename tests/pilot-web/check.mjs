@@ -152,7 +152,7 @@ async function devChecks(engineName, engine, viewportName) {
       await page.evaluate(() => document.activeElement?.textContent?.trim() === "Card Lab"));
     record(scope, "closing keeps the selected look", (await cardStyles(page)).gap === "20px");
 
-    // Reopening keeps the pins and the selection; Choose then Change brings the
+    // Reopening keeps the pins and the selection; Apply then Change brings the
     // whole panel back.
     await page.getByRole("button", { name: "Card Lab" }).click();
     await dialog.waitFor();
@@ -160,14 +160,27 @@ async function devChecks(engineName, engine, viewportName) {
       same(await pressed(), ["tweak"]) &&
       (await page.locator("[aria-label=Looks] button[aria-pressed]").count()) === 4);
     logs.length = 0;
-    await page.getByRole("button", { name: "Choose" }).click();
+    await page.getByRole("button", { name: "Apply" }).click();
     await page.waitForTimeout(300);
     const done = logs.find(text => text.startsWith("UITUNINGLAB_DONE "));
-    record(scope, "Choose logs the selected chip as winner", !!done && done.includes('"winner":"tweak"'), done ?? "no DONE line");
+    record(scope, "Apply logs the selected chip as winner", !!done && done.includes('"winner":"tweak"'), done ?? "no DONE line");
     await page.getByRole("button", { name: "Change" }).click();
     record(scope, "Change brings back the controls",
       (await dialog.getByRole("slider").count()) === 2 &&
       (await page.getByRole("button", { name: "Duplicate" }).isVisible()));
+    // After the first Apply the agent stops listening: the button becomes Save
+    // and copy, and the result bar asks for the land line in chat.
+    const copy = page.getByRole("button", { name: "Save and copy", exact: true });
+    record(scope, "after Apply the button reads Save and copy", await copy.isVisible());
+    await copy.click();
+    await page.waitForTimeout(300);
+    // The dialog is named by its title, which is now the result text.
+    const bar = await page.locator("[role=dialog]").innerText();
+    record(scope, "Save and copy asks to paste the land line in chat",
+      /paste it in chat so the agent applies it|Tell the agent: land tweak/.test(bar), bar);
+    record(scope, "the result bar says where the pick was saved",
+      bar.includes("Saved tweak in localStorage uiTuningLab.result"), bar);
+    await page.getByRole("button", { name: "Change" }).click();
     await page.getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(200);
 
@@ -186,7 +199,7 @@ async function devChecks(engineName, engine, viewportName) {
     }
     const sliders = await dialog.getByRole("slider").evaluateAll(inputs =>
       inputs.map(input => input.closest("label")?.textContent?.trim().split(/\s+/)[0]));
-    const expected = ["Close", "More actions", "Shipped", "Compact", "Relaxed", "Duplicate", "Choose", ...sliders];
+    const expected = ["Close", "More actions", "Shipped", "Compact", "Relaxed", "Duplicate", "Save and copy", ...sliders];
     const missing = expected.filter(name => !reachable.has(name));
     record(scope, "keyboard reaches every control", missing.length === 0, missing.length ? `missing ${missing.join(", ")}` : "");
   } catch (error) {

@@ -32,7 +32,7 @@ A good lab feels like this:
   controls edit the selected pin in place; on Shipped, which is read-only, they
   start a new pin. There is no draft and no stash. **Replay** and **Speed** make
   motion judgeable.
-- **Duplicate** branches the selected pin; **Choose** picks the selected chip
+- **Duplicate** branches the selected pin; **Apply** picks the selected chip
   and hands it to the agent, with no paste: log line, result file, and a
   `land <name>` code on the clipboard. One hint line says how to finish.
 
@@ -40,7 +40,7 @@ A good lab feels like this:
 
 Every UI stack gets the same lab. On Android, Flutter, React Native, Windows,
 or a stack with no example at all, build: the
-panel, presets, direct controls, the chips, Duplicate, Choose, the ⋯ menu
+panel, presets, direct controls, the chips, Duplicate, Apply, the ⋯ menu
 with Copy values, the hint, and the three activation paths.
 Start from the platform's example, or the nearest one when there is none, and
 keep every guarantee in the safety checklist. Never replace the lab with a row
@@ -83,7 +83,7 @@ picker in the panel, with the original as the baseline
    feature's declared default (what ships), never the value on screen when the
    lab opens: a look kept from an earlier open must still count as a change.
    Pick controls from `references/control-mapping.md`:
-   at least two presets, direct controls, the chips, Duplicate, Choose, the ⋯
+   at least two presets, direct controls, the chips, Duplicate, Apply, the ⋯
    menu (Copy values), and the hint, plus Replay and Speed for motion
    (`references/candidates.md`). Pins stay in memory and the log; the only
    write is the result file, and pins go to storage only when persistence
@@ -93,12 +93,18 @@ picker in the panel, with the original as the baseline
 4. **Hand it over, then tune with the user.** Build, typecheck, and run the gate
    lint; open the lab once through the agent path to confirm it renders and
    opens, then close it and stop. Do not iterate the controls, flip the chips,
-   Duplicate, Choose, compare candidates, or capture screenshots before the
+   Duplicate, Apply, compare candidates, or capture screenshots before the
    user has seen it: the user tunes, and a self-review pass runs only when they
-   ask for one ("check it yourself first"). Hand over with **How to try it** and
-   wait for the pick with a background poll of the platform's log where one
-   exists (`references/platform-handoff.md`, "Wait for Done"), and read the
-   result file when the log is gone. If the user is not available, stop here and
+   ask for one ("check it yourself first"). Then, in this order: start
+   `python3 <skill-dir>/scripts/wait-for-pick.py` with the platform's flag **in
+   the background** (`references/platform-handoff.md`, "Wait for Done"), hand
+   over with **How to try it**, and end the turn without a question. Apply
+   reaches the waiter directly, so it exits and you resume the moment the user
+   presses it: land from its `UITUNINGLAB_DONE` line right away, without asking
+   them to confirm. Skipping the waiter is what makes the user type "done". The
+   waiter catches only the first Apply; after it the button reads Save and copy, and a
+   later pick arrives as a pasted `land <name>`, landed the same way. If
+   the user is not available, stop here and
    report the lab as built, with the smoke launch and every hands-on check listed
    as not run; static and release-artifact checks are still yours to run (step
    6). When the app builds only in CI or a cloud device service, the smoke launch
@@ -142,7 +148,7 @@ module (presets, a diff function) need no marker: the file itself is gated.
 | **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files (for Kotlin, Dart, and C#, which it cannot read, the manual gate check in `references/platform-handoff.md` instead), and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
 | **Activatable only in development.** The lab opens through the documented agent path, the chosen human path, and a visible fallback; none survives Release. | Hands-on, during the tuning session with the user: every documented path opens the lab, a focused text field keeps shake-to-undo, and the fallback is reachable. Release archive: launch arguments, URL schemes, shake selectors, notification names, key commands, and fallback labels are absent or inert (`references/verify-protocol.md`). |
 | **Reversible.** The Shipped chip shows the baseline (the declared default) exactly, behavior included. | Hands-on, during the tuning session with the user: open, change everything, close, reopen, select Shipped, and compare with the unmodified app. |
-| **Explicit persistence.** The only write an ephemeral lab makes is the result file on Choose; pins live only in memory and the log unless the user asked to save them; every write goes only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | An ephemeral lab's only storage writer is the result file; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
+| **Explicit persistence.** The only write an ephemeral lab makes is the result file on Apply; pins live only in memory and the log unless the user asked to save them; every write goes only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | An ephemeral lab's only storage writer is the result file; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
 | **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on, during or after the tuning session with the user: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
 
 `source-gates` is a lint: a PASS does not prove the release build is clean, so
@@ -166,7 +172,7 @@ a save would overwrite a production key.
 - `references/control-mapping.md`: which control for which value; required controls.
 - `references/design-variants.md`: alternative designs of a feature as a
   Design picker in the lab, and landing the winning design's code.
-- `references/candidates.md`: chips, Duplicate, Choose, pin names, the
+- `references/candidates.md`: chips, Duplicate, Apply, pin names, the
   result file, waiting for the pick, and keeping finalists for later.
 - `references/platform-handoff.md`: per platform, how lab lines are logged and
   read, how to wait for Done, where the result file and pins are stored,
@@ -200,7 +206,8 @@ Before landing, open the report with **How to try it**: two or three short
 lines, a hint for a developer, not a tutorial. Say how to open the lab (the
 fastest path, then the fallback, such as "shake, or tap Card Lab in the
 bottom-right corner"), and give the flow in one line ("tune a look, Duplicate to
-compare, then Choose"). End with how the pick reaches you: on its own, or as a
-pasted `land <name>` line. Mention a setting outside the lab only when the lab
+compare, then Apply"). End with how the pick reaches you: "Apply sends it to
+me; I'll land it right away" when the waiter is running, or a pasted
+`land <name>` line when it cannot run. Mention a setting outside the lab only when the lab
 depends on it. The panel's own hint line covers the rest, so do not walk
 through the presets, sliders, or chips.

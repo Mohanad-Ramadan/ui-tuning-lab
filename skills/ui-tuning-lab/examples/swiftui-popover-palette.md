@@ -11,14 +11,14 @@ Every lab type carries the `UITuningLab` prefix and lives in a file wrapped in
 **Copy values** puts the fields that differ from the baseline on the pasteboard
 and logs them as one `UITUNINGLAB_VALUES {...}` line for landing
 (`references/landing-protocol.md`).
-The chips, **Duplicate**, **Choose**, and the **⋯** menu (Copy values) follow
+The chips, **Duplicate**, **Apply**, and the **⋯** menu (Copy values) follow
 `references/candidates.md`. The chip row shows Shipped and each pin; the
 selected chip is outlined, and the feature always shows it, so switching chips is
 the comparison. The controls edit the selected pin in place; on Shipped, which is
 read-only, they start a new pin named after the preset or `tweak`. **Duplicate**
-branches the selected pin. **Choose** picks the selected chip, logs
+branches the selected pin. **Apply** picks the selected chip, logs
 `UITUNINGLAB_DONE`, writes Application Support `.ui-tuning-lab/result.json`,
-copies `land <name>`, and collapses the lab to a `Chosen:` bar whose Change
+copies `land <name>`, and collapses the lab to a `Applied:` bar whose Change
 button reopens it. The host owns the `UITuningLabCandidates` store beside the
 feature, so the pins and the selection survive closing the popover; they live in
 memory and in the log, and a name is never reused within a run. Closing the lab
@@ -302,15 +302,17 @@ struct UITuningLabControls: View {
     var body: some View {
         VStack {
             if let sent {
-                // Choose collapses the lab to one bar; Change reopens it.
+                // Apply collapses the lab to one bar; Change reopens it.
                 HStack {
-                    Text("Chosen: \(sent)")
+                    Text(candidates.applies > 1
+                        ? "Copied land \(sent): paste it in chat so the agent applies it"
+                        : "Applied: \(sent)")
                     Spacer()
                     Button("Change") { self.sent = nil }
                     Button("Close") { dismiss() }
                 }
                 .padding()
-                if let status = candidates.status { Text(status).font(.footnote).padding(.horizontal) }
+                if let line = candidates.saved ?? candidates.status { Text(line).font(.footnote).padding(.horizontal) }
                 Spacer(minLength: 0)
             } else {
                 panel
@@ -366,13 +368,15 @@ struct UITuningLabControls: View {
                 Button("Duplicate") { candidates.duplicate(); style = candidates.selectedLook }
                     .disabled(candidates.selectedPin == nil)
                 Spacer()
-                Button("Choose") { sent = candidates.choose() }
+                Button(candidates.applies > 0 ? "Save and copy" : "Apply") { sent = candidates.choose() }
             }
             if let status = candidates.status { Text(status).font(.footnote) }
         }
         // Pinned below the scrolling controls, so it shows at every detent.
         .safeAreaInset(edge: .bottom) {
-            Text("Duplicate to compare · Choose to finish")
+            Text(candidates.applies > 0
+                ? "Duplicate to compare · Save and copy, then paste it in chat"
+                : "Duplicate to compare · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -412,7 +416,7 @@ struct UITuningLabControls: View {
 <!-- copy: assets/swift/UITuningLabValues.swift -->
 `UITuningLabValues.swift`: copy `assets/swift/UITuningLabValues.swift` into the
 app's target unchanged. It holds Copy values, the looks store and selection, pin names,
-Choose with its result file, and the log lines every Swift lab shares,
+Apply with its result file, and the log lines every Swift lab shares,
 all inside `#if DEBUG`.
 
 Dismissal destroys `UITuningLabControls`; no timer, observer, or gesture
@@ -482,15 +486,17 @@ struct UITuningLabControls: View {
     var body: some View {
         VStack {
             if let sent {
-                // Choose collapses the lab to one bar; Change reopens it.
+                // Apply collapses the lab to one bar; Change reopens it.
                 HStack {
-                    Text("Chosen: \(sent)")
+                    Text(candidates.applies > 1
+                        ? "Copied land \(sent): paste it in chat so the agent applies it"
+                        : "Applied: \(sent)")
                     Spacer()
                     Button("Change") { self.sent = nil }
                     Button("Close") { dismiss() }
                 }
                 .padding()
-                if let status = candidates.status { Text(status).font(.footnote).padding(.horizontal) }
+                if let line = candidates.saved ?? candidates.status { Text(line).font(.footnote).padding(.horizontal) }
                 Spacer(minLength: 0)
             } else {
                 panel
@@ -546,13 +552,15 @@ struct UITuningLabControls: View {
                 Button("Duplicate") { candidates.duplicate(); style = candidates.selectedLook }
                     .disabled(candidates.selectedPin == nil)
                 Spacer()
-                Button("Choose") { sent = candidates.choose() }
+                Button(candidates.applies > 0 ? "Save and copy" : "Apply") { sent = candidates.choose() }
             }
             if let status = candidates.status { Text(status).font(.footnote) }
         }
         // Pinned below the scrolling controls, so it shows at every detent.
         .safeAreaInset(edge: .bottom) {
-            Text("Duplicate to compare · Choose to finish")
+            Text(candidates.applies > 0
+                ? "Duplicate to compare · Save and copy, then paste it in chat"
+                : "Duplicate to compare · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)

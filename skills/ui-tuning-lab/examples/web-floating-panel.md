@@ -13,10 +13,10 @@ The panel follows `references/candidates.md`. A chip row under the header shows
 shows it. Switching chips is the comparison: there is no draft and nothing is
 stashed. Moving a control or applying a preset edits the selected pin in place;
 on Shipped, which is read-only, it starts a new pin named after the preset or
-`tweak`. **Duplicate** branches the selected pin. **Choose** picks the selected
+`tweak`. **Duplicate** branches the selected pin. **Apply** picks the selected
 chip: it logs `UITUNINGLAB_DONE`, writes the same object to the `localStorage`
 key `uiTuningLab.result`, copies `land <name>` to the clipboard, and shrinks the
-panel to `Chosen: <name>` with **Change** to reopen it. The **⋯** menu holds
+panel to `Applied: <name>` with **Change** to reopen it. The **⋯** menu holds
 **Copy values**, which logs the selected look's changed fields as one
 `UITUNINGLAB_VALUES {...}` line (`references/landing-protocol.md`).
 
@@ -103,7 +103,7 @@ type Candidate = { name: string; basedOn: string; values: Partial<CardConfig> };
 // Pins the lab opens with. Empty by default; a later session seeds the
 // finalists kept in the project here (references/candidates.md).
 const initialCandidates: Candidate[] = [];
-// Choose writes the pick here, so it survives quitting the app.
+// Apply writes the pick here, so it survives quitting the app.
 const resultKey = "uiTuningLab.result";
 // Never issued as a pin's name: "original" is the Shipped chip, and the others
 // are kept for older logs.
@@ -178,8 +178,15 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   // The selected chip: "original" (Shipped) or a pin's name. The feature always
   // shows it; there is no draft and nothing is stashed.
   const [selected, setSelected] = useState("original");
-  // The winner after Choose; while set, the panel is the result bar.
+  // The winner after Apply; while set, the panel is the result bar.
   const [sent, setSent] = useState<string | null>(null);
+  // How many times Apply ran. The first reaches the agent's waiter; after it the
+  // agent no longer listens, so the button becomes Save and copy and the next pick goes
+  // through chat as a pasted `land <name>`. Change does not reset it.
+  const [applies, setApplies] = useState(0);
+  const [copied, setCopied] = useState(true);  // the clipboard took `land <name>`
+  // The result bar's second line: where Apply saved the pick, or null when it could not.
+  const [saved, setSaved] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const selectedPin = candidates.find(c => c.name === selected);
   const selectedValues = selectedPin?.values ?? {};
@@ -197,7 +204,7 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     console.info(`UITUNINGLAB_CANDIDATE ${line}`);
   }
   // A pin edited in place logs its new values once it is left: another chip is
-  // selected, the lab closes, or Choose.
+  // selected, the lab closes, or Apply.
   function leave() {
     const { candidates, selected } = latest.current;
     const pin = candidates.find(c => c.name === selected);
@@ -245,7 +252,7 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
-  // Choose moves focus to Change, and Change moves it back to the chips.
+  // Apply moves focus to Change, and Change moves it back to the chips.
   useEffect(() => { (sent ? changeButton : firstControl).current?.focus(); }, [sent]);
 
   // Seeded pins log their own line the first time the lab shows them.
@@ -309,25 +316,35 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
     if (selected === name) { setConfig({ ...baseline }); setSelected("original"); }
   }
-  // Choose picks the selected chip and finishes. Picking again replaces the
+  // Apply picks the selected chip and finishes. Picking again replaces the
   // result.
   async function pickSelected() {
     leave();
     const winner = selectedPin ? selectedPin.name : "original";
     const result = { candidates, values: selectedValues, winner };
     console.info(`UITUNINGLAB_DONE ${sortedJson(result)}`);
+    // Hands the pick to the agent's waiter (scripts/wait-for-pick.py) at once,
+    // so it resumes without a message. Fire and forget: with nothing listening,
+    // the console and the stored result still carry the pick.
+    fetch("http://localhost:47321/pick", { method: "POST", mode: "no-cors", keepalive: true,
+      body: `UITUNINGLAB_DONE ${sortedJson(result)}` }).catch(() => {});
     const problems: string[] = [];
     try {
       localStorage.setItem(resultKey, sortedJson({ ...result, savedAt: new Date().toISOString() }));
+      setSaved(`Saved ${winner} in localStorage uiTuningLab.result`);
     } catch {
+      setSaved(null);
       problems.push("result not saved");
     }
     try {
       await navigator.clipboard.writeText(`land ${winner}`);
+      setCopied(true);
     } catch {
+      setCopied(false);
       problems.push(`clipboard unavailable; tell the agent "land ${winner}"`);
     }
     setStatus(problems.length > 0 ? `Logged to the console; ${problems.join("; ")}` : null);
+    setApplies(n => n + 1);
     setSent(winner);
   }
 
@@ -337,10 +354,14 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
       style={triggerStyle}>Card Lab</button>
     {open && <div ref={panel} {...popoverManual} style={panelStyle} role="dialog"
       aria-labelledby="ui-tuning-lab-title">
-      {sent ? <p style={rowStyle}>
-        <strong id="ui-tuning-lab-title">Chosen: {sent}</strong>
+      {sent ? <><p style={rowStyle}>
+        <strong id="ui-tuning-lab-title">{applies > 1
+          ? (copied ? `Copied land ${sent}: paste it in chat so the agent applies it` : `Tell the agent: land ${sent}`)
+          : `Applied: ${sent}`}</strong>
         <button ref={changeButton} type="button" onClick={() => setSent(null)}>Change</button>
-      </p> : <>
+      </p>
+      {(saved ?? status) && <p role="status" style={{ margin: 0, fontSize: "0.85em" }}>
+        {saved ?? status}</p>}</> : <>
         <div style={rowStyle}>
           <h2 id="ui-tuning-lab-title" style={{ margin: 0, marginInlineEnd: "auto", fontSize: "1em" }}>
             UI tuning lab</h2>
@@ -377,12 +398,13 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         </div>
         <div style={rowStyle}>
           <button type="button" disabled={!selectedPin} onClick={duplicate}>Duplicate</button>
-          <button type="button" onClick={pickSelected}>Choose</button>
+          <button type="button" onClick={pickSelected}>{applies > 0 ? "Save and copy" : "Apply"}</button>
         </div>
       </>}
       {status && <p role="status">{status}</p>}
       {!sent && <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
-        Duplicate to compare · Choose to finish</p>}
+        {applies > 0 ? "Duplicate to compare · Save and copy, then paste it in chat"
+          : "Duplicate to compare · Apply to finish"}</p>}
     </div>}
   </>;
 }
@@ -459,7 +481,7 @@ type Candidate = { name: string; basedOn: string; values: Partial<CardConfig> };
 // Pins the lab opens with, before anything stored is loaded. Empty by
 // default; a later session can seed finalists kept in the project here.
 const initialCandidates: Candidate[] = [];
-// Choose writes the pick here, so it survives quitting the app.
+// Apply writes the pick here, so it survives quitting the app.
 const resultKey = "uiTuningLab.result";
 // Never issued as a pin's name: "original" is the Shipped chip, and the others
 // are kept for older logs.
@@ -575,8 +597,15 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   // The selected chip: "original" (Shipped) or a pin's name. The feature always
   // shows it; there is no draft and nothing is stashed.
   const [selected, setSelected] = useState("original");
-  // The winner after Choose; while set, the panel is the result bar.
+  // The winner after Apply; while set, the panel is the result bar.
   const [sent, setSent] = useState<string | null>(null);
+  // How many times Apply ran. The first reaches the agent's waiter; after it the
+  // agent no longer listens, so the button becomes Save and copy and the next pick goes
+  // through chat as a pasted `land <name>`. Change does not reset it.
+  const [applies, setApplies] = useState(0);
+  const [copied, setCopied] = useState(true);  // the clipboard took `land <name>`
+  // The result bar's second line: where Apply saved the pick, or null when it could not.
+  const [saved, setSaved] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const selectedPin = candidates.find(c => c.name === selected);
   const selectedValues = selectedPin?.values ?? {};
@@ -595,7 +624,7 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     store(candidate);
   }
   // A pin edited in place logs its new values once it is left: another chip is
-  // selected, the lab closes, or Choose.
+  // selected, the lab closes, or Apply.
   function leave() {
     const { candidates, selected } = latest.current;
     const pin = candidates.find(c => c.name === selected);
@@ -643,7 +672,7 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
-  // Choose moves focus to Change, and Change moves it back to the chips.
+  // Apply moves focus to Change, and Change moves it back to the chips.
   useEffect(() => { (sent ? changeButton : firstControl).current?.focus(); }, [sent]);
 
   // Stored pins load each time the lab opens; in-memory ones that are not
@@ -748,25 +777,35 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
     if (selected === name) { setConfig({ ...baseline }); setSelected("original"); }
   }
-  // Choose picks the selected chip and finishes. Picking again replaces the
+  // Apply picks the selected chip and finishes. Picking again replaces the
   // result.
   async function pickSelected() {
     leave();
     const winner = selectedPin ? selectedPin.name : "original";
     const result = { candidates, values: selectedValues, winner };
     console.info(`UITUNINGLAB_DONE ${sortedJson(result)}`);
+    // Hands the pick to the agent's waiter (scripts/wait-for-pick.py) at once,
+    // so it resumes without a message. Fire and forget: with nothing listening,
+    // the console and the stored result still carry the pick.
+    fetch("http://localhost:47321/pick", { method: "POST", mode: "no-cors", keepalive: true,
+      body: `UITUNINGLAB_DONE ${sortedJson(result)}` }).catch(() => {});
     const problems: string[] = [];
     try {
       localStorage.setItem(resultKey, sortedJson({ ...result, savedAt: new Date().toISOString() }));
+      setSaved(`Saved ${winner} in localStorage uiTuningLab.result`);
     } catch {
+      setSaved(null);
       problems.push("result not saved");
     }
     try {
       await navigator.clipboard.writeText(`land ${winner}`);
+      setCopied(true);
     } catch {
+      setCopied(false);
       problems.push(`clipboard unavailable; tell the agent "land ${winner}"`);
     }
     setStatus(problems.length > 0 ? { text: `Logged to the console; ${problems.join("; ")}`, error: true } : null);
+    setApplies(n => n + 1);
     setSent(winner);
   }
 
@@ -776,10 +815,14 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
       style={triggerStyle}>Card Lab</button>
     {open && <div ref={panel} {...popoverManual} style={panelStyle} role="dialog"
       aria-labelledby="ui-tuning-lab-title">
-      {sent ? <p style={rowStyle}>
-        <strong id="ui-tuning-lab-title">Chosen: {sent}</strong>
+      {sent ? <><p style={rowStyle}>
+        <strong id="ui-tuning-lab-title">{applies > 1
+          ? (copied ? `Copied land ${sent}: paste it in chat so the agent applies it` : `Tell the agent: land ${sent}`)
+          : `Applied: ${sent}`}</strong>
         <button ref={changeButton} type="button" onClick={() => setSent(null)}>Change</button>
-      </p> : <>
+      </p>
+      {(saved ?? status?.text) && <p role="status" style={{ margin: 0, fontSize: "0.85em" }}>
+        {saved ?? status?.text}</p>}</> : <>
         <div style={rowStyle}>
           <h2 id="ui-tuning-lab-title" style={{ margin: 0, marginInlineEnd: "auto", fontSize: "1em" }}>
             UI tuning lab</h2>
@@ -816,12 +859,13 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         </div>
         <div style={rowStyle}>
           <button type="button" disabled={!selectedPin} onClick={duplicate}>Duplicate</button>
-          <button type="button" onClick={pickSelected}>Choose</button>
+          <button type="button" onClick={pickSelected}>{applies > 0 ? "Save and copy" : "Apply"}</button>
         </div>
       </>}
       {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
       {!sent && <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
-        Duplicate to compare · Choose to finish</p>}
+        {applies > 0 ? "Duplicate to compare · Save and copy, then paste it in chat"
+          : "Duplicate to compare · Apply to finish"}</p>}
     </div>}
   </>;
 }

@@ -21,11 +21,11 @@ Every lab in this example provides:
   from the baseline and logs them as one `UITUNINGLAB_VALUES {...}` line for
   landing (`references/landing-protocol.md`). Speed is a preview setting and is
   never included.
-- **Duplicate** and **Choose**: Duplicate branches the selected pin, and is
-  disabled on Shipped; Choose picks the selected chip, logs
+- **Duplicate** and **Apply**: Duplicate branches the selected pin, and is
+  disabled on Shipped; Apply picks the selected chip, logs
   `UITUNINGLAB_DONE`, stores the result, copies `land <name>`, and collapses the
-  panel to a `Chosen:` bar with Change and Replay, as in
-  `references/candidates.md`. The hint *Duplicate to compare · Choose to
+  panel to a `Applied:` bar with Change and Replay, as in
+  `references/candidates.md`. The hint *Duplicate to compare · Apply to
   finish* is pinned below the controls.
 
 ## SwiftUI (iOS 17+)
@@ -36,7 +36,7 @@ The toolbar Entrance Lab button is the human path and visible fallback; the DEBU
 `UITuningLabCandidates` store beside the feature, so the pins and the selection
 survive closing the popover, and a name is never reused within a run; seed its
 `initial:` array to reopen a session. `motion` always holds the selected look,
-and `rendered(_:)` only stretches its duration for the speed. Choose writes
+and `rendered(_:)` only stretches its duration for the speed. Apply writes
 Application Support `.ui-tuning-lab/result.json`. Closing the lab keeps the
 selected look and plays it at real time again.
 
@@ -192,15 +192,17 @@ struct UITuningLabMotionControls: View {
     var body: some View {
         VStack {
             if let sent {
-                // Choose collapses the lab to one bar; Change reopens it.
+                // Apply collapses the lab to one bar; Change reopens it.
                 VStack(alignment: .leading) {
                     HStack {
-                        Text("Chosen: \(sent)")
+                        Text(candidates.applies > 1
+                            ? "Copied land \(sent): paste it in chat so the agent applies it"
+                            : "Applied: \(sent)")
                         Spacer()
                         Button("Change") { self.sent = nil }
                         Button("Replay") { lab.replayToken += 1 }
                     }
-                    if let status = candidates.status { Text(status).font(.footnote) }
+                    if let line = candidates.saved ?? candidates.status { Text(line).font(.footnote) }
                     Spacer(minLength: 0)
                 }
                 .padding()
@@ -276,13 +278,15 @@ struct UITuningLabMotionControls: View {
                 Button("Duplicate") { candidates.duplicate(); motion = candidates.selectedLook }
                     .disabled(candidates.selectedPin == nil)
                 Spacer()
-                Button("Choose") { sent = candidates.choose() }
+                Button(candidates.applies > 0 ? "Save and copy" : "Apply") { sent = candidates.choose() }
             }
             if let status = candidates.status { Text(status).font(.footnote) }
         }
         // Pinned below the scrolling controls, so it shows at every detent.
         .safeAreaInset(edge: .bottom) {
-            Text("Duplicate to compare · Choose to finish")
+            Text(candidates.applies > 0
+                ? "Duplicate to compare · Save and copy, then paste it in chat"
+                : "Duplicate to compare · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -334,7 +338,7 @@ struct UITuningLabMotionControls: View {
 <!-- copy: assets/swift/UITuningLabValues.swift -->
 `UITuningLabValues.swift`: copy `assets/swift/UITuningLabValues.swift` into the
 app's target unchanged. It holds Copy values, the looks store and selection, pin names,
-Choose with its result file, and the log lines every Swift lab shares,
+Apply with its result file, and the log lines every Swift lab shares,
 all inside `#if DEBUG`.
 
 ## Web (React)
@@ -462,7 +466,7 @@ type Candidate = { name: string; basedOn: string; values: Partial<EntranceMotion
 // Pins the lab opens with. Empty by default; a later session seeds the
 // finalists kept in the project here (references/candidates.md).
 const initialCandidates: Candidate[] = [];
-// Choose writes the pick here, so it survives quitting the app.
+// Apply writes the pick here, so it survives quitting the app.
 const resultKey = "uiTuningLab.result";
 // Never issued as a pin's name: "original" is the Shipped chip, and the others
 // are kept for older logs.
@@ -525,7 +529,7 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   useEffect(clearLaunchRequest, []);
   const [replay, setReplay] = useState(0);
   const [speed, setSpeed] = useState(1);
-  // Pins live in memory and in the log; only Choose writes storage. A pin is a
+  // Pins live in memory and in the log; only Apply writes storage. A pin is a
   // look being worked on: the controls edit the selected pin in place.
   const [candidates, setCandidates] = useState(initialCandidates);
   // Every name issued in this run, removed ones included: names are never reused.
@@ -535,8 +539,15 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   // The selected chip: "original" (Shipped) or a pin's name. The card always
   // renders it; there is no draft and nothing is stashed.
   const [selected, setSelected] = useState("original");
-  // The winner after Choose; while set, the panel is the result bar.
+  // The winner after Apply; while set, the panel is the result bar.
   const [sent, setSent] = useState<string | null>(null);
+  // How many times Apply ran. The first reaches the agent's waiter; after it the
+  // agent no longer listens, so the button becomes Save and copy and the next pick goes
+  // through chat as a pasted `land <name>`. Change does not reset it.
+  const [applies, setApplies] = useState(0);
+  const [copied, setCopied] = useState(true);  // the clipboard took `land <name>`
+  // The result bar's second line: where Apply saved the pick, or null when it could not.
+  const [saved, setSaved] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
@@ -560,7 +571,7 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     console.info(`UITUNINGLAB_CANDIDATE ${line}`);
   }
   // A pin edited in place logs its new values once it is left: another chip is
-  // selected, the lab closes, or Choose.
+  // selected, the lab closes, or Apply.
   function leave() {
     const { candidates, selected } = latest.current;
     const pin = candidates.find(c => c.name === selected);
@@ -610,7 +621,7 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     // finishClose and closeLab read only refs and stable state setters.
   }, [open]);
 
-  // Choose moves focus to Change, and Change moves it back to the chips.
+  // Apply moves focus to Change, and Change moves it back to the chips.
   useEffect(() => { (sent ? changeButton : firstControl).current?.focus(); }, [sent]);
 
   // Seeded pins log their own line the first time the lab shows them.
@@ -680,7 +691,7 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
     if (selected === name) { setMotion({ ...baseline }); setSelected("original"); replayNow(); }
   }
-  // Choose picks the selected chip and finishes: logs the result, stores it
+  // Apply picks the selected chip and finishes: logs the result, stores it
   // under `uiTuningLab.result` (one setItem replaces it atomically), copies
   // `land <name>`, and collapses the panel to one bar. Picking again replaces
   // the result.
@@ -689,18 +700,28 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     const winner = selectedPin ? selectedPin.name : "original";
     const done = { candidates, values: selectedValues, winner };
     console.info(`UITUNINGLAB_DONE ${sortedJson(done)}`);
+    // Hands the pick to the agent's waiter (scripts/wait-for-pick.py) at once,
+    // so it resumes without a message. Fire and forget: with nothing listening,
+    // the console and the stored result still carry the pick.
+    fetch("http://localhost:47321/pick", { method: "POST", mode: "no-cors", keepalive: true,
+      body: `UITUNINGLAB_DONE ${sortedJson(done)}` }).catch(() => {});
     const notes: string[] = [];
     try {
       localStorage.setItem(resultKey, sortedJson({ ...done, savedAt: new Date().toISOString() }));
+      setSaved(`Saved ${winner} in localStorage uiTuningLab.result`);
     } catch {
+      setSaved(null);
       notes.push("Result not stored");
     }
     try {
       await navigator.clipboard.writeText(`land ${winner}`);
+      setCopied(true);
     } catch {
+      setCopied(false);
       notes.push(`Clipboard unavailable; tell the agent "land ${winner}"`);
     }
     setStatus(notes.length ? notes.join(". ") : null);
+    setApplies(n => n + 1);
     setSent(winner);
   }
 
@@ -710,11 +731,15 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
       style={triggerStyle}>Entrance Lab</button>
     {open && <div ref={panel} {...popoverManual} style={panelStyle} role="dialog"
       aria-labelledby="ui-tuning-lab-title">
-      {sent ? <p style={rowStyle}>
-        <strong id="ui-tuning-lab-title">Chosen: {sent}</strong>
+      {sent ? <><p style={rowStyle}>
+        <strong id="ui-tuning-lab-title">{applies > 1
+          ? (copied ? `Copied land ${sent}: paste it in chat so the agent applies it` : `Tell the agent: land ${sent}`)
+          : `Applied: ${sent}`}</strong>
         <button ref={changeButton} type="button" onClick={() => setSent(null)}>Change</button>
         <button type="button" onClick={replayNow}>Replay</button>
-      </p> : <>
+      </p>
+      {(saved ?? status) && <p role="status" style={{ margin: 0, fontSize: "0.85em" }}>
+        {saved ?? status}</p>}</> : <>
         <div style={rowStyle}>
           <h2 id="ui-tuning-lab-title" style={{ margin: 0, marginInlineEnd: "auto", fontSize: "1em" }}>
             UI tuning lab</h2>
@@ -764,12 +789,13 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
         </div>
         <div style={rowStyle}>
           <button type="button" disabled={!selectedPin} onClick={duplicate}>Duplicate</button>
-          <button type="button" onClick={pickSelected}>Choose</button>
+          <button type="button" onClick={pickSelected}>{applies > 0 ? "Save and copy" : "Apply"}</button>
         </div>
       </>}
       {status && <p role="status">{status}</p>}
       {!sent && <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
-        Duplicate to compare · Choose to finish</p>}
+        {applies > 0 ? "Duplicate to compare · Save and copy, then paste it in chat"
+          : "Duplicate to compare · Apply to finish"}</p>}
     </div>}
   </>;
 }
@@ -780,5 +806,5 @@ the motion values; SwiftUI replays when a slider is released. Validate on device
 with Reduce Motion on and off, at every speed, and with each chip selected, and
 confirm that closing the lab resets speed so the feature plays the selected look
 at real time. Pins live in React state and the console log only, and
-`initialCandidates` seeds them when reopening the lab; Choose writes the pick
+`initialCandidates` seeds them when reopening the lab; Apply writes the pick
 to the `localStorage` key `uiTuningLab.result`.

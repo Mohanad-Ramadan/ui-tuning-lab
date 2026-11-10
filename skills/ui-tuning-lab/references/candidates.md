@@ -1,4 +1,4 @@
-# Looks, Duplicate, and Choose
+# Looks, Duplicate, and Apply
 
 The user works on a few looks side by side, flips between them, and picks one.
 The panel makes that a row of chips and two buttons, and the pick reaches the
@@ -25,11 +25,12 @@ the log. The one write an ephemeral lab makes is the result file below.
 | **Chips** | One row under the header: **Shipped** (the baseline), then each pin. Tapping a chip shows it in the real feature. Exactly one chip is selected, and it is always the look the feature shows; it has a visible outline, like any selected option, and is marked selected for assistive tech. Selection is never shown by label text. Example: Shipped · capsule · compact-2 |
 | **Controls** | Presets, sliders, toggles. Always enabled; they show and edit the selected look. Presets are actions, never outlined. |
 | **Duplicate** | Copies the selected pin into a new pin and selects it, so two versions can be compared. Disabled while Shipped is selected. |
-| **Choose** | Picks the selected chip and finishes: logs the result, writes the result file, copies `land <name>` to the clipboard, and shrinks the panel to one bar. Change brings back the same panel at its full size, controls included. |
-| **Result bar** | `Chosen: capsule · Change`. Change reopens the panel. Picking again replaces the result: the newest pick wins. No confirmation step. |
+| **Apply** | Picks the selected chip and finishes: logs the result, sends it to the agent's waiter, writes the result file, copies `land <name>` to the clipboard, and shrinks the panel to one bar. Change brings back the same panel at its full size, controls included. |
+| **Save and copy** | The same button after the first Apply, for as long as the lab lives (Change does not reset it). It does the same work (saves the result file, copies `land <name>`), but the agent stopped listening after the first Apply, so the pick reaches it as the pasted `land <name>`. |
+| **Result bar** | `Applied: capsule · Change` after the first Apply; `Copied land capsule-2: paste it in chat so the agent applies it · Change` after Save and copy (`Tell the agent: land capsule-2` when the clipboard failed). Under it, a smaller line says where the pick was saved: `Saved capsule-2 in .ui-tuning-lab/result.json` (web: `Saved capsule-2 in localStorage uiTuningLab.result`), or the failure status when the write failed, never a false Saved. Change reopens the panel. Picking again replaces the result: the newest pick wins. No confirmation step. |
 | **× on a pin chip** | Removes it, with an accessible name such as "Remove capsule". Removing the selected pin selects Shipped. |
 | **⋯ menu** | Copy values (the selected look). |
-| **Hint** | One line pinned at the bottom: *Duplicate to compare · Choose to finish* |
+| **Hint** | One line pinned at the bottom: *Duplicate to compare · Apply to finish*; after the first Apply, *Duplicate to compare · Save and copy, then paste it in chat* |
 
 Labels are plain words: no star or check-mark glyphs anywhere in the panel.
 
@@ -77,8 +78,8 @@ UITUNINGLAB_DONE {"candidates":[{"basedOn":"compact","name":"capsule","values":{
 
 - A pin logs `UITUNINGLAB_CANDIDATE` when it is created, and again with its
   current values when it is left after an edit (another chip is selected, the
-  lab closes, or Choose). The latest line for a name wins.
-- **Choose** logs `UITUNINGLAB_DONE`. `winner` is the selected pin, or
+  lab closes, or Apply). The latest line for a name wins.
+- **Apply** logs `UITUNINGLAB_DONE`. `winner` is the selected pin, or
   `original` when Shipped was selected (land nothing); `values` is the winner's
   values (`{}` for `original`). The Shipped chip's wire name is `original`.
   Older labs could log winner `draft`; treat its `values` like a pin's.
@@ -94,7 +95,7 @@ UITUNINGLAB_DONE {"candidates":[{"basedOn":"compact","name":"capsule","values":{
 
 ## The result file
 
-**Choose** also writes the `UITUNINGLAB_DONE` object, plus `savedAt` (ISO-8601
+**Apply** also writes the `UITUNINGLAB_DONE` object, plus `savedAt` (ISO-8601
 UTC), to the app's own storage, so the pick survives quitting the app and the
 agent can read it without a log:
 
@@ -113,12 +114,17 @@ when the agent can reach it.
 
 ## Waiting for the pick
 
-Where the agent can read the device's log, wait for `UITUNINGLAB_DONE` in the
-background instead of waiting for a message, and say so in **How to try it**
-(`references/platform-handoff.md`, "Wait for Done"). When it exits, its output is
-the result: land from it. If the user writes first, stop it and follow their
-message. When the user says they picked but no line arrived, read the result
-file. When neither is reachable (a cloud device), the user pastes the
+Apply also POSTs its Done line to `http://localhost:47321/pick`
+(development builds only, fire and forget, errors ignored), where the agent's
+waiter (`scripts/wait-for-pick.py`) listens while it also polls the log. Start
+the waiter in the background at handover, every time, and say in **How to try
+it** that Apply sends the pick by itself (`references/platform-handoff.md`,
+"Wait for Done"). When it exits, its output is the result: land from it at once.
+If the user writes first, stop it and follow their message. The waiter
+catches the first Apply only: after it the agent is no longer listening, so a
+later pick arrives as the `land <name>` the user pastes from Save and copy, and is
+landed the same way (chat wins, `references/landing-protocol.md` step 1). When
+the user says they picked but no line arrived, read the result file. When neither is reachable (a cloud device), the user pastes the
 `land <name>` line the lab copied.
 
 ## Persistence

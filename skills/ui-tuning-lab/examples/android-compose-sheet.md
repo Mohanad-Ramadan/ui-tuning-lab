@@ -28,7 +28,7 @@ shows it. Switching chips is the comparison: there is no draft and nothing is
 stashed. Moving a slider or applying a preset edits the selected pin in place;
 on Shipped, which is read-only, it starts a new pin named after the preset or
 `tweak` and selects it. **Duplicate** branches the selected pin (it is disabled
-on Shipped), **Choose** picks the selected chip and shrinks the panel to the
+on Shipped), **Apply** picks the selected chip and shrinks the panel to the
 result bar, and the **⋯** menu holds Copy values. Closing keeps the selected
 look on screen. The panel's height is capped and the hint sits below the
 scrolling controls, so it is visible at any panel or screen size.
@@ -253,6 +253,27 @@ fun uiTuningLabLog(tag: String, json: String) {
     if (BuildConfig.DEBUG) Log.i("ui-tuning-lab", "$tag $json")
 }
 
+// Hands the pick to the agent's waiter (scripts/wait-for-pick.py) at once, so it
+// resumes without a message; the waiter's `adb reverse` makes the host
+// reachable as localhost. Fire and forget: without INTERNET or cleartext to
+// localhost, logcat carries the pick.
+fun uiTuningLabSendPick(json: String) {
+    if (!BuildConfig.DEBUG) return
+    Thread {
+        try {
+            val connection = java.net.URL("http://localhost:47321/pick").openConnection() as java.net.HttpURLConnection
+            connection.connectTimeout = 2000
+            connection.readTimeout = 2000
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.outputStream.use { it.write("UITUNINGLAB_DONE $json".toByteArray()) }
+            connection.responseCode
+            connection.disconnect()
+        } catch (_: Throwable) {
+        }
+    }.start()
+}
+
 class UITuningLabCandidate(val name: String, val basedOn: String, val values: Map<String, Any>) {
     fun asMap() = mapOf("basedOn" to basedOn, "name" to name, "values" to values)
 }
@@ -279,6 +300,15 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
     var status by mutableStateOf<String?>(null)
     // The last pick; while set, the panel is the result bar.
     var result by mutableStateOf<String?>(null)
+    // How many times Apply ran. The first reaches the agent's waiter; after it the
+    // agent no longer listens, so the button becomes Save and copy and the next pick goes
+    // through chat as a pasted `land <name>`. Change does not reset it.
+    var applies by mutableStateOf(0)
+        private set
+    // The result bar's second line: where Apply saved the pick, or null when the
+    // write failed (then `status` says why).
+    var saved by mutableStateOf<String?>(null)
+        private set
     // The persist variant sets these; the default lab writes only the result file.
     var store: ((UITuningLabCandidate) -> Unit)? = null
     var unstore: ((String) -> Unit)? = null
@@ -303,7 +333,7 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
     }
 
     // A pin edited in place logs its new values once it is left: another chip is
-    // selected, the lab closes, or Choose.
+    // selected, the lab closes, or Apply.
     fun leave() { selectedPin?.let { log(it) } }
 
     // Tapping a chip shows its look in the real feature. Switching chips is the
@@ -366,7 +396,7 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
         if (selected == name) { selected = "original"; setStyle(baseline) }
     }
 
-    // Choose picks the selected chip ("original" for Shipped) and finishes;
+    // Apply picks the selected chip ("original" for Shipped) and finishes;
     // returns the code for the clipboard. Picking again replaces the result: the
     // newest pick wins.
     fun choose(resultFile: File): String {
@@ -380,7 +410,16 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
         // pin on its own line first, so the agent can rebuild the list.
         if (line.length > 3500) list.forEach { uiTuningLabLog("UITUNINGLAB_CANDIDATE", uiTuningLabJson(it.asMap())) }
         uiTuningLabLog("UITUNINGLAB_DONE", line)
-        status = try { writeResult(resultFile, done); null } catch (e: Exception) { "Result file failed: ${e.message}" }
+        uiTuningLabSendPick(line)
+        try {
+            writeResult(resultFile, done)
+            status = null
+            saved = "Saved $winner in .ui-tuning-lab/result.json"
+        } catch (e: Exception) {
+            saved = null
+            status = "Result file failed: ${e.message}"
+        }
+        applies++
         result = winner
         return "land $winner"
     }
@@ -441,14 +480,20 @@ fun UITuningLabPanel(
     // System back closes the lab first, like Escape on the web.
     BackHandler(onBack = onClose)
 
-    // After Choose the panel is one bar; Change restores the whole panel.
+    // After Apply the panel is one bar; Change restores the whole panel.
     lab.result?.let { name ->
         Surface(modifier.padding(16.dp), shape = MaterialTheme.shapes.extraLarge,
             tonalElevation = 3.dp, shadowElevation = 8.dp,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)) {
-            Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Chosen: $name", Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-                TextButton(onClick = { lab.result = null }) { Text("Change") }
+            Column(Modifier.padding(start = 16.dp, end = 4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (lab.applies > 1) "Copied land $name: paste it in chat so the agent applies it" else "Applied: $name",
+                        Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                    TextButton(onClick = { lab.result = null }) { Text("Change") }
+                }
+                (lab.saved ?: lab.status)?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
+                }
             }
         }
         return
@@ -521,11 +566,12 @@ fun UITuningLabPanel(
                 OutlinedButton(enabled = lab.selectedPin != null, onClick = { lab.duplicate(setStyle) },
                     modifier = Modifier.padding(end = 8.dp)) { Text("Duplicate") }
                 Button(onClick = { clipboard.setText(AnnotatedString(lab.choose(resultFile))) }) {
-                    Text("Choose")
+                    Text(if (lab.applies > 0) "Save and copy" else "Apply")
                 }
             }
             // Pinned below the controls, visible however long the panel grows.
-            Text("Duplicate to compare · Choose to finish",
+            Text(if (lab.applies > 0) "Duplicate to compare · Save and copy, then paste it in chat"
+                else "Duplicate to compare · Apply to finish",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 12.dp))
         }
     }
@@ -547,11 +593,13 @@ private fun UITuningLabSlider(label: String, value: Int, max: Int, onChange: (In
 ## Reading the lines and waiting for the pick
 
 Lines go to logcat under the `ui-tuning-lab` tag. Read them with
-`adb logcat -d -s ui-tuning-lab:I`, and wait for `UITUNINGLAB_DONE` with the
-Android loop in `references/platform-handoff.md` ("Wait for Done") with
-`TAG=ui-tuning-lab`. Start the wait right after the `am start` command, and stop
-it if the user writes first. A busy device can rotate the logcat buffer; then
-read the result file, which Choose writes to
+`adb logcat -d -s ui-tuning-lab:I`. Wait for the pick with
+`python3 <skill-dir>/scripts/wait-for-pick.py --log android` in the background
+(`references/platform-handoff.md`, "Wait for Done"), started right after the
+`am start` command; stop it if the user writes first. Its `adb reverse` lets
+Apply's beacon reach it when the debug build has INTERNET and allows cleartext
+to localhost; otherwise it reads the Done line from logcat. A busy device can rotate the logcat buffer; then
+read the result file, which Apply writes to
 `noBackupFilesDir/.ui-tuning-lab/result.json`:
 `adb exec-out run-as <pkg> cat no_backup/.ui-tuning-lab/result.json`.
 

@@ -24,7 +24,7 @@ a list of fields is fine; keep each one labelled.
 
 - **Presets**: at least two meaningful presets that differ clearly from the
   baseline and from each other.
-- **Chips, Duplicate, and Choose**, with the hint line: see
+- **Chips, Duplicate, and Apply**, with the hint line: see
   `references/candidates.md`. The selected chip is outlined and is what the
   feature shows; the controls edit it in place. Shipped is read-only, so an edit
   on it starts a new pin and never lands on the baseline.

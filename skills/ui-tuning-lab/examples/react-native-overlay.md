@@ -35,7 +35,7 @@ header shows **Shipped** and each pin; the selected chip is outlined, and the
 feature always shows it. Switching chips is the comparison: there is no draft
 and nothing is stashed. The presets and steppers edit the selected pin in
 place; on Shipped, which is read-only, they start a new pin named after the
-preset or `tweak`. **Duplicate** branches the selected pin, **Choose** picks the
+preset or `tweak`. **Duplicate** branches the selected pin, **Apply** picks the
 selected chip and shrinks the panel to the result bar (**Change** restores it),
 and the **⋯** button holds **Copy values** for the selected look. Closing keeps
 the selected look in the feature.
@@ -205,6 +205,13 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const [selected, setSelected] = useState("original");
   // The last pick; while set, the panel is the result bar.
   const [result, setResult] = useState<string | null>(null);
+  // How many times Apply ran. The first reaches the agent's waiter; after it the
+  // agent no longer listens, so the button becomes Save and copy and the next pick goes
+  // through chat as a pasted `land <name>`. Change does not reset it.
+  const [applies, setApplies] = useState(0);
+  // The result bar's second line: where Apply saved the pick. Only the
+  // AsyncStorage variant below saves one; without it the line stays empty.
+  const [saved, setSaved] = useState<string | null>(null);
   const selectedPin = candidates.find(c => c.name === selected);
   const selectedValues: Partial<CardConfig> = selectedPin?.values ?? {};
 
@@ -231,7 +238,7 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     log("UITUNINGLAB_CANDIDATE", candidate);
   }
   // A pin edited in place logs its new values once it is left: another chip is
-  // selected, the lab closes, or Choose.
+  // selected, the lab closes, or Apply.
   function leave() { if (selectedPin) logPin(selectedPin); }
   // Tapping a chip shows its look in the real feature. Switching chips is the
   // comparison.
@@ -286,7 +293,7 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     log("UITUNINGLAB_CANDIDATE_REMOVED", { name });
     if (selected === name) { setConfig({ ...baseline }); setSelected("original"); }
   }
-  // Choose picks the selected chip and finishes. Picking again replaces the
+  // Apply picks the selected chip and finishes. Picking again replaces the
   // result. Not named useThis, which React's lint rules would treat as a hook.
   function pick() {
     leave();
@@ -296,10 +303,17 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     // pin on its own line first, so the agent can rebuild the list.
     if (sortedJson(done).length > 3500) for (const c of candidates) log("UITUNINGLAB_CANDIDATE", c);
     log("UITUNINGLAB_DONE", done);
+    // Hands the pick to the agent's waiter (scripts/wait-for-pick.py) at once, so
+    // it resumes without a message. Android reaches it through the waiter's
+    // `adb reverse`. Fire and forget: with nothing listening, the log carries it.
+    if (__DEV__) fetch("http://localhost:47321/pick", { method: "POST",
+      body: `UITUNINGLAB_DONE ${sortedJson(done)}` }).catch(() => {});
     // The result file needs AsyncStorage; without it the log and the land code
     // carry the pick ("The result file", below). With a clipboard module in the
     // app, copy `land ${winner}` here.
+    setSaved(null);
     setMenuOpen(false);
+    setApplies(n => n + 1);
     setResult(winner);
   }
 
@@ -310,9 +324,10 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         <Button title="Card Lab" label="Open UI tuning lab" onPress={() => { setStatus(null); setOpen(true); }} />
       </View>}
       {open && result !== null && <View style={[styles.pill, styles.bar]}>
-        <Text accessibilityLiveRegion="polite">Chosen: {result}</Text>
+        <Text accessibilityLiveRegion="polite">{applies > 1 ? "Tell the agent:" : `Applied: ${result}`}</Text>
         <Text selectable style={{ color: "#555" }}>land {result}</Text>
         <Button title="Change" onPress={() => setResult(null)} />
+        {(saved ?? status) && <Text style={{ fontSize: 12, color: "#555" }}>{saved ?? status}</Text>}
       </View>}
       {open && result === null && <View style={styles.panel} accessibilityLabel="UI tuning lab">
         <View style={styles.row}>
@@ -345,10 +360,11 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         </ScrollView>
         <View style={styles.row}>
           <Button title="Duplicate" disabled={!selectedPin} onPress={duplicate} />
-          <Button title="Choose" onPress={pick} />
+          <Button title={applies > 0 ? "Save and copy" : "Apply"} onPress={pick} />
         </View>
         {/* Pinned below the controls, visible however long the panel grows. */}
-        <Text style={{ paddingTop: 8 }}>Duplicate to compare · Choose to finish</Text>
+        <Text style={{ paddingTop: 8 }}>{applies > 0 ? "Duplicate to compare · Save and copy, then paste it in chat"
+          : "Duplicate to compare · Apply to finish"}</Text>
       </View>}
     </View>
   </View>;
@@ -382,9 +398,11 @@ const styles = StyleSheet.create({
 
 `console.info` lines reach logcat under `ReactNativeJS` on Android and the
 unified log on the iOS Simulator, as well as React Native DevTools' console.
-Use the commands in `references/platform-handoff.md`: `adb logcat -d -s ReactNativeJS:I`
-and the Android wait loop with `TAG=ReactNativeJS`, or the Simulator
-`log show` command without the subsystem clause.
+Use the commands in `references/platform-handoff.md`: `adb logcat -d -s ReactNativeJS:I`,
+or the Simulator `log show` command without the subsystem clause. Wait for the
+pick with `python3 <skill-dir>/scripts/wait-for-pick.py --log android` or
+`--log ios-sim` in the background (`references/platform-handoff.md`, "Wait for
+Done"); Apply's beacon usually reaches it first.
 
 Logcat truncates an entry near 4 KB, so a Done line with many pins can be
 cut. When its JSON exceeds about 3,500 characters, the lab logs every pin
@@ -428,7 +446,7 @@ app so the menu item disappears.
 ## The result file, only when the app has AsyncStorage
 
 Only when the app already depends on `@react-native-async-storage/async-storage`;
-otherwise skip this and rely on the log and the land code. Choose then
+otherwise skip this and rely on the log and the land code. Apply then
 also stores the Done object plus `savedAt` under `uiTuningLab.result`, replacing
 the last pick; AsyncStorage writes one key atomically.
 
@@ -440,9 +458,9 @@ function writeResult(done: object) {
 }
 ```
 
-In `pick()`, right after `log("UITUNINGLAB_DONE", done)`:
-``writeResult(done).catch(e => setStatus(`Result file failed: ${String(e)}`));``.
-The status shows after Change. Read the key in React Native DevTools'
+In `pick()`, right after `setSaved(null)`:
+``writeResult(done).then(() => setSaved(`Saved ${winner} in AsyncStorage uiTuningLab.result`), e => setStatus(`Result file failed: ${String(e)}`));``.
+Either line shows under the result bar. Read the key in React Native DevTools'
 console with `AsyncStorage.getItem("uiTuningLab.result")` when the module is
 reachable there; otherwise the log holds the same line.
 

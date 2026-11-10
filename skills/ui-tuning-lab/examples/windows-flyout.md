@@ -25,7 +25,7 @@ the feature always shows it. Switching chips is the comparison: there is no
 draft and nothing is stashed. Moving a slider or applying a preset edits the
 selected pin in place; on Shipped, which is read-only, it starts a new pin named
 after the preset or `tweak` and selects it. **Duplicate** branches the selected
-pin (it is disabled on Shipped), **Choose** picks the selected chip and shrinks
+pin (it is disabled on Shipped), **Apply** picks the selected chip and shrinks
 the flyout to the result bar, and the **⋯** menu holds Copy values. Closing
 keeps the selected look on screen. The hint is a grid row below the
 `ScrollViewer`, so it stays visible.
@@ -189,15 +189,21 @@ internal sealed class UITuningLabFlyout
     // shows it; there is no draft and nothing is stashed.
     private string selected = "original";
     private string? result; // the last pick; while set, the flyout is the result bar
+    // How many times Apply ran. The first reaches the agent's waiter; after it the
+    // agent no longer listens, so the button becomes Save and copy and the next pick goes
+    // through chat as a pasted `land <name>`. Change does not reset it.
+    private int applies;
+    // The result bar's second line: where Apply saved the pick, or why it could not.
+    private string? saved;
     private Flyout? flyout;
     private bool allowClose;
     private bool refreshing;
     // Controls exist only while the flyout is open.
     private Grid? panel;
     private StackPanel? resultBar, chips;
-    private TextBlock? resultText, status;
+    private TextBlock? resultText, savedText, status, hint;
     private Slider? radiusSlider, spacingSlider;
-    private Button? duplicateButton;
+    private Button? duplicateButton, applyButton;
 
     public UITuningLabFlyout(Page page, Grid root, CommandBar? toolbar, Func<CardConfig> getLook, Action<CardConfig> setLook)
     {
@@ -265,6 +271,20 @@ internal sealed class UITuningLabFlyout
     };
 
     private static void Log(string tag, object payload) => Debug.WriteLine($"{tag} {Json(payload)}");
+
+    // Hands the pick to the agent's waiter (scripts/wait-for-pick.py) at once, so
+    // it resumes without a message. Fire and forget: a packaged app's loopback
+    // isolation blocks it, and then the debug output carries the pick.
+    private static readonly System.Net.Http.HttpClient PickClient = new() { Timeout = TimeSpan.FromSeconds(2) };
+    private static async void SendPick(object payload)
+    {
+        try
+        {
+            using var body = new System.Net.Http.StringContent($"UITUNINGLAB_DONE {Json(payload)}");
+            using var _ = await PickClient.PostAsync("http://localhost:47321/pick", body);
+        }
+        catch (Exception) { }
+    }
 
     private static void CopyText(string text)
     {
@@ -340,7 +360,7 @@ internal sealed class UITuningLabFlyout
         Leave();
         if (flyout != null) { flyout.Closed -= OnClosed; flyout.Content = null; }
         flyout = null;
-        panel = null; resultBar = chips = null; resultText = status = null;
+        panel = null; resultBar = chips = null; resultText = savedText = status = null;
         radiusSlider = spacingSlider = null; duplicateButton = null;
         tuneButton.Focus(FocusState.Programmatic);
     }
@@ -394,11 +414,12 @@ internal sealed class UITuningLabFlyout
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 0) };
         duplicateButton = MakeButton("Duplicate", Duplicate);
         actions.Children.Add(duplicateButton);
-        actions.Children.Add(MakeButton("Choose", Choose));
+        applyButton = MakeButton("Apply", Apply);
+        actions.Children.Add(applyButton);
         // Pinned below the scrolling controls, visible however long the panel grows.
-        var hint = new TextBlock
+        hint = new TextBlock
         {
-            Text = "Duplicate to compare · Choose to finish",
+            Text = "Duplicate to compare · Apply to finish",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
         };
 
@@ -412,12 +433,16 @@ internal sealed class UITuningLabFlyout
         FrameworkElement[] rows = { header, chipScroller, scroller, actions, hint };
         for (var i = 0; i < rows.Length; i++) { Grid.SetRow(rows[i], i); panel.Children.Add(rows[i]); }
 
-        // After Choose the flyout is one bar; Change restores the whole panel.
+        // After Apply the flyout is one bar; Change restores the whole panel.
         resultText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetLiveSetting(resultText, AutomationLiveSetting.Polite);
-        resultBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        resultBar.Children.Add(resultText);
-        resultBar.Children.Add(MakeButton("Change", () => result = null));
+        var resultRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        resultRow.Children.Add(resultText);
+        resultRow.Children.Add(MakeButton("Change", () => result = null));
+        savedText = new TextBlock { FontSize = 12, Opacity = 0.8 };
+        resultBar = new StackPanel { Spacing = 4 };
+        resultBar.Children.Add(resultRow);
+        resultBar.Children.Add(savedText);
 
         var content = new Grid();
         content.Children.Add(panel);
@@ -467,7 +492,15 @@ internal sealed class UITuningLabFlyout
         var look = getLook();
         panel!.Visibility = result == null ? Visibility.Visible : Visibility.Collapsed;
         resultBar!.Visibility = result == null ? Visibility.Collapsed : Visibility.Visible;
-        resultText!.Text = $"Chosen: {result}";
+        resultText!.Text = applies > 1
+            ? $"Copied land {result}: paste it in chat so the agent applies it"
+            : $"Applied: {result}";
+        savedText!.Text = saved ?? "";
+        savedText.Visibility = saved == null ? Visibility.Collapsed : Visibility.Visible;
+        applyButton!.Content = applies > 0 ? "Save and copy" : "Apply";
+        hint!.Text = applies > 0
+            ? "Duplicate to compare · Save and copy, then paste it in chat"
+            : "Duplicate to compare · Apply to finish";
         radiusSlider!.Value = look.CornerRadius;
         spacingSlider!.Value = look.Spacing;
         duplicateButton!.IsEnabled = SelectedPin() != null; // Shipped is read-only: nothing to branch
@@ -508,7 +541,7 @@ internal sealed class UITuningLabFlyout
     }
 
     // A pin edited in place logs its new values once it is left: another chip is
-    // selected, the lab closes, or Choose.
+    // selected, the lab closes, or Apply.
     private void Leave() { if (SelectedPin() is { } pin) LogPin(pin); }
 
     // Clicking a chip shows its look in the real feature. Switching chips is the
@@ -584,9 +617,9 @@ internal sealed class UITuningLabFlyout
         Refresh();
     }
 
-    // Choose picks the selected chip ("original" for Shipped) and finishes.
+    // Apply picks the selected chip ("original" for Shipped) and finishes.
     // Picking again replaces the result.
-    private void Choose()
+    private void Apply()
     {
         Leave();
         var pin = SelectedPin();
@@ -599,8 +632,19 @@ internal sealed class UITuningLabFlyout
             ["winner"] = winner,
         };
         Log("UITUNINGLAB_DONE", done);
-        try { WriteResult(done); } catch (Exception e) { SetStatus($"Result file failed: {e.Message}"); }
+        SendPick(done);
+        try
+        {
+            WriteResult(done);
+            saved = $"Saved {winner} in .ui-tuning-lab/result.json";
+        }
+        catch (Exception e)
+        {
+            saved = $"Result file failed: {e.Message}";
+            SetStatus(saved);
+        }
         CopyText($"land {winner}");
+        applies++;
         result = winner;
     }
 }
@@ -613,8 +657,10 @@ internal sealed class UITuningLabFlyout
 attached, and to `OutputDebugString`, which Sysinternals DebugView captures.
 Follow `references/platform-handoff.md`: start
 `Dbgview.exe /accepteula /l <file>` before launching the app, read with
-`Select-String -Path <file> -Pattern UITUNINGLAB_`, and wait for
-`UITUNINGLAB_DONE` by polling the same file. Anchor the wait to this session: record how many lines
+`Select-String -Path <file> -Pattern UITUNINGLAB_`, and wait for the pick
+with `python3 <skill-dir>/scripts/wait-for-pick.py --log-file <file>` in the
+background, which also catches Apply's beacon in an unpackaged app. Without
+Python, wait for `UITUNINGLAB_DONE` by polling the same file. Anchor the wait to this session: record how many lines
 the log holds when the lab opens and match only lines after that, so a Done
 from an earlier session never ends the wait. (Starting a fresh DebugView log
 file per session works too.)
@@ -627,7 +673,7 @@ while (-not ($line = Get-Content $file | Select-Object -Skip $start |
 $line.Line
 ```
 
-When no log was captured, read the result file Choose writes:
+When no log was captured, read the result file Apply writes:
 `Get-Content "$env:LOCALAPPDATA\Packages\<package-family-name>\LocalState\.ui-tuning-lab\result.json"`
 for a packaged app (its `LocalFolder`), or
 `Get-Content "$env:LOCALAPPDATA\<app-name>\.ui-tuning-lab\result.json"` unpackaged.

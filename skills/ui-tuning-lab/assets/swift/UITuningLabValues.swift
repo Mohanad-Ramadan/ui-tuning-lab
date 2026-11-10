@@ -61,6 +61,14 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
     @Published private(set) var selected = "original"
     /// What the last action reported, for the panel's status line.
     @Published var status: String?
+    /// How many times Apply ran. The first reaches the agent's waiter; after it
+    /// the agent no longer listens, so the panel labels the button Save and copy and the
+    /// next pick goes through chat as a pasted `land <name>`. Change does not
+    /// reset it; it lives as long as the lab's candidates.
+    @Published private(set) var applies = 0
+    /// The result bar's second line after Apply: where the pick was saved, or
+    /// nil when the write failed (then `status` says why).
+    @Published private(set) var saved: String?
     let baseline: Value
     /// Set by a persisting lab: writes a pin's profile whenever it logs, and
     /// deletes it on remove. A failure shows in `status`; the pin stays.
@@ -132,7 +140,7 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
     }
 
     /// Logs the selected pin again when it changed since it last logged. Runs
-    /// when it is left: another chip, closing the lab, or Choose.
+    /// when it is left: another chip, closing the lab, or Apply.
     func leave() {
         if let pin = selectedPin { log(pin) }
     }
@@ -148,7 +156,7 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
         return true
     }
 
-    /// Choose: picks the selected chip, `original` for Shipped. Logs
+    /// Apply (Save and copy after the first): picks the selected chip, `original` for Shipped. Logs
     /// `UITUNINGLAB_DONE {...}`, replaces the result file atomically, and copies
     /// `land <winner>`. Returns the winner, and sets `status` when part of that
     /// did not work.
@@ -161,10 +169,13 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
             let kept = try all.map { try uiTuningLabCandidateFields($0, baseline: baseline) }
             line = ["candidates": kept, "values": values, "winner": winner]
         } catch {
-            status = "Not chosen: \(error.localizedDescription)"
+            saved = nil
+            status = "Not applied: \(error.localizedDescription)"
             return winner
         }
+        applies += 1
         uiTuningLabLogLine("UITUNINGLAB_DONE", line)
+        uiTuningLabSendPick(line)
         let code = "land \(winner)"
         #if canImport(UIKit)
         UIPasteboard.general.string = code
@@ -180,7 +191,9 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
                 at: uiTuningLabResultURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: uiTuningLabResultURL, options: .atomic)  // temporary file, then rename
             status = nil
+            saved = "Saved \(winner) in .ui-tuning-lab/result.json"
         } catch {
+            saved = nil
             status = "Result file not written: \(error.localizedDescription)"
         }
         return winner
@@ -225,7 +238,7 @@ func uiTuningLabFavoriteName(_ stem: String, excluding taken: Set<String>) -> St
     return (2...).lazy.map { "\(stem)-\($0)" }.first { !used.contains($0) }!
 }
 
-/// The pick Choose writes: Application Support `.ui-tuning-lab/result.json`,
+/// The pick Apply writes: Application Support `.ui-tuning-lab/result.json`,
 /// under the bundle ID on macOS, where every app shares Application Support.
 var uiTuningLabResultURL: URL {
     var directory = URL.applicationSupportDirectory
@@ -258,6 +271,22 @@ private func uiTuningLabCandidateFields<Value: Encodable>(
 private func uiTuningLabLogLine(_ tag: String, _ object: [String: Any]) {
     guard let json = try? uiTuningLabJSON(object) else { return }
     uiTuningLabLog.notice("\(tag, privacy: .public) \(json, privacy: .public)")
+}
+
+/// Hands the pick to the agent's waiter (`scripts/wait-for-pick.py`) the moment
+/// Apply is pressed, so the agent resumes without a message. Fire and forget:
+/// with no waiter, or no route to the host (a physical device, a sandboxed Mac
+/// app without the network client entitlement), the log and the result file
+/// still carry the pick. `localhost`, not an IP address: ATS blocks plain HTTP
+/// to IP addresses from iOS 17 and macOS 14.
+private func uiTuningLabSendPick(_ object: [String: Any]) {
+    guard let json = try? uiTuningLabJSON(object),
+          let url = URL(string: "http://localhost:47321/pick") else { return }
+    var request = URLRequest(url: url, timeoutInterval: 2)
+    request.httpMethod = "POST"
+    request.setValue("text/plain", forHTTPHeaderField: "Content-Type")
+    request.httpBody = Data("UITUNINGLAB_DONE \(json)".utf8)
+    URLSession.shared.dataTask(with: request).resume()
 }
 
 private func uiTuningLabJSON(_ object: [String: Any]) throws -> String {

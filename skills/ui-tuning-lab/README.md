@@ -13,7 +13,7 @@ release notes: https://github.com/Mohanad-Ramadan/ui-tuning-lab
 - **Shipped** is the declared default and is read-only; editing it starts a pin.
   The selected chip is outlined and is what the feature shows, so switching
   chips is the comparison.
-- **Duplicate** branches the selected pin; **Choose** hands it to the agent
+- **Duplicate** branches the selected pin; **Apply** hands it to the agent
   through the log, a result file, and a `land <name>` code on the clipboard.
 - Every lab opens through an agent path, one or more human fast paths the user
   picks, and a visible fallback. Shake is offered only when inspection proves it

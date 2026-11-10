@@ -4,7 +4,7 @@ Use this when the user asks for alternative designs of a feature ("make three
 better versions of this list", "try a card layout and a timeline") rather than
 new values for the existing one. The variants are different widget or view
 trees, so they cannot be reached by sliders alone, but they still go through
-the same lab: the same panel, chips, Duplicate, Choose,
+the same lab: the same panel, chips, Duplicate, Apply,
 and landing. A row of chips or tabs dropped into the screen is not a lab.
 
 ## Where ideas come from
@@ -49,7 +49,7 @@ accessibility, right-to-left, light and dark).
    with the baseline values; Copy values reports only what differs
    (`{"design":"strip","cardRadius":16}`); a pin records the design in
    `values`, and one started from Shipped is named after it (`strip`); the chips flip the real
-   screen between pins of different designs; Choose hands the pick
+   screen between pins of different designs; Apply hands the pick
    over (`references/candidates.md`). A saved profile
    keeps `design` inside `overrides` like any other field, so a persisted or
    seeded candidate reopens on its design.

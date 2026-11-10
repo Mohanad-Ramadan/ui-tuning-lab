@@ -29,7 +29,7 @@ into your agent's skills directory (for Claude Code, `~/.claude/skills/`).
   variation.
 - **Alternative designs** as a Design picker in the same panel, with the
   original as the baseline.
-- **A finish with no copy-paste.** Choose hands the selected look to the agent
+- **A finish with no copy-paste.** Apply hands the selected look to the agent
   through the log, a result file, and a `land <name>` code on the clipboard.
 - **Opening without hunting.** Every lab has a path the agent can open it
   through, one or more fast paths you pick (a shortcut, a gesture, a menu item),

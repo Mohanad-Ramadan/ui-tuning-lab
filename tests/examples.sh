@@ -260,14 +260,15 @@ for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; d
   fi
 done
 
-# Chips, Duplicate, Choose, and the result file are in every variant
+# Chips, Duplicate, Apply (Copy after the first), and the result file are in every variant
 # users copy (references/candidates.md), the ephemeral default included.
 for example in $EXAMPLES; do
   for variant in $(example_variants "$SKILL/examples/$example"); do
     dir="$WORK/${example%.md}-$variant"
     label="$example [$variant]"
-    for needle in 'Shipped' 'Duplicate' 'Choose' 'Duplicate to compare · Choose to finish' \
-        'Chosen: ' 'land ' 'result' 'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE'; do
+    for needle in 'Shipped' 'Duplicate' 'Apply' 'Duplicate to compare · Apply to finish' \
+        '"Save and copy"' 'Duplicate to compare · Save and copy, then paste it in chat' 'Applied: ' 'Saved ' \
+        'paste it in chat so the agent applies it' 'land ' 'result' 'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE'; do
       if grep -rqF "$needle" "$dir"; then ok "$label has $needle"; else not_ok "$label has $needle"; fi
     done
     # There is no draft, stash, or Reset: the selected chip is the look shown,

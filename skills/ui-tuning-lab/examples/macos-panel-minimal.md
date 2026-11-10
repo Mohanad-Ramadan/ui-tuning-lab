@@ -8,15 +8,15 @@ Command-Shift-L are the human path and visible fallback; the DEBUG-only
 the agent path (`references/activation.md`). **Copy values** puts the fields that differ
 from the baseline on the pasteboard and logs them as one
 `UITUNINGLAB_VALUES {...}` line for landing (`references/landing-protocol.md`).
-The chips, **Duplicate**, **Choose**, and the **⋯** menu (Copy values) follow
+The chips, **Duplicate**, **Apply**, and the **⋯** menu (Copy values) follow
 `references/candidates.md`. The chip row shows Shipped and each pin; the
 selected chip is outlined, and the toolbar always shows it, so switching chips is
 the comparison. The controls edit the selected pin in place; on Shipped, which is
 read-only, they start a new pin named after the preset or `tweak`. **Duplicate**
-branches the selected pin. **Choose** picks the selected chip, logs
+branches the selected pin. **Apply** picks the selected chip, logs
 `UITUNINGLAB_DONE`, writes Application Support
 `<bundle-id>/.ui-tuning-lab/result.json`, copies `land <name>`, and collapses
-the panel to a `Chosen:` bar whose Change button reopens it. The coordinator
+the panel to a `Applied:` bar whose Change button reopens it. The coordinator
 owns the `UITuningLabCandidates` store, so the pins and the selection survive
 closing the panel; in the default candidate they live in memory and in the log,
 and a name is never reused within a run. To reopen a session, seed the store's
@@ -219,14 +219,16 @@ struct UITuningLabPanel: View {
     var body: some View {
         Group {
             if let sent = lab.sent {
-                // Choose collapses the panel to one bar; Change reopens it.
+                // Apply collapses the panel to one bar; Change reopens it.
                 VStack(alignment: .leading) {
                     HStack {
-                        Text("Chosen: \(sent)")
+                        Text(candidates.applies > 1
+                            ? "Copied land \(sent): paste it in chat so the agent applies it"
+                            : "Applied: \(sent)")
                         Spacer()
                         Button("Change") { lab.sent = nil }
                     }
-                    if let status = candidates.status { Text(status).font(.footnote) }
+                    if let line = candidates.saved ?? candidates.status { Text(line).font(.footnote) }
                 }
                 .padding()
                 .frame(width: 320)
@@ -287,11 +289,13 @@ struct UITuningLabPanel: View {
                 Button("Duplicate") { candidates.duplicate(); model.style = candidates.selectedLook }
                     .disabled(candidates.selectedPin == nil)
                 Spacer()
-                Button("Choose") { lab.sent = candidates.choose() }
+                Button(candidates.applies > 0 ? "Save and copy" : "Apply") { lab.sent = candidates.choose() }
                     .keyboardShortcut(.defaultAction)
             }
             // Pinned at the bottom, so it shows however long the controls grow.
-            Text("Duplicate to compare · Choose to finish")
+            Text(candidates.applies > 0
+                ? "Duplicate to compare · Save and copy, then paste it in chat"
+                : "Duplicate to compare · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -342,7 +346,7 @@ struct UITuningLabPanel: View {
 <!-- copy: assets/swift/UITuningLabValues.swift -->
 `UITuningLabValues.swift`: copy `assets/swift/UITuningLabValues.swift` into the
 app's target unchanged. It holds Copy values, the looks store and selection, pin names,
-Choose with its result file, and the log lines every Swift lab shares,
+Apply with its result file, and the log lines every Swift lab shares,
 all inside `#if DEBUG`.
 
 Each window's `FeatureSceneModel` owns exactly one coordinator; the focused scene
@@ -424,14 +428,16 @@ struct UITuningLabPanel: View {
     var body: some View {
         Group {
             if let sent = lab.sent {
-                // Choose collapses the panel to one bar; Change reopens it.
+                // Apply collapses the panel to one bar; Change reopens it.
                 VStack(alignment: .leading) {
                     HStack {
-                        Text("Chosen: \(sent)")
+                        Text(candidates.applies > 1
+                            ? "Copied land \(sent): paste it in chat so the agent applies it"
+                            : "Applied: \(sent)")
                         Spacer()
                         Button("Change") { lab.sent = nil }
                     }
-                    if let status = candidates.status { Text(status).font(.footnote) }
+                    if let line = candidates.saved ?? candidates.status { Text(line).font(.footnote) }
                 }
                 .padding()
                 .frame(width: 320)
@@ -493,11 +499,13 @@ struct UITuningLabPanel: View {
                 Button("Duplicate") { candidates.duplicate(); model.style = candidates.selectedLook }
                     .disabled(candidates.selectedPin == nil)
                 Spacer()
-                Button("Choose") { lab.sent = candidates.choose() }
+                Button(candidates.applies > 0 ? "Save and copy" : "Apply") { lab.sent = candidates.choose() }
                     .keyboardShortcut(.defaultAction)
             }
             // Pinned at the bottom, so it shows however long the controls grow.
-            Text("Duplicate to compare · Choose to finish")
+            Text(candidates.applies > 0
+                ? "Duplicate to compare · Save and copy, then paste it in chat"
+                : "Duplicate to compare · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

@@ -30,7 +30,7 @@ each pin; the selected chip is outlined, and the feature always shows it.
 Switching chips is the comparison: there is no draft and nothing is stashed.
 The presets and sliders edit the selected pin in place; on Shipped, which is
 read-only, they start a new pin named after the preset or `tweak`.
-**Duplicate** branches the selected pin, **Choose** picks the selected chip and
+**Duplicate** branches the selected pin, **Apply** picks the selected chip and
 collapses the panel to the result bar (**Change** restores it), and the **⋯**
 menu holds **Copy values** for the selected look. Closing keeps the selected
 look in the feature. The hint sits below the scrolling controls.
@@ -115,6 +115,7 @@ class _FeatureScreenState extends State<FeatureScreen> {
 // The marker in the file name is what the skill's naming rule requires.
 // ignore_for_file: file_names
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -166,6 +167,22 @@ void _log(String tag, Object? payload) {
   if (kDebugMode) debugPrint('$tag ${_sortedJson(payload)}');
 }
 
+// Hands the pick to the agent's waiter (scripts/wait-for-pick.py) at once, so it
+// resumes without a message. Fire and forget: where the app cannot reach the
+// host (Android blocks cleartext HTTP by default), the log carries the pick.
+Future<void> _sendPick(Object? done) async {
+  if (!kDebugMode) return;
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+  try {
+    final request = await client.postUrl(Uri.parse('http://localhost:47321/pick'));
+    request.write('UITUNINGLAB_DONE ${_sortedJson(done)}');
+    await (await request.close()).drain<void>();
+  } catch (_) {
+  } finally {
+    client.close();
+  }
+}
+
 // `stem`, or `stem-2`, `stem-3`, ... when taken. Removed names stay in `issued`,
 // so a name is never reused in this isolate.
 String _nextName(String stem, Set<String> issued) {
@@ -204,6 +221,13 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   String selected = 'original';
   String? status;
   String? result; // the last pick; while set, the panel is the result bar
+  // How many times Apply ran. The first reaches the agent's waiter; after it the
+  // agent no longer listens, so the button becomes Save and copy and the next pick goes
+  // through chat as a pasted `land <name>`. Change does not reset it.
+  int applies = 0;
+  // The result bar's second line: where Apply saved the pick. Only the
+  // path_provider result file below saves one; without it the line stays empty.
+  String? saved;
   // Hidden means the panel is not built: nothing of it stays in the tree.
   final portal = OverlayPortalController();
   bool isOpen = false;
@@ -241,7 +265,7 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   }
 
   // A pin edited in place logs its new values once it is left: another chip is
-  // selected, the lab closes, or Choose.
+  // selected, the lab closes, or Apply.
   void leave() {
     final pin = selectedPin;
     if (pin != null) logPin(pin);
@@ -321,7 +345,7 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     });
   }
 
-  // Choose picks the selected chip and finishes. Picking again replaces the
+  // Apply picks the selected chip and finishes. Picking again replaces the
   // result.
   Future<void> choose() async {
     leave();
@@ -333,10 +357,15 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
       'winner': winner,
     };
     _log('UITUNINGLAB_DONE', done);
+    _sendPick(done).ignore();
+    saved = null;
     // The result file needs path_provider; without it the log and the
     // clipboard code carry the pick ("The result file", below).
     await Clipboard.setData(ClipboardData(text: 'land $winner'));
-    update(() => result = winner);
+    update(() {
+      applies++;
+      result = winner;
+    });
   }
 
   @override
@@ -364,9 +393,16 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
       ),
       child: Padding(
         padding: const EdgeInsets.only(left: 16, right: 4),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Semantics(liveRegion: true, child: Text('Chosen: $name')),
-          TextButton(onPressed: () => update(() => result = null), child: const Text('Change')),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Semantics(liveRegion: true, child: Text(applies > 1
+                ? 'Copied land $name: paste it in chat so the agent applies it'
+                : 'Applied: $name')),
+            TextButton(onPressed: () => update(() => result = null), child: const Text('Change')),
+          ]),
+          if ((saved ?? status) != null)
+            Padding(padding: const EdgeInsets.only(bottom: 8),
+                child: Text((saved ?? status)!, style: Theme.of(context).textTheme.bodySmall)),
         ]),
       ),
     )));
@@ -443,10 +479,12 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
               ]))),
               Wrap(spacing: 8, children: [
                 OutlinedButton(onPressed: selectedPin == null ? null : duplicate, child: const Text('Duplicate')),
-                FilledButton(onPressed: choose, child: const Text('Choose')),
+                FilledButton(onPressed: choose, child: Text(applies > 0 ? 'Save and copy' : 'Apply')),
               ]),
               // Pinned below the controls, visible however long the panel grows.
-              const Padding(padding: EdgeInsets.only(top: 8), child: Text('Duplicate to compare · Choose to finish')),
+              Padding(padding: const EdgeInsets.only(top: 8), child: Text(applies > 0
+                  ? 'Duplicate to compare · Save and copy, then paste it in chat'
+                  : 'Duplicate to compare · Apply to finish')),
             ]),
           ),
         ),
@@ -589,13 +627,13 @@ removes the lab as usual.
 
 `debugPrint` lines reach `flutter run` / `flutter logs`, logcat under the
 `flutter` tag on Android, and the unified log on the iOS Simulator. Use the
-commands in `references/platform-handoff.md`: `adb logcat -d -s flutter:I` and
-the Android wait loop with `TAG=flutter`, or the Simulator `log show` command
-without the subsystem clause. When the agent started `flutter run` itself with
-its output redirected to a file, polling that file with
-`grep -m1 UITUNINGLAB_DONE <file>` in the same `until` loop works on every
-platform. Logcat truncates a line near 4 KB; a Done line with many pins
-can exceed it, so ask the user to press Choose again or read `flutter run`
+commands in `references/platform-handoff.md`: `adb logcat -d -s flutter:I`, or
+the Simulator `log show` command without the subsystem clause. Wait for the
+pick with `python3 <skill-dir>/scripts/wait-for-pick.py` in the background and
+`--log android` or `--log ios-sim` (`references/platform-handoff.md`, "Wait for
+Done"); when the agent started `flutter run` itself with its output redirected
+to a file, `--log-file <file>` works on every platform. Logcat truncates a line near 4 KB; a Done line with many pins
+can exceed it, so ask the user to press Apply again or read `flutter run`
 output.
 
 When the app builds only in CI or a cloud device service and `flutter` is not
@@ -618,13 +656,12 @@ the `kDebugMode` branch, and point the screen back at
 
 ## The result file, only when the app has `path_provider`
 
-Choose also writes the Done object plus `savedAt` to
+Apply also writes the Done object plus `savedAt` to
 `getApplicationSupportDirectory()/.ui-tuning-lab/result.json`, replacing the
 last pick atomically. When the app does not depend on `path_provider`, skip
 this section; never add the package for it. Add to the lab file:
 
 ```dart
-import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 // Temporary file, then rename: a reader never sees half a pick.
@@ -639,9 +676,9 @@ Future<void> _uiTuningLabWriteResult(Map<String, Object?> done) async {
 ```
 
 In `choose()`, right after `_log('UITUNINGLAB_DONE', done)`:
-`try { await _uiTuningLabWriteResult(done); } catch (e) { status = 'Result file failed: $e'; }`.
-The pick still goes through the log and the clipboard, and the status shows
-after Change. Read it with
+`try { await _uiTuningLabWriteResult(done); saved = 'Saved $winner in .ui-tuning-lab/result.json'; } catch (e) { status = 'Result file failed: $e'; }`.
+The pick still goes through the log and the clipboard, and either line shows
+under the result bar. Read it with
 `adb exec-out run-as <package> cat files/.ui-tuning-lab/result.json` on Android
 or the iOS Simulator command in `references/platform-handoff.md`.
 
@@ -658,7 +695,6 @@ debug-only manifest overlay, or say in the report that lab files may be backed u
 below; everything else stays the same.
 
 ```dart
-import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 Future<Directory> _uiTuningLabDir() async =>
