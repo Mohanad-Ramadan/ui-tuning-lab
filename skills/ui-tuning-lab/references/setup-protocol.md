@@ -144,7 +144,11 @@ native panel instead and say why.
 - **Phones.** On compact width (under about 600 points or dp), a corner panel
   covers the feature. Dock the panel full width at the bottom, at most about 45%
   of the screen tall, and leave the feature scrollable above it (on iOS, the
-  short sheet in `references/ios-hosting.md`).
+  short sheet in `references/ios-hosting.md`). When the feature itself lives at
+  the bottom edge (a tab bar, bottom toolbar, floating button, input bar), dock
+  the panel at the top instead, so it never covers what is being tuned
+  (`references/ios-hosting.md`, "Features at the bottom edge"); the same rule
+  holds for Android, Flutter, and React Native overlays.
 - **Tabs and routes.** When the screen is one tab of a tab bar or one route of a
   stack, show the pill and panel only while that screen is visible, and keep
   the selected look while it is hidden.

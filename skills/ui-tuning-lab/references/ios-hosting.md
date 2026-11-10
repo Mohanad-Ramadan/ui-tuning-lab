@@ -7,6 +7,7 @@ popover; many real apps have neither.
 ## Contents
 
 - The panel on iPhone: a short sheet with tabs
+- Features at the bottom edge: dock the panel at the top
 - Activation: agent path, human path, fallback
 - UIKit hosts
 - New files must join the Xcode target
@@ -55,6 +56,47 @@ feature. Instead:
   static layout decision; do not tour the tabs first.
 
 On iPad (regular width), keep the popover from the examples.
+
+## Features at the bottom edge: dock the panel at the top
+
+A bottom sheet covers whatever lives at the bottom of the screen: a tab bar, a
+bottom toolbar, a floating action button, a composer or input bar, a mini
+player. When the tuned feature is one of those, never use the sheet; the user
+would tune a bar they cannot see. Dock the panel at the top instead, as a
+non-modal card in the root view's overlay, mounted only while open:
+
+```swift
+.overlay(alignment: .top) {
+  if showUITuningLab {
+    UITuningLabPanel(...)                 // the same tabs and controls as the sheet
+      .frame(maxHeight: 360)              // about 40% of the screen; scrolls inside
+      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+      .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.separator))
+      .padding(.horizontal, 8)
+      .transition(.move(edge: .top).combined(with: .opacity))
+  }
+}
+```
+
+- Attach it above the feature (on the `TabView` or the app's root), so it floats
+  over the navigation bar and top content and leaves the bottom edge visible.
+- Keep Close in the header row; the row budget is the short sheet's. Put the
+  pill near the top trailing corner, clear of the navigation bar's buttons.
+- With a UIKit host, present the panel from the top of the key window the same
+  way, never as a `.pageSheet`.
+- **Replacing the system tab bar** (a custom-bar design): hide the system bar
+  from inside each tab's content, where SwiftUI reads it, never on the
+  `TabView` itself, which has no effect:
+
+  ```swift
+  Tab(value: tab) {
+    makeTabContent(for: tab)
+      .toolbarVisibility(replaces ? .hidden : .automatic, for: .tabBar)
+  } label: { ... }
+  ```
+
+  Then draw the custom bar once, in a bottom overlay or `safeAreaInset` on the
+  `TabView`.
 
 ## Activation: agent path, human path, fallback
 

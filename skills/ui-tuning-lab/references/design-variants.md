@@ -53,6 +53,13 @@ accessibility, right-to-left, light and dark).
    over (`references/candidates.md`). A saved profile
    keeps `design` inside `overrides` like any other field, so a persisted or
    seeded candidate reopens on its design.
+7. **Check each design renders.** A design that never appears is invisible to
+   the user and looks like a dead picker. In the smoke launch, select each
+   design through the agent path (a launch argument such as
+   `-UITuningLabDesign <key>`, or the picker), take one screenshot, and confirm
+   the feature changed and the panel does not cover it. Fix and rebuild before
+   handover when it did not. Return to Shipped afterwards; this is not a tour of
+   the presets or knobs.
 
 ## Land
 

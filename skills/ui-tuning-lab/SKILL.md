@@ -94,7 +94,11 @@ picker in the panel, with the original as the baseline
    `candidates`, seed the lab with them.
 4. **Hand it over, then tune with the user.** Build, typecheck, and run the gate
    lint; open the lab once through the agent path to confirm it renders and
-   opens, then close it and stop. Do not iterate the controls, flip the chips,
+   opens, then close it and stop. A lab with designs is the one exception:
+   select each design once through the agent path and confirm by screenshot
+   that the feature visibly changes and is not covered by the panel, then
+   return to Shipped (`references/design-variants.md`, "Check each design
+   renders"). Do not iterate the controls, flip the chips,
    Save & copy, Apply, compare candidates, or capture screenshots before the
    user has seen it: the user tunes, and a self-review pass runs only when they
    ask for one ("check it yourself first"). Then, in this order: start
