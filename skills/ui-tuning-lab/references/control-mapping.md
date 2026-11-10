@@ -24,10 +24,11 @@ a list of fields is fine; keep each one labelled.
 
 - **Presets**: at least two meaningful presets that differ clearly from the
   baseline and from each other.
-- **Chips, Duplicate, and Apply**, with the hint line: see
+- **Chips, Save & copy, and Apply**, with the hint line: see
   `references/candidates.md`. The selected chip is outlined and is what the
   feature shows; the controls edit it in place. Shipped is read-only, so an edit
-  on it starts a new pin and never lands on the baseline.
+  on it stays unsaved until Save & copy keeps it as the next Look N, and never
+  lands on the baseline.
 - **⋯ menu** with **Copy values** (`references/landing-protocol.md`; it reports
   the selected look).
 - **Target picker**, when the feature has variants to choose between (a theme,
@@ -58,4 +59,4 @@ a list of fields is fine; keep each one labelled.
   may jump.
 
 Speed, the shown chip, and Replay are preview settings: they never enter
-a pin's values, Copy values, or a saved profile.
+a look's values, Copy values, or a saved profile.

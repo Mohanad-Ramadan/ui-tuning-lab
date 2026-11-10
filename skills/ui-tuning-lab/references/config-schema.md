@@ -6,7 +6,7 @@ ephemeral lab.
 | Document | Purpose | Written by | Location | Validator |
 |---|---|---|---|---|
 | Lab config | A reusable lab definition: target, scope, baseline, presets, optional activation | The agent, when a lab is meant to be reused | `.ui-tuning-lab/lab.json` in the project | `verify.sh config` |
-| Saved profile | Values the user kept from a running lab: a candidate (`schemaVersion: 2`) or a legacy single save (`schemaVersion: 1`) | A lab's pins when persistence was requested, or the agent keeping finalists at landing | `.ui-tuning-lab/candidates/<name>.json` (in the project, or in Application Support on Apple platforms) or `uiTuningLab.candidates.<name>` in web storage | `verify.sh profile` |
+| Saved profile | Values the user kept from a running lab: a candidate (`schemaVersion: 2`) or a legacy single save (`schemaVersion: 1`) | A lab's looks when persistence was requested, or the agent keeping finalists at landing | `.ui-tuning-lab/candidates/<name>.json` (in the project, or in Application Support on Apple platforms) or `uiTuningLab.candidates.<name>` in web storage | `verify.sh profile` |
 
 A lab config uses `schemaVersion: 1`; a saved profile uses `2` (a candidate) or
 `1` (a legacy single save). Either is written as an integer literal. Both reject
@@ -46,7 +46,7 @@ Template: `assets/profile.template.json`, a candidate. The examples'
 | `platform` | string | `ios`, `macos`, `web`, `visionos`, `android`, `flutter`, `react-native`, `windows`, `linux`, or `harmonyos`; Flutter and React Native use the framework value (`references/platform-handoff.md`) |
 | `container` | string | the host surface used when saving |
 | `scope` | string array | non-empty |
-| `overrides` | object | non-empty; the pin's full configuration at save time, including `design` for a design-variant lab (`references/design-variants.md`) |
+| `overrides` | object | non-empty; the look's full configuration at save time, including `design` for a design-variant lab (`references/design-variants.md`) |
 | `notes` | string | may be empty |
 | `basedOn` | string | candidates only; kebab-case: the preset it started from, `baseline`, or another candidate's name |
 | `savedAt` | string | candidates only; ISO-8601 UTC, for example `2026-11-04T14:23:24Z` |
@@ -56,7 +56,7 @@ Template: `assets/profile.template.json`, a candidate. The examples'
 ignore unknown fields and do not range-check values, so validate a hand-edited
 file with `verify.sh profile` before loading it. On any mismatch the lab shows an
 error, keeps the current look, and leaves the stored profile untouched
-(`references/edge-cases.md`). Loading adds a pin; the baseline does not change,
+(`references/edge-cases.md`). Loading adds a look; the baseline does not change,
 so Shipped still shows it.
 
 Validate a web profile by copying the stored value to a file first. Validate an

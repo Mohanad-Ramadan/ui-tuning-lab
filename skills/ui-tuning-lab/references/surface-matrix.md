@@ -14,7 +14,7 @@ and accessibility requirements.
 | React Native | `__DEV__` conditional overlay via existing developer menu | `__DEV__` | the existing developer menu and shake; never a second shake listener |
 | visionOS, Linux, HarmonyOS | derive from the platform's native nonmodal surface | platform build-type gate | platform debug menu plus a visible fallback; derive the agent path |
 
-Every platform carries the same handoff: chips, Duplicate, Apply, the result
+Every platform carries the same handoff: chips, Save & copy, Apply, the result
 file, and the hint (`references/candidates.md`). How each one logs, reads, waits
 for Done, stores candidates, and checks its gate is in
 `references/platform-handoff.md`; worked adaptations are in

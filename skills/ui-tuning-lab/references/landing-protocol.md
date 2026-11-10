@@ -21,16 +21,16 @@ on one line:
 UITUNINGLAB_VALUES {"cornerRadius":20,"spacing":12}
 ```
 
-Labs also log their pins and a `UITUNINGLAB_DONE` line when the user
+Labs also log their looks and a `UITUNINGLAB_DONE` line when the user
 presses Apply, and write the same object to the result file
 (`references/candidates.md`). Use, in order:
 
 1. What the user says in chat wins: values they pasted, or a name they gave
-   (`land capsule`), including the `land <name>` the lab's Save and copy button puts on
+   (`land look-2`), including the `land <name>` the lab's Save & copy button puts on
    the clipboard after the first Apply.
 2. Otherwise the line the waiter printed (`scripts/wait-for-pick.py`), else
    the newest `UITUNINGLAB_DONE` line in the log, else the result file. Land its
-   `winner`: a pin's values, or nothing for `original` (the Shipped chip). An
+   `winner`: a look's values, or nothing for `original` (the Shipped chip). An
    older lab's `draft` winner lands its `values` the same way.
 3. Otherwise the newest `UITUNINGLAB_VALUES` line.
 

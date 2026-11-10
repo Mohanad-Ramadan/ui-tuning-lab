@@ -10,15 +10,17 @@ release notes: https://github.com/Mohanad-Ramadan/ui-tuning-lab
 
 ## How a lab works
 
-- **Shipped** is the declared default and is read-only; editing it starts a pin.
-  The selected chip is outlined and is what the feature shows, so switching
-  chips is the comparison.
-- **Duplicate** branches the selected pin; **Apply** hands it to the agent
-  through the log, a result file, and a `land <name>` code on the clipboard.
+- **Shipped** is the declared default and is read-only; editing it makes unsaved
+  changes until **Save & copy** keeps them as Look 1, Look 2, …. The selected
+  chip is outlined and is what the feature shows, so switching chips is the
+  comparison.
+- **Apply** hands the selected look to the agent through the log, a result
+  file, and a `land <name>` code on the clipboard, then hides; later picks go
+  through Save & copy and a pasted `land <name>`.
 - Every lab opens through an agent path, one or more human fast paths the user
   picks, and a visible fallback. Shake is offered only when inspection proves it
   free.
-- Pins stay in memory unless you ask to save them. Saved ones live under
+- Looks stay in memory unless you ask to save them. Saved ones live under
   `uiTuningLab.*` or `.ui-tuning-lab/`, and finalists kept at landing are
   seeded into the lab next time.
 
@@ -28,7 +30,7 @@ release notes: https://github.com/Mohanad-Ramadan/ui-tuning-lab
   development-only too.
 - The Shipped chip always shows the declared default, however often the lab
   reopens.
-- Persistence is off by default; pins are written to namespaced storage only
+- Persistence is off by default; looks are written to namespaced storage only
   when requested.
 - Closing releases all lab-owned UI, timers, observers, listeners, and tasks.
 

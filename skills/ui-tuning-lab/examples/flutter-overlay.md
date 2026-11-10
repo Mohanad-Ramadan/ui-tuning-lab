@@ -6,7 +6,7 @@ baseline is the declared default, `CardStyle.appDefault`. All lab code lives in
 `if (kDebugMode)`, a compile-time constant, so release AOT builds tree-shake it.
 The host wraps only the feature, but the pill and panel live in the app's
 `Overlay` through an `OverlayPortal`, the declarative form of an
-`OverlayEntry`, so they pin to the screen corner even when the feature sits
+`OverlayEntry`, so they look to the screen corner even when the feature sits
 inside a scroll view. The overlay child is built as part of the host's own
 build, so it follows every change to the shown look without `markNeedsBuild`
 calls. While the lab is closed it builds only the pill; the panel is not built
@@ -22,15 +22,16 @@ Activation (`references/activation.md`):
   has a debug drawer or developer menu, add an entry that calls the same open
   method, and keep the pill.
 
-The host's lab state owns the pins and the selection, so both survive closing
-the overlay. The default lab is ephemeral: pins live in memory and the log only,
+The host's lab state owns the looks and the selection, so both survive closing
+the overlay. The default lab is ephemeral: looks live in memory and the log only,
 and a name is never reused within an isolate. The panel follows
 `references/candidates.md`. The chip row under the header shows **Shipped** and
-each pin; the selected chip is outlined, and the feature always shows it.
-Switching chips is the comparison: there is no draft and nothing is stashed.
-The presets and sliders edit the selected pin in place; on Shipped, which is
-read-only, they start a new pin named after the preset or `tweak`.
-**Duplicate** branches the selected pin, **Apply** picks the selected chip and
+each saved look (**Look 1**, **Look 2**, …); the selected chip is outlined, and the feature always shows it.
+Switching chips is the comparison.
+The presets and sliders edit the selected look in place, and a saved look keeps its edits when
+you switch away; on Shipped, which is read-only, they make unsaved changes,
+with no chip outlined, until **Save & copy** keeps them as the next Look N.
+**Apply** (hidden after its first use) picks the selected chip and
 collapses the panel to the result bar (**Change** restores it), and the **⋯**
 menu holds **Copy values** for the selected look. Closing keeps the selected
 look in the feature. The hint sits below the scrolling controls.
@@ -134,8 +135,7 @@ bool uiTuningLabConsumeRequest() {
 
 // The declared default, never the value on screen when the lab opens.
 const _baseline = CardStyle.appDefault;
-// Preset keys are kebab-case: the key is what a pin records as basedOn and is
-// named after.
+// Preset keys are kebab-case: the key is what a look records as basedOn.
 const _presets = {
   'compact': CardStyle(cornerRadius: 4, spacing: 4),
   'relaxed': CardStyle(cornerRadius: 24, spacing: 16),
@@ -183,12 +183,20 @@ Future<void> _sendPick(Object? done) async {
   }
 }
 
-// `stem`, or `stem-2`, `stem-3`, ... when taken. Removed names stay in `issued`,
-// so a name is never reused in this isolate.
-String _nextName(String stem, Set<String> issued) {
-  var name = stem;
-  for (var i = 2; issued.contains(name); i++) { name = '$stem-$i'; }
-  return name;
+// The next look's name, `look-N`: one past the highest number issued in this
+// isolate, removed ones included, so a number is never reused.
+String _nextLookName(Set<String> issued) {
+  final used = [
+    for (final name in issued) int.tryParse(RegExp(r'^look-([0-9]+)$').firstMatch(name)?.group(1) ?? '') ?? 0,
+  ];
+  return 'look-${used.fold(0, (a, b) => a > b ? a : b) + 1}';
+}
+
+// A chip's label: `Look 2` for `look-2`, Shipped for `original`, else the name.
+String _chipLabel(String name) {
+  if (name == 'original') return 'Shipped';
+  final m = RegExp(r'^look-([0-9]+)$').firstMatch(name);
+  return m == null ? name : 'Look ${m.group(1)}';
 }
 
 class _Candidate {
@@ -209,21 +217,24 @@ class UITuningLabHost extends StatefulWidget {
 }
 
 class _UITuningLabHostState extends State<UITuningLabHost> {
-  // Pins the lab opens with. Empty by default; a later session seeds the
+  // Saved looks the lab opens with. Empty by default; a later session seeds the
   // finalists kept in the project here (references/candidates.md).
   final List<_Candidate> candidates = [];
-  // Every name issued, removed ones included, plus the names a pin never takes.
-  final Set<String> issued = {'draft', 'now', 'original', 'baseline'};
-  // The line each pin last logged, so a pin logs again only after it changed.
+  // Every name issued, removed ones included, so a look number is never reused.
+  final Set<String> issued = {};
+  // The line each look last logged, so a look logs again only after it changed.
   final Map<String, String> logged = {};
-  // The selected chip: 'original' (Shipped) or a pin's name. The feature always
-  // shows it; there is no draft and nothing is stashed.
+  // The selected chip: 'original' (Shipped) or a look's name. The feature always
+  // shows it.
   String selected = 'original';
+  // Edits made on Shipped and not saved yet; while set, no chip is outlined.
+  Map<String, double>? unsaved;
+  String unsavedBasedOn = 'baseline';
   String? status;
   String? result; // the last pick; while set, the panel is the result bar
-  // How many times Apply ran. The first reaches the agent's waiter; after it the
-  // agent no longer listens, so the button becomes Save and copy and the next pick goes
-  // through chat as a pasted `land <name>`. Change does not reset it.
+  // How many picks reached the agent. The first Apply reaches its waiter; after
+  // it the agent no longer listens, so Apply hides and Save & copy hands the
+  // pick over for the user to paste as `land <name>`. Change does not reset it.
   int applies = 0;
   // The result bar's second line: where Apply saved the pick. Only the
   // path_provider result file below saves one; without it the line stays empty.
@@ -255,8 +266,8 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   // and a new widget.style from the parent reaches it the same way.
   void update(VoidCallback change) => setState(change);
 
-  // Logs a pin's line when it is new or changed since it last logged. The
-  // persist variant also writes the pin here.
+  // Logs a look's line when it is new or changed since it last logged. The
+  // persist variant also writes the look here.
   void logPin(_Candidate c) {
     final line = _sortedJson(c.toJson());
     if (logged[c.name] == line) return;
@@ -264,7 +275,7 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     _log('UITUNINGLAB_CANDIDATE', c.toJson());
   }
 
-  // A pin edited in place logs its new values once it is left: another chip is
+  // A look edited in place logs its new values once it is left: another chip is
   // selected, the lab closes, or Apply.
   void leave() {
     final pin = selectedPin;
@@ -286,48 +297,60 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
   // Tapping a chip shows its look in the real feature. Switching chips is the
   // comparison.
   void select(String chip) {
-    if (chip == selected) return;
+    if (chip == selected && unsaved == null) return;
     leave();
     final c = candidates.where((c) => c.name == chip).firstOrNull;
     widget.onChanged(c == null ? _baseline : _apply(c.values));
-    update(() => selected = chip);
+    update(() { selected = chip; unsaved = null; });  // unsaved edits on Shipped are dropped
   }
 
-  // Adds a pin, selects it, and shows it.
-  void add(String stem, String basedOn, CardStyle next) {
-    leave();
-    final name = _nextName(stem, issued);
-    final c = _Candidate(name, basedOn, _changed(next));
-    issued.add(name);
-    logPin(c);
-    widget.onChanged(next);
-    update(() { candidates.add(c); selected = name; status = 'New look $name'; });
-  }
-
-  // Every control edits the selected look. Shipped is read-only, so an edit on it
-  // starts a new pin; a pin changes in place.
+  // Every control edits the selected look. Shipped is read-only, so an edit on
+  // it shows live as unsaved changes until Save & copy; a saved look changes in
+  // place and keeps its edits when the user switches away.
   void edit(CardStyle next, [String? preset]) {
     final i = candidates.indexWhere((c) => c.name == selected);
-    if (i < 0) { add(preset ?? 'tweak', preset ?? 'baseline', next); return; }
-    final old = candidates[i];
     widget.onChanged(next);
+    if (i < 0) {
+      update(() { unsaved = _changed(next); if (preset != null) unsavedBasedOn = preset; });
+      return;
+    }
+    final old = candidates[i];
     update(() => candidates[i] = _Candidate(old.name, preset ?? old.basedOn, _changed(next)));
   }
 
   void applyPreset(String name) => edit(_presets[name]!, name);
 
-  // Duplicate branches the selected pin, so the two can be compared. It copies
-  // the pin's own values, never widget.style, which updates only after the
-  // parent rebuilds.
-  void duplicate() {
+  bool get canSave => selectedPin != null || unsaved != null;
+
+  // Keeps the current look: unsaved edits on Shipped become the next Look N,
+  // selected; a selected look is logged as it is. Returns the look, or null on
+  // plain Shipped.
+  _Candidate? keep() {
     final pin = selectedPin;
-    if (pin == null) return;
-    add(pin.name.replaceFirst(RegExp(r'-[0-9]+$'), ''), pin.name, _apply(pin.values));
+    if (pin != null) { logPin(pin); return pin; }
+    final values = unsaved;
+    if (values == null) return null;
+    final c = _Candidate(_nextLookName(issued), unsavedBasedOn, values);
+    issued.add(c.name);
+    logPin(c);
+    update(() { candidates.add(c); selected = c.name; unsaved = null; unsavedBasedOn = 'baseline'; });
+    return c;
+  }
+
+  // Save & copy keeps the current look as a chip to compare and copies its land
+  // code. Before the first Apply the agent is listening for Apply, so nothing
+  // more happens; after it, the pick is handed over for pasting.
+  Future<void> saveAndCopy() async {
+    final c = keep();
+    if (c == null) return;
+    if (applies > 0) return handOver(c);
+    await Clipboard.setData(ClipboardData(text: 'land ${c.name}'));
+    update(() => status = 'Saved ${_chipLabel(c.name)} · copied land ${c.name}');
   }
 
   // Reports the selected look.
   Future<void> copyValues() async {
-    final values = selectedPin?.values ?? <String, double>{};
+    final values = selectedPin?.values ?? unsaved ?? <String, double>{};
     final json = _sortedJson(values);
     _log('UITUNINGLAB_VALUES', values);
     await Clipboard.setData(ClipboardData(text: json));
@@ -345,11 +368,11 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     });
   }
 
-  // Apply picks the selected chip and finishes. Picking again replaces the
-  // result.
-  Future<void> choose() async {
-    leave();
-    final pin = selectedPin;
+  // Apply keeps unsaved edits as a look first, then hands the pick over.
+  Future<void> choose() => handOver(keep());
+
+  // Hands a pick to the agent and finishes. Picking again replaces the result.
+  Future<void> handOver(_Candidate? pin) async {
     final winner = pin?.name ?? 'original';
     final done = <String, Object?>{
       'candidates': [for (final c in candidates) c.toJson()],
@@ -370,7 +393,7 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
 
   @override
   Widget build(BuildContext context) {
-    // The host wraps only the feature; the overlay pins the pill and panel to
+    // The host wraps only the feature; the overlay looks the pill and panel to
     // the screen. TickerMode is off while the screen is an offstage tab
     // (IndexedStack) or a covered route, so the lab hides with it.
     return OverlayPortal(controller: portal, child: widget.child, overlayChildBuilder: (overlayContext) {
@@ -397,7 +420,7 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
           Row(mainAxisSize: MainAxisSize.min, children: [
             Semantics(liveRegion: true, child: Text(applies > 1
                 ? 'Copied land $name: paste it in chat so the agent applies it'
-                : 'Applied: $name')),
+                : 'Applied: ${_chipLabel(name)}')),
             TextButton(onPressed: () => update(() => result = null), child: const Text('Change')),
           ]),
           if ((saved ?? status) != null)
@@ -450,18 +473,19 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
                 ),
                 TextButton(onPressed: close, child: const Text('Close')),
               ]),
-              // The chips: Shipped, then each pin. The selected chip is outlined.
+              // The chips: Shipped, then each look. The selected chip is outlined.
               Wrap(spacing: 8, runSpacing: 4, children: [
-                ChoiceChip(label: const Text('Shipped'), selected: selected == 'original',
-                    side: outline(selected == 'original'), showCheckmark: false,
+                ChoiceChip(label: const Text('Shipped'), selected: selected == 'original' && unsaved == null,
+                    side: outline(selected == 'original' && unsaved == null), showCheckmark: false,
                     onSelected: (_) => select('original')),
                 for (final c in candidates)
-                  InputChip(label: Text(c.name), selected: selected == c.name,
+                  // × only on the selected look, so nothing is removed by accident.
+                  InputChip(label: Text(_chipLabel(c.name)), selected: selected == c.name,
                       side: outline(selected == c.name), showCheckmark: false,
                       onSelected: (_) => select(c.name),
                       deleteIcon: const Icon(Icons.close, size: 16),
-                      deleteButtonTooltipMessage: 'Remove ${c.name}',
-                      onDeleted: () => remove(c.name)),
+                      deleteButtonTooltipMessage: 'Remove ${_chipLabel(c.name)}',
+                      onDeleted: selected == c.name ? () => remove(c.name) : null),
               ]),
               Flexible(child: SingleChildScrollView(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -478,13 +502,14 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
                 if (status != null) Semantics(liveRegion: true, child: Text(status!)),
               ]))),
               Wrap(spacing: 8, children: [
-                OutlinedButton(onPressed: selectedPin == null ? null : duplicate, child: const Text('Duplicate')),
-                FilledButton(onPressed: choose, child: Text(applies > 0 ? 'Save and copy' : 'Apply')),
+                OutlinedButton(onPressed: canSave ? saveAndCopy : null, child: const Text('Save & copy')),
+                // Apply reaches the agent once; after that it is hidden for good.
+                if (applies == 0) FilledButton(onPressed: choose, child: const Text('Apply')),
               ]),
               // Pinned below the controls, visible however long the panel grows.
               Padding(padding: const EdgeInsets.only(top: 8), child: Text(applies > 0
-                  ? 'Duplicate to compare · Save and copy, then paste it in chat'
-                  : 'Duplicate to compare · Apply to finish')),
+                  ? 'Save & copy, then paste it in chat'
+                  : 'Save & copy to keep a look · Apply to finish')),
             ]),
           ),
         ),
@@ -535,9 +560,9 @@ In the host state:
 
 - Add `String design = 'original';`, the selected look's design.
 - `_Candidate.values` becomes `Map<String, Object>`, and `copyValues` and
-  `choose` fall back to `<String, Object>{}` for Shipped.
-- A new pin is named after its design when that is not `original`, else after
-  the preset, else `tweak`.
+  `handOver` fall back to `<String, Object>{}` for Shipped.
+- `unsaved` becomes `Map<String, Object>?` too, and `keep` saves it as the next
+  `Look N` with its design inside.
 - Presets carry a design: `Map<String, ({String design, CardStyle style})>`,
   and `applyPreset` passes both to `edit`.
 - Fields that are not numbers (a bool toggle, a string choice) go in the same
@@ -547,56 +572,43 @@ In the host state:
   bloc, `context.watch<HomeBloc>().state` inside the builder works, since a
   variant renders where the feature did. The panel, in the overlay, inherits
   from the host's location too.
-- `remove` also sets `design = 'original'` when it removes the selected pin.
+- `remove` also sets `design = 'original'` when it removes the selected look.
 
-`select`, `add`, `edit`, and `duplicate` move the design with the style:
+`select` and `edit` move the design with the style:
 
 ```dart
 void select(String chip) {
-  if (chip == selected) return;
+  if (chip == selected && unsaved == null) return;
   leave();
   final c = candidates.where((c) => c.name == chip).firstOrNull;
   widget.onChanged(c == null ? _baseline : _styleOf(c.values));
-  update(() { selected = chip; design = c == null ? 'original' : _designOf(c.values); });
-}
-
-void add(String stem, String basedOn, CardStyle next, String nextDesign) {
-  leave();
-  final name = _nextName(stem, issued);
-  final c = _Candidate(name, basedOn, _changedWith(nextDesign, next));
-  issued.add(name);
-  logPin(c);
-  widget.onChanged(next);
-  update(() { candidates.add(c); selected = name; design = nextDesign; status = 'New look $name'; });
+  update(() {
+    selected = chip;
+    unsaved = null;
+    design = c == null ? 'original' : _designOf(c.values);
+  });
 }
 
 // A control that does not change the design keeps the selected look's design.
 void edit(CardStyle next, {String? preset, String? design}) {
   final nextDesign = design ?? this.design;
   final i = candidates.indexWhere((c) => c.name == selected);
-  if (i < 0) {
-    add(nextDesign != 'original' ? nextDesign : preset ?? 'tweak', preset ?? 'baseline', next, nextDesign);
-    return;
-  }
-  final old = candidates[i];
   widget.onChanged(next);
   update(() {
     this.design = nextDesign;
-    candidates[i] = _Candidate(old.name, preset ?? old.basedOn, _changedWith(nextDesign, next));
+    if (i < 0) {
+      unsaved = _changedWith(nextDesign, next);
+      if (preset != null) unsavedBasedOn = preset;
+    } else {
+      final old = candidates[i];
+      candidates[i] = _Candidate(old.name, preset ?? old.basedOn, _changedWith(nextDesign, next));
+    }
   });
 }
 
 void applyPreset(String name) {
   final p = _presets[name]!;
   edit(p.style, preset: name, design: p.design);
-}
-
-// The pin's own values, never widget.style, which updates only after the
-// parent rebuilds.
-void duplicate() {
-  final pin = selectedPin;
-  if (pin == null) return;
-  add(pin.name.replaceFirst(RegExp(r'-[0-9]+$'), ''), pin.name, _styleOf(pin.values), _designOf(pin.values));
 }
 ```
 
@@ -606,8 +618,8 @@ The sliders call `edit(look.copyWith(...))` as before.
   `final body = _designs[design]?.call(context, look) ?? widget.child;` and
   uses `body` where it used `widget.child`.
 - The panel's first row under the chips is the Design picker. Like every other
-  control it is always enabled: on Shipped it starts a new pin named after the
-  design.
+  control it is always enabled: on Shipped it makes unsaved changes, which Save
+  & copy keeps as the next `Look N`.
 
 ```dart
 const Text('Design'),
@@ -632,7 +644,7 @@ the Simulator `log show` command without the subsystem clause. Wait for the
 pick with `python3 <skill-dir>/scripts/wait-for-pick.py` in the background and
 `--log android` or `--log ios-sim` (`references/platform-handoff.md`, "Wait for
 Done"); when the agent started `flutter run` itself with its output redirected
-to a file, `--log-file <file>` works on every platform. Logcat truncates a line near 4 KB; a Done line with many pins
+to a file, `--log-file <file>` works on every platform. Logcat truncates a line near 4 KB; a Done line with many looks
 can exceed it, so ask the user to press Apply again or read `flutter run`
 output.
 
@@ -675,8 +687,8 @@ Future<void> _uiTuningLabWriteResult(Map<String, Object?> done) async {
 }
 ```
 
-In `choose()`, right after `_log('UITUNINGLAB_DONE', done)`:
-`try { await _uiTuningLabWriteResult(done); saved = 'Saved $winner in .ui-tuning-lab/result.json'; } catch (e) { status = 'Result file failed: $e'; }`.
+In `handOver()`, right after `_log('UITUNINGLAB_DONE', done)`:
+`try { await _uiTuningLabWriteResult(done); saved = 'Saved ${_chipLabel(winner)} in .ui-tuning-lab/result.json'; } catch (e) { status = 'Result file failed: $e'; }`.
 The pick still goes through the log and the clipboard, and either line shows
 under the result bar. Read it with
 `adb exec-out run-as <package> cat files/.ui-tuning-lab/result.json` on Android
@@ -684,9 +696,9 @@ or the iOS Simulator command in `references/platform-handoff.md`.
 
 ## Persistence variant, only when requested
 
-Writes one `schemaVersion: 2` profile per pin to
+Writes one `schemaVersion: 2` profile per look to
 `getApplicationSupportDirectory()/.ui-tuning-lab/candidates/<name>.json`
-when the pin is created and again whenever it logs new values
+on Save & copy, and again when an edited look is left
 (`references/platform-handoff.md`). Ask before adding `path_provider` if the
 app lacks it. On Android that directory is the app's `files` directory, which
 Android Auto Backup includes by default: exclude `.ui-tuning-lab/` in the app's
@@ -700,9 +712,9 @@ import 'package:path_provider/path_provider.dart';
 Future<Directory> _uiTuningLabDir() async =>
     Directory('${(await getApplicationSupportDirectory()).path}/.ui-tuning-lab/candidates');
 
-// Writes the pin's own file: temporary file, then rename, so a reader never
-// sees half a profile. Stored names are reserved, so a new pin never lands on
-// another pin's file.
+// Writes the look's own file: temporary file, then rename, so a reader never
+// sees half a profile. Stored names are reserved, so a new look never lands on
+// another look's file.
 Future<void> _uiTuningLabWrite(_Candidate c) async {
   final dir = await (await _uiTuningLabDir()).create(recursive: true);
   final temp = File('${dir.path}/${c.name}.json.tmp');
@@ -748,15 +760,15 @@ Future<(List<_Candidate>, List<String>)> _uiTuningLabReadAll(Set<String> reserve
 
 Wiring: `logPin()`, right after its log line, calls
 `_uiTuningLabWrite(c).catchError((Object e) { if (mounted) update(() => status = '${c.name} not saved: $e'); });`,
-so a pin is written when it is created and whenever it logs new values; a
-failed write leaves the pin in the panel. In a design-variant lab, write
+so a look is written on Save & copy and again when an edited look is left; a
+failed write leaves the look in the panel. In a design-variant lab, write
 `{..._asMap(_styleOf(c.values)), 'design': _designOf(c.values)}` as `overrides` and read `design`
-back with `_designOf`, so a saved pin reopens on its design. `remove()` becomes
+back with `_designOf`, so a saved look reopens on its design. `remove()` becomes
 async, deletes `<dir>/<name>.json` first, and on failure stops with a status and
 keeps the chip. `open()` awaits
 `_uiTuningLabReadAll(issued)`, adds found candidates not already listed, shows
 the problems in `status`, then logs unlogged candidates. Pull a file with
-`adb exec-out run-as <pkg> cat files/.ui-tuning-lab/candidates/tweak.json` (the
+`adb exec-out run-as <pkg> cat files/.ui-tuning-lab/candidates/look-1.json` (the
 Android support directory) and validate it with
 `sh <skill-dir>/scripts/verify.sh profile <file>`.
 

@@ -8,20 +8,20 @@ Command-Shift-L are the human path and visible fallback; the DEBUG-only
 the agent path (`references/activation.md`). **Copy values** puts the fields that differ
 from the baseline on the pasteboard and logs them as one
 `UITUNINGLAB_VALUES {...}` line for landing (`references/landing-protocol.md`).
-The chips, **Duplicate**, **Apply**, and the **⋯** menu (Copy values) follow
-`references/candidates.md`. The chip row shows Shipped and each pin; the
+The chips, **Save & copy**, **Apply**, and the **⋯** menu (Copy values) follow
+`references/candidates.md`. The chip row shows Shipped and each saved look (**Look 1**, **Look 2**, …); the
 selected chip is outlined, and the toolbar always shows it, so switching chips is
-the comparison. The controls edit the selected pin in place; on Shipped, which is
-read-only, they start a new pin named after the preset or `tweak`. **Duplicate**
-branches the selected pin. **Apply** picks the selected chip, logs
+the comparison. The controls edit the selected look in place, and a saved look keeps its edits when
+you switch away; on Shipped, which is read-only, they make unsaved changes,
+with no chip outlined, until **Save & copy** keeps them as the next Look N. **Apply** (hidden after its first use) picks the selected chip, logs
 `UITUNINGLAB_DONE`, writes Application Support
 `<bundle-id>/.ui-tuning-lab/result.json`, copies `land <name>`, and collapses
 the panel to a `Applied:` bar whose Change button reopens it. The coordinator
-owns the `UITuningLabCandidates` store, so the pins and the selection survive
+owns the `UITuningLabCandidates` store, so the looks and the selection survive
 closing the panel; in the default candidate they live in memory and in the log,
 and a name is never reused within a run. To reopen a session, seed the store's
-`initial:` array; each seeded pin logs its own `UITUNINGLAB_CANDIDATE` line. The
-default candidate saves no pins.
+`initial:` array; each seeded look logs its own `UITUNINGLAB_CANDIDATE` line. The
+default candidate saves no looks.
 
 The panel is a plain stack, never a `Form`: on macOS a `Form` lays its rows out
 in two columns, which pushes the controls right and shows each label twice. The
@@ -115,7 +115,7 @@ import AppKit
 import SwiftUI
 
 #if DEBUG
-/// Lab-only state the panel observes; the coordinator owns it beside the pins.
+/// Lab-only state the panel observes; the coordinator owns it beside the looks.
 @MainActor
 final class UITuningLabState: ObservableObject {
     @Published var sent: String?  // the last pick; set, the panel is one bar
@@ -161,7 +161,7 @@ final class UITuningLabCoordinator: NSObject, NSWindowDelegate {
     func close() { panel?.close() }
 
     func windowWillClose(_ notification: Notification) {
-        // The feature keeps the selected look; an edited pin logs its values.
+        // The feature keeps the selected look; an edited look logs its values.
         candidates.leave()
         lab.sent = nil
         panel?.delegate = nil
@@ -224,7 +224,7 @@ struct UITuningLabPanel: View {
                     HStack {
                         Text(candidates.applies > 1
                             ? "Copied land \(sent): paste it in chat so the agent applies it"
-                            : "Applied: \(sent)")
+                            : "Applied: \(uiTuningLabChipLabel(sent))")
                         Spacer()
                         Button("Change") { lab.sent = nil }
                     }
@@ -261,10 +261,13 @@ struct UITuningLabPanel: View {
                     chip("Shipped", id: "original")
                     ForEach(candidates.all) { pin in
                         HStack(spacing: 2) {
-                            chip(pin.name, id: pin.name)
-                            Button("×") { model.style = candidates.remove(pin.name) }
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel("Remove \(pin.name)")
+                            chip(pin.label, id: pin.name)
+                            // × only on the selected look, so nothing is removed by accident.
+                            if candidates.selected == pin.name {
+                                Button("×") { model.style = candidates.remove(pin.name) }
+                                    .buttonStyle(.borderless)
+                                    .accessibilityLabel("Remove \(pin.label)")
+                            }
                         }
                     }
                 }
@@ -285,17 +288,24 @@ struct UITuningLabPanel: View {
             }
             Divider()
             HStack {
-                // Duplicate branches the selected pin; Shipped has nothing to branch.
-                Button("Duplicate") { candidates.duplicate(); model.style = candidates.selectedLook }
-                    .disabled(candidates.selectedPin == nil)
+                // Save & copy keeps the current look as a chip to compare; after the
+                // first Apply it also hands the pick over for pasting in chat.
+                Button("Save & copy") {
+                    let applied = candidates.applies > 0
+                    if let name = candidates.saveAndCopy(), applied { lab.sent = name }
+                }
+                .disabled(!candidates.canSave)
                 Spacer()
-                Button(candidates.applies > 0 ? "Save and copy" : "Apply") { lab.sent = candidates.choose() }
-                    .keyboardShortcut(.defaultAction)
+                // Apply reaches the agent once; after that it is hidden for good.
+                if candidates.applies == 0 {
+                    Button("Apply") { lab.sent = candidates.choose() }
+                        .keyboardShortcut(.defaultAction)
+                }
             }
             // Pinned at the bottom, so it shows however long the controls grow.
             Text(candidates.applies > 0
-                ? "Duplicate to compare · Save and copy, then paste it in chat"
-                : "Duplicate to compare · Apply to finish")
+                ? "Save & copy, then paste it in chat"
+                : "Save & copy to keep a look · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -324,7 +334,7 @@ struct UITuningLabPanel: View {
 
     /// One chip. The selected chip is outlined and is the look the feature shows.
     private func chip(_ title: String, id: String) -> some View {
-        let on = candidates.selected == id
+        let on = candidates.isOutlined(id)
         return Button(title) { model.style = candidates.select(id) }
             .buttonStyle(.bordered)
             .tint(on ? .accentColor : .secondary)
@@ -332,8 +342,8 @@ struct UITuningLabPanel: View {
             .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// Every control edits the selected look: a pin in place, or, on Shipped, a
-    /// new pin.
+    /// Every control edits the selected look: a saved look in place, or, on
+    /// Shipped, unsaved changes until Save & copy.
     private func edit(_ value: ToolbarStyle, preset: String? = nil) {
         candidates.edit(value, preset: preset)
         model.style = candidates.selectedLook
@@ -345,7 +355,7 @@ struct UITuningLabPanel: View {
 
 <!-- copy: assets/swift/UITuningLabValues.swift -->
 `UITuningLabValues.swift`: copy `assets/swift/UITuningLabValues.swift` into the
-app's target unchanged. It holds Copy values, the looks store and selection, pin names,
+app's target unchanged. It holds Copy values, the looks store and selection, look names,
 Apply with its result file, and the log lines every Swift lab shares,
 all inside `#if DEBUG`.
 
@@ -359,12 +369,12 @@ the archived Release app before approval.
 ## Optional persistence, only when requested
 
 If the user explicitly requests persistence, replace `UITuningLabPanel.swift`
-with this version. The app and coordinator files stay unchanged. Each pin is
-written as a `schemaVersion` 2 profile when it is created and again whenever it
-logs new values, and × deletes that pin's file and nothing else. Files live under
+with this version. The app and coordinator files stay unchanged. Each look is
+written as a `schemaVersion` 2 profile on Save & copy and again whenever it
+logs new values (leaving it after an edit), and × deletes that look's file and nothing else. Files live under
 Application Support's `<bundle-id>/.ui-tuning-lab/candidates/`: a non-sandboxed
 app shares Application Support with every other app, so the bundle ID keeps labs
-apart. Opening the panel adds every saved pin as a chip, ordered by the
+apart. Opening the panel adds every saved look as a chip, ordered by the
 `savedAt` of its first write (which keeps fractional seconds) and then by name,
 and logs each one; the baseline stays the declared default, so Shipped still
 shows it. Every stored file name stays taken, even for a file that was skipped.
@@ -416,7 +426,7 @@ struct UITuningLabPanel: View {
     @ObservedObject var candidates: UITuningLabCandidates<ToolbarStyle>
     let baseline: ToolbarStyle
 
-    // A persisting lab writes each pin whenever it logs, and deletes it on ×.
+    // A persisting lab writes each look whenever it logs, and deletes it on ×.
     private func persist() {
         candidates.store = save
         candidates.unstore = { try FileManager.default.removeItem(at: UITuningLabProfile.fileURL($0)) }
@@ -433,7 +443,7 @@ struct UITuningLabPanel: View {
                     HStack {
                         Text(candidates.applies > 1
                             ? "Copied land \(sent): paste it in chat so the agent applies it"
-                            : "Applied: \(sent)")
+                            : "Applied: \(uiTuningLabChipLabel(sent))")
                         Spacer()
                         Button("Change") { lab.sent = nil }
                     }
@@ -471,10 +481,13 @@ struct UITuningLabPanel: View {
                     chip("Shipped", id: "original")
                     ForEach(candidates.all) { pin in
                         HStack(spacing: 2) {
-                            chip(pin.name, id: pin.name)
-                            Button("×") { model.style = candidates.remove(pin.name) }
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel("Remove \(pin.name)")
+                            chip(pin.label, id: pin.name)
+                            // × only on the selected look, so nothing is removed by accident.
+                            if candidates.selected == pin.name {
+                                Button("×") { model.style = candidates.remove(pin.name) }
+                                    .buttonStyle(.borderless)
+                                    .accessibilityLabel("Remove \(pin.label)")
+                            }
                         }
                     }
                 }
@@ -495,17 +508,24 @@ struct UITuningLabPanel: View {
             }
             Divider()
             HStack {
-                // Duplicate branches the selected pin; Shipped has nothing to branch.
-                Button("Duplicate") { candidates.duplicate(); model.style = candidates.selectedLook }
-                    .disabled(candidates.selectedPin == nil)
+                // Save & copy keeps the current look as a chip to compare; after the
+                // first Apply it also hands the pick over for pasting in chat.
+                Button("Save & copy") {
+                    let applied = candidates.applies > 0
+                    if let name = candidates.saveAndCopy(), applied { lab.sent = name }
+                }
+                .disabled(!candidates.canSave)
                 Spacer()
-                Button(candidates.applies > 0 ? "Save and copy" : "Apply") { lab.sent = candidates.choose() }
-                    .keyboardShortcut(.defaultAction)
+                // Apply reaches the agent once; after that it is hidden for good.
+                if candidates.applies == 0 {
+                    Button("Apply") { lab.sent = candidates.choose() }
+                        .keyboardShortcut(.defaultAction)
+                }
             }
             // Pinned at the bottom, so it shows however long the controls grow.
             Text(candidates.applies > 0
-                ? "Duplicate to compare · Save and copy, then paste it in chat"
-                : "Duplicate to compare · Apply to finish")
+                ? "Save & copy, then paste it in chat"
+                : "Save & copy to keep a look · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -534,7 +554,7 @@ struct UITuningLabPanel: View {
 
     /// One chip. The selected chip is outlined and is the look the feature shows.
     private func chip(_ title: String, id: String) -> some View {
-        let on = candidates.selected == id
+        let on = candidates.isOutlined(id)
         return Button(title) { model.style = candidates.select(id) }
             .buttonStyle(.bordered)
             .tint(on ? .accentColor : .secondary)
@@ -542,14 +562,14 @@ struct UITuningLabPanel: View {
             .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// Every control edits the selected look: a pin in place, or, on Shipped, a
-    /// new pin.
+    /// Every control edits the selected look: a saved look in place, or, on
+    /// Shipped, unsaved changes until Save & copy.
     private func edit(_ value: ToolbarStyle, preset: String? = nil) {
         candidates.edit(value, preset: preset)
         model.style = candidates.selectedLook
     }
 
-    /// Writes a pin atomically. An existing file keeps its `savedAt`, so pins
+    /// Writes a look atomically. An existing file keeps its `savedAt`, so looks
     /// load in the order they were made.
     private func save(_ candidate: UITuningLabCandidate<ToolbarStyle>) throws {
         let file = UITuningLabProfile.fileURL(candidate.name)
@@ -619,4 +639,4 @@ struct UITuningLabPanel: View {
 ```
 
 Each write replaces `<name>.json` atomically. A failed write shows in the status
-line; the pin stays in the panel and in the log.
+line; the look stays in the panel and in the log.

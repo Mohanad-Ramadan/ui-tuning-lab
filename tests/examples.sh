@@ -260,17 +260,27 @@ for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; d
   fi
 done
 
-# Chips, Duplicate, Apply (Copy after the first), and the result file are in every variant
-# users copy (references/candidates.md), the ephemeral default included.
+# Chips (Look N), Save & copy, Apply (hidden after the first), and the result file
+# are in every variant users copy (references/candidates.md), the ephemeral
+# default included.
 for example in $EXAMPLES; do
   for variant in $(example_variants "$SKILL/examples/$example"); do
     dir="$WORK/${example%.md}-$variant"
     label="$example [$variant]"
-    for needle in 'Shipped' 'Duplicate' 'Apply' 'Duplicate to compare · Apply to finish' \
-        '"Save and copy"' 'Duplicate to compare · Save and copy, then paste it in chat' 'Applied: ' 'Saved ' \
-        'paste it in chat so the agent applies it' 'land ' 'result' 'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE'; do
+    for needle in 'Shipped' 'Save & copy' 'Apply' 'Save & copy to keep a look · Apply to finish' \
+        'Save & copy, then paste it in chat' 'Applied: ' 'Saved ' 'Look ' 'look-' \
+        'paste it in chat so the agent applies it' 'land ' 'result' 'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE' \
+        'only on the selected look'; do
       if grep -rqF "$needle" "$dir"; then ok "$label has $needle"; else not_ok "$label has $needle"; fi
     done
+    # Apply is shown only until the first Apply.
+    if grep -rqE 'applies ===? 0' "$dir"; then ok "$label hides Apply after the first"; else not_ok "$label hides Apply after the first"; fi
+    # Duplicate and auto-named pins are gone: a chip appears only through Save & copy.
+    if grep -rqE 'Duplicate|duplicate\(|nextName\(|FavoriteName|"tweak"' "$dir"; then
+      not_ok "$label has no Duplicate or auto-named pins" "$(grep -rnE 'Duplicate|duplicate\(|nextName\(|FavoriteName|"tweak"' "$dir")"
+    else
+      ok "$label has no Duplicate or auto-named pins"
+    fi
     # There is no draft, stash, or Reset: the selected chip is the look shown,
     # and selection is an outline, never a "<source> + edits" label.
     retired='\+ edits|draftMatch|stashedDraft|Pin looks to compare|"Reset"|>Reset<'

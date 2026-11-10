@@ -25,8 +25,8 @@ into your agent's skills directory (for Claude Code, `~/.claude/skills/`).
 - **A panel beside the real feature**, not a mockup: presets, direct controls,
   and Replay and Speed for motion.
 - **Looks you compare by switching chips.** Shipped is the declared default and
-  is read-only; editing it starts a pin. Duplicate branches a pin to try a
-  variation.
+  is read-only. Save & copy keeps the current look as Look 1, Look 2, …, and
+  a saved look keeps its edits when you switch away.
 - **Alternative designs** as a Design picker in the same panel, with the
   original as the baseline.
 - **A finish with no copy-paste.** Apply hands the selected look to the agent
@@ -41,7 +41,7 @@ into your agent's skills directory (for Claude Code, `~/.claude/skills/`).
   the agent checks the release build or production bundle for leftovers.
 - Opening the lab changes nothing on screen, and the Shipped chip always shows
   the declared default.
-- Nothing is saved unless you ask. Saved pins live only under `uiTuningLab.*`
+- Nothing is saved unless you ask. Saved looks live only under `uiTuningLab.*`
   or `.ui-tuning-lab/`, never a production key.
 - Closing releases every view, timer, observer, listener, and task the lab owns.
 

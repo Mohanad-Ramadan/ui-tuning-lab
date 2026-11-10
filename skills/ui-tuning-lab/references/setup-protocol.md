@@ -23,7 +23,7 @@ tests. Record these working choices:
   before the activation question is written, so the question names a free
   corner ("Wire the host", "Find a free corner");
 - persistence: none unless the user asks to save or reuse profiles;
-- profiles: pins in memory unless named profiles were requested;
+- profiles: looks in memory unless named profiles were requested;
 - baseline: the feature's declared default, the value it ships with (for example
   `CardStyle.appDefault` or `cardDefaults`). Never take it from the screen when the
   lab opens: the selected look survives closing, so a reopened lab would treat it
@@ -79,7 +79,7 @@ Before building a panel, look for one the project already has:
 | React Native `DevSettings.addMenuItem` or Flipper plugins | the existing developer menu |
 
 Reuse changes only the control surface. The four guarantees, the naming rule, a
-baseline, the chips, Duplicate, Apply with its hint, Copy values
+baseline, the chips, Save & copy, Apply with its hint, Copy values
 (`references/candidates.md`), and landing still apply. When the tool cannot host
 one of them (Storybook renders outside the running app, so its chips would not
 show the real feature), add it as a plain button beside the library's panel or say

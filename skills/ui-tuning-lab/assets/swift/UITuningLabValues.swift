@@ -37,45 +37,58 @@ func uiTuningLabCopyValues<Value: Encodable>(from baseline: Value, to draft: Val
     return values == "{}" ? "No changes from baseline" : "Copied \(values)"
 }
 
-/// A look the lab holds (references/candidates.md): a pin the controls edit in
-/// place while it is selected. It lives in memory, and in storage only when the
-/// lab persists it.
+/// A look the lab holds (references/candidates.md): a saved look the controls
+/// edit in place while it is selected. It lives in memory, and in storage only
+/// when the lab persists it.
 struct UITuningLabCandidate<Value: Codable>: Identifiable {
-    var name: String
-    var basedOn: String  // a preset's kebab-case name, `baseline`, or the pin it was duplicated from
+    var name: String     // `look-1`, `look-2`, ...; a kept finalist keeps its name
+    var basedOn: String  // a preset's kebab-case name, or `baseline`
     var value: Value
     var id: String { name }
+    /// The chip's label: `Look 2` for `look-2`, else the name.
+    var label: String { uiTuningLabChipLabel(name) }
+}
+
+/// `Look 2` for `look-2`; any other name as it is.
+func uiTuningLabChipLabel(_ name: String) -> String {
+    guard name.hasPrefix("look-"), let number = Int(name.dropFirst(5)) else { return name }
+    return "Look \(number)"
 }
 
 /// The looks, oldest first, and the selected chip, owned beside the feature so
-/// they survive closing the lab. The feature always shows the selected look:
-/// switching chips is the comparison, and there is no draft and no stash.
-/// Shipped (`original`) is read-only, so an edit on it starts a new pin; a pin
-/// changes in place. Lines the agent can replay: `UITUNINGLAB_CANDIDATE {...}`
-/// when a pin is created and again when an edited pin is left, and
-/// `UITUNINGLAB_CANDIDATE_REMOVED {...}`.
+/// they survive closing the lab. The feature always shows the selected look.
+/// Shipped (`original`) is read-only: an edit on it shows live as unsaved
+/// changes, outlining no chip, until Save & copy keeps it as the next
+/// `Look N`; tapping a chip first drops them. A saved look changes in place and
+/// keeps its edits when the user switches away. Lines the agent can replay:
+/// `UITUNINGLAB_CANDIDATE {...}` when a look is saved and again when an edited
+/// look is left, and `UITUNINGLAB_CANDIDATE_REMOVED {...}`.
 @MainActor
 final class UITuningLabCandidates<Value: Codable>: ObservableObject {
     @Published private(set) var all: [UITuningLabCandidate<Value>] = []
-    /// The selected chip: `original` for Shipped, or a pin's name.
+    /// The selected chip: `original` for Shipped, or a look's name.
     @Published private(set) var selected = "original"
+    /// Edits made on Shipped and not saved yet; while set, no chip is outlined.
+    @Published private(set) var unsaved: Value?
     /// What the last action reported, for the panel's status line.
     @Published var status: String?
-    /// How many times Apply ran. The first reaches the agent's waiter; after it
-    /// the agent no longer listens, so the panel labels the button Save and copy and the
-    /// next pick goes through chat as a pasted `land <name>`. Change does not
-    /// reset it; it lives as long as the lab's candidates.
+    /// How many times a pick reached the agent. The first Apply reaches its
+    /// waiter; after it the agent no longer listens, so Apply hides and Save &
+    /// copy also hands the pick over, for the user to paste as `land <name>`.
+    /// Change does not reset it; it lives as long as the lab's candidates.
     @Published private(set) var applies = 0
-    /// The result bar's second line after Apply: where the pick was saved, or
-    /// nil when the write failed (then `status` says why).
+    /// The result bar's second line after a pick: where it was saved, or nil
+    /// when the write failed (then `status` says why).
     @Published private(set) var saved: String?
     let baseline: Value
-    /// Set by a persisting lab: writes a pin's profile whenever it logs, and
-    /// deletes it on remove. A failure shows in `status`; the pin stays.
+    /// Set by a persisting lab: writes a look's profile whenever it logs (Save &
+    /// copy, and leaving an edited look), and deletes it on remove. A failure
+    /// shows in `status`; the look stays.
     var store: ((UITuningLabCandidate<Value>) throws -> Void)?
     var unstore: ((String) throws -> Void)?
     private var taken: Set<String> = []  // every name issued or reserved this run
-    private var logged: [String: String] = [:]  // the line each pin last logged
+    private var unsavedBasedOn = "baseline"
+    private var logged: [String: String] = [:]  // the line each look last logged
 
     /// Seed with finalists kept in the project to reopen a session; empty by default.
     init(baseline: Value, initial: [UITuningLabCandidate<Value>] = []) {
@@ -89,63 +102,67 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
 
     var selectedPin: UITuningLabCandidate<Value>? { named(selected) }
 
-    /// The look the feature shows: the baseline for Shipped, else the selected pin.
-    var selectedLook: Value { selectedPin?.value ?? baseline }
+    /// The look the feature shows: the selected look, else unsaved edits, else
+    /// the baseline.
+    var selectedLook: Value { selectedPin?.value ?? unsaved ?? baseline }
 
-    /// Marks names as used, such as every file in storage, so no pin takes them.
+    /// Whether a chip is outlined: false while Shipped has unsaved edits.
+    func isOutlined(_ name: String) -> Bool { name == selected && (name != "original" || unsaved == nil) }
+
+    /// Save & copy is disabled on Shipped with no edits: there is nothing to keep.
+    var canSave: Bool { selectedPin != nil || unsaved != nil }
+
+    /// Marks names as used, such as every file in storage, so no look takes them.
     func reserve(_ names: some Sequence<String>) { taken.formUnion(names) }
 
-    /// Selects a chip and returns the look the feature must now show.
+    /// Selects a chip and returns the look the feature must now show. Unsaved
+    /// edits on Shipped are dropped.
     @discardableResult
     func select(_ name: String) -> Value {
-        guard name != selected else { return selectedLook }
+        guard name != selected || unsaved != nil else { return selectedLook }
         leave()
+        unsaved = nil
         selected = named(name) == nil ? "original" : name
         return selectedLook
     }
 
-    /// Every control edits the selected look. On Shipped it starts a new pin,
-    /// named after the design key in a design-variant lab, else the preset, else
-    /// `tweak`; a pin changes in place, and a preset becomes its `basedOn`.
+    /// Every control edits the selected look. On Shipped the edit stays
+    /// unsaved; a saved look changes in place, and a preset becomes its
+    /// `basedOn`. `design` is accepted for design-variant labs; the design key
+    /// is already in the value.
     func edit(_ value: Value, preset: String? = nil, design: String? = nil) {
         guard let index = all.firstIndex(where: { $0.name == selected }) else {
-            let stem = design.flatMap { $0 == "original" ? nil : $0 } ?? preset ?? "tweak"
-            add(stem: stem, basedOn: preset ?? "baseline", value: value)
+            unsaved = value
+            if let preset { unsavedBasedOn = preset }
             return
         }
         all[index].value = value
         if let preset { all[index].basedOn = preset }
     }
 
-    /// Branches the selected pin into a new one, so the two can be compared.
-    func duplicate() {
-        guard let pin = selectedPin else { return }
-        add(stem: Self.stem(of: pin.name), basedOn: pin.name, value: pin.value)
-    }
-
-    /// Removes a pin and returns the look the feature must now show.
+    /// Removes a look and returns the look the feature must now show.
     @discardableResult
     func remove(_ name: String) -> Value {
-        guard named(name) != nil else { return selectedLook }
+        guard let look = named(name) else { return selectedLook }
         do { try unstore?(name) } catch {
-            status = "\(name) not removed: \(error.localizedDescription)"
+            status = "\(look.label) not removed: \(error.localizedDescription)"
             return selectedLook
         }
         all.removeAll { $0.name == name }
         logged[name] = nil
         uiTuningLabLogLine("UITUNINGLAB_CANDIDATE_REMOVED", ["name": name])
         if selected == name { selected = "original" }
-        status = "Removed \(name)"
+        status = "Removed \(look.label)"
         return selectedLook
     }
 
-    /// Logs the selected pin again when it changed since it last logged. Runs
-    /// when it is left: another chip, closing the lab, or Apply.
+    /// Logs the selected look again when it changed since it last logged. Runs
+    /// when it is left: another chip, closing the lab, Save & copy, or Apply.
     func leave() {
         if let pin = selectedPin { log(pin) }
     }
 
-    /// Adds a seeded or stored pin and logs it, without storing it again.
+    /// Adds a seeded or stored look and logs it, without storing it again.
     /// Returns false when the name is already in the list.
     @discardableResult
     func adopt(_ candidate: UITuningLabCandidate<Value>) -> Bool {
@@ -156,13 +173,34 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
         return true
     }
 
-    /// Apply (Save and copy after the first): picks the selected chip, `original` for Shipped. Logs
-    /// `UITUNINGLAB_DONE {...}`, replaces the result file atomically, and copies
-    /// `land <winner>`. Returns the winner, and sets `status` when part of that
-    /// did not work.
+    /// Save & copy: keeps the current look (unsaved edits on Shipped become the
+    /// next `Look N`, a selected look is saved as it is) and copies
+    /// `land <name>`. Before the first Apply that is all: the agent's waiter is
+    /// listening, so no Done line is sent. After it, it also hands the pick over
+    /// like Apply, since the user pastes it in chat. Returns the look's name, or
+    /// nil when there is nothing to save.
+    @discardableResult
+    func saveAndCopy() -> String? {
+        guard keepUnsaved() || selectedPin != nil, let look = selectedPin else { return nil }
+        leave()
+        if applies > 0 { return choose() }
+        uiTuningLabCopy("land \(look.name)")
+        saved = nil
+        status = "Saved \(look.label) · copied land \(look.name)"
+        return look.name
+    }
+
+    /// Apply: keeps unsaved edits as the next `Look N` first, then picks the
+    /// selected chip, `original` for Shipped. Logs `UITUNINGLAB_DONE {...}`,
+    /// hands it to the agent's waiter, replaces the result file atomically, and
+    /// copies `land <winner>`. Returns the winner, and sets `status` when part
+    /// of that did not work.
+    @discardableResult
     func choose() -> String {
+        keepUnsaved()
         leave()
         let winner = selectedPin?.name ?? "original"
+        let label = selectedPin?.label ?? "Shipped"
         let line: [String: Any]
         do {
             let values = try uiTuningLabChangedFields(from: baseline, to: selectedLook)
@@ -176,13 +214,7 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
         applies += 1
         uiTuningLabLogLine("UITUNINGLAB_DONE", line)
         uiTuningLabSendPick(line)
-        let code = "land \(winner)"
-        #if canImport(UIKit)
-        UIPasteboard.general.string = code
-        #elseif canImport(AppKit)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(code, forType: .string)
-        #endif
+        uiTuningLabCopy("land \(winner)")
         var result = line
         result["savedAt"] = ISO8601DateFormatter.uiTuningLabSavedAt.string(from: .now)
         do {
@@ -191,7 +223,7 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
                 at: uiTuningLabResultURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: uiTuningLabResultURL, options: .atomic)  // temporary file, then rename
             status = nil
-            saved = "Saved \(winner) in .ui-tuning-lab/result.json"
+            saved = "Saved \(label) in .ui-tuning-lab/result.json"
         } catch {
             saved = nil
             status = "Result file not written: \(error.localizedDescription)"
@@ -199,21 +231,20 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
         return winner
     }
 
-    /// A pin's name without its `-2` suffix: what its duplicates are named after.
-    private static func stem(of name: String) -> String {
-        guard let suffix = name.range(of: "-[0-9]+$", options: .regularExpression) else { return name }
-        return String(name[..<suffix.lowerBound])
-    }
-
-    private func add(stem: String, basedOn: String, value: Value) {
-        leave()
-        let candidate = UITuningLabCandidate(
-            name: uiTuningLabFavoriteName(stem, excluding: taken), basedOn: basedOn, value: value)
-        taken.insert(candidate.name)
+    /// Turns unsaved edits on Shipped into the next `Look N` and selects it.
+    /// Returns false when there were none.
+    @discardableResult
+    private func keepUnsaved() -> Bool {
+        guard selectedPin == nil, let value = unsaved else { return false }
+        let used = taken.compactMap { $0.hasPrefix("look-") ? Int($0.dropFirst(5)) : nil }
+        let name = "look-\((used.max() ?? 0) + 1)"
+        let candidate = UITuningLabCandidate(name: name, basedOn: unsavedBasedOn, value: value)
+        taken.insert(name)
         all.append(candidate)
-        selected = candidate.name
-        status = "New look \(candidate.name)"
-        log(candidate)
+        selected = name
+        unsaved = nil
+        unsavedBasedOn = "baseline"
+        return true
     }
 
     private func log(_ candidate: UITuningLabCandidate<Value>, storing: Bool = true) {
@@ -225,17 +256,18 @@ final class UITuningLabCandidates<Value: Codable>: ObservableObject {
         uiTuningLabLogLine("UITUNINGLAB_CANDIDATE", fields)
         guard storing, let store else { return }
         do { try store(candidate) } catch {
-            status = "\(candidate.name) not saved: \(error.localizedDescription)"
+            status = "\(candidate.label) not saved: \(error.localizedDescription)"
         }
     }
 }
 
-/// `stem`, or `stem-2`, `stem-3`, ...: the first not in `taken`. Never `draft`,
-/// `now`, `original`, or `baseline`, which the chips and basedOn use.
-func uiTuningLabFavoriteName(_ stem: String, excluding taken: Set<String>) -> String {
-    let used = taken.union(["draft", "now", "original", "baseline"])
-    if !used.contains(stem) { return stem }
-    return (2...).lazy.map { "\(stem)-\($0)" }.first { !used.contains($0) }!
+private func uiTuningLabCopy(_ text: String) {
+    #if canImport(UIKit)
+    UIPasteboard.general.string = text
+    #elseif canImport(AppKit)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+    #endif
 }
 
 /// The pick Apply writes: Application Support `.ui-tuning-lab/result.json`,

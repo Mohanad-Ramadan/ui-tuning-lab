@@ -97,40 +97,60 @@ async function devChecks(engineName, engine, viewportName) {
     record(scope, "Shipped starts selected and outlined",
       same(await pressed(), ["Shipped"]) && (await outline("Shipped")) === "solid");
 
-    // An edit on Shipped starts a new pin; Shipped is never edited.
+    const saveButton = () => page.getByRole("button", { name: "Save & copy", exact: true });
+    const removeCount = () => page.getByRole("button", { name: /^Remove / }).count();
+    record(scope, "Save & copy is there from the first open and disabled on plain Shipped",
+      (await saveButton().isVisible()) && (await saveButton().isDisabled()));
+    record(scope, "there is no Duplicate", (await page.getByRole("button", { name: "Duplicate" }).count()) === 0);
+
+    // An edit on Shipped is unsaved: it shows live, no chip is outlined, and no
+    // chip appears until Save & copy.
     await page.getByRole("button", { name: "Compact" }).click();
     const compact = await cardStyles(page);
     record(scope, "preset changes the real feature", !same(compact, before), JSON.stringify(compact));
-    record(scope, "a preset on Shipped starts a new selected pin",
-      same(await pressed(), ["compact"]) && (await outline("Shipped")) === "none");
+    record(scope, "an edit on Shipped outlines no chip and adds none",
+      same(await pressed(), []) && (await outline("Shipped")) === "none" &&
+      (await page.locator("[aria-label=Looks] button[aria-pressed]").count()) === 1);
 
     await setRange(page, /Radius/, 20);
-    record(scope, "radius slider edits the selected pin", (await cardStyles(page)).radius === "20px");
-    record(scope, "unpinned edits have no chip of their own",
+    record(scope, "radius slider edits the shown look", (await cardStyles(page)).radius === "20px");
+    record(scope, "unsaved edits have no chip of their own",
       (await page.getByRole("button", { name: /\+ edits$/ }).count()) === 0);
+
+    // Save & copy keeps the look as Look 1 and selects it, without a Done line.
+    logs.length = 0;
+    await saveButton().click();
+    await page.waitForTimeout(300);
+    record(scope, "Save & copy keeps the look as Look 1 and selects it", same(await pressed(), ["Look 1"]));
+    record(scope, "Save & copy logs the look, not a Done line before Apply",
+      logs.some(text => text.startsWith("UITUNINGLAB_CANDIDATE ") && text.includes('"name":"look-1"')) &&
+      !logs.some(text => text.startsWith("UITUNINGLAB_DONE ")), logs.join(" | "));
+    const savedStatus = await page.getByRole("status").allInnerTexts();
+    record(scope, "Save & copy says what it saved and copied",
+      savedStatus.some(text => /Saved Look 1/.test(text) && /land look-1/.test(text)), savedStatus.join(" | "));
 
     // A real click: it fails if the panel covers the feature.
     await page.locator("article").last().click({ timeout: 3000 });
     record(scope, "clicking the feature keeps the lab open", await dialog.isVisible());
 
-    // Switching chips is the comparison.
+    // Switching chips is the comparison; × shows only on the selected look.
     const tuned = await cardStyles(page);
+    record(scope, "× shows on the selected look", (await removeCount()) === 1);
     await page.getByRole("button", { name: "Shipped", exact: true }).click();
     record(scope, "the Shipped chip renders the baseline", same(before, await cardStyles(page)));
-    await page.getByRole("button", { name: "compact", exact: true }).click();
-    record(scope, "the pin chip renders its look", same(tuned, await cardStyles(page)));
+    record(scope, "× is hidden when no look is selected", (await removeCount()) === 0);
+    await page.getByRole("button", { name: "Look 1", exact: true }).click();
+    record(scope, "the look's chip renders its look", same(tuned, await cardStyles(page)));
 
-    // Duplicate branches the selected pin; editing the copy leaves the source.
-    await page.getByRole("button", { name: "Duplicate" }).click();
+    // A saved look changes in place and keeps its edits when the user switches away.
     await setRange(page, /Radius/, 6);
-    record(scope, "Duplicate selects a new pin", same(await pressed(), ["compact-2"]));
-    await page.getByRole("button", { name: "compact", exact: true }).click();
-    record(scope, "editing a duplicate leaves its source", same(tuned, await cardStyles(page)));
+    await page.getByRole("button", { name: "Shipped", exact: true }).click();
+    await page.getByRole("button", { name: "Look 1", exact: true }).click();
+    record(scope, "a saved look keeps its edits after switching away",
+      (await cardStyles(page)).radius === "6px" && same(await pressed(), ["Look 1"]));
 
     // Change exactly one field so an over-reporting Copy cannot pass.
     await page.getByRole("button", { name: "Shipped", exact: true }).click();
-    record(scope, "Duplicate is disabled on Shipped",
-      await page.getByRole("button", { name: "Duplicate" }).isDisabled());
     await setRange(page, /Gap/, 20);
     logs.length = 0;
     await menuItem(page, "Copy values");
@@ -150,36 +170,39 @@ async function devChecks(engineName, engine, viewportName) {
       (await page.locator("[role=dialog]").count()) === 0 && (await page.locator("[popover]").count()) === 0);
     record(scope, "focus returns to Card Lab after Escape",
       await page.evaluate(() => document.activeElement?.textContent?.trim() === "Card Lab"));
-    record(scope, "closing keeps the selected look", (await cardStyles(page)).gap === "20px");
+    record(scope, "closing keeps the shown look", (await cardStyles(page)).gap === "20px");
 
-    // Reopening keeps the pins and the selection; Apply then Change brings the
-    // whole panel back.
+    // Reopening keeps the looks and the unsaved edits; Apply keeps those edits as
+    // Look 2 and hands it over; Change brings the whole panel back without Apply.
     await page.getByRole("button", { name: "Card Lab" }).click();
     await dialog.waitFor();
-    record(scope, "reopening keeps the pins and the selection",
-      same(await pressed(), ["tweak"]) &&
-      (await page.locator("[aria-label=Looks] button[aria-pressed]").count()) === 4);
+    record(scope, "reopening keeps the looks and the unsaved edits",
+      same(await pressed(), []) &&
+      (await page.locator("[aria-label=Looks] button[aria-pressed]").count()) === 2 &&
+      (await cardStyles(page)).gap === "20px");
     logs.length = 0;
     await page.getByRole("button", { name: "Apply" }).click();
     await page.waitForTimeout(300);
     const done = logs.find(text => text.startsWith("UITUNINGLAB_DONE "));
-    record(scope, "Apply logs the selected chip as winner", !!done && done.includes('"winner":"tweak"'), done ?? "no DONE line");
+    record(scope, "Apply keeps unsaved edits as Look 2 and logs it as winner",
+      !!done && done.includes('"winner":"look-2"'), done ?? "no DONE line");
+    const applied = await page.locator("[role=dialog]").innerText();
+    record(scope, "the result bar names the applied look", applied.includes("Applied: Look 2"), applied);
     await page.getByRole("button", { name: "Change" }).click();
     record(scope, "Change brings back the controls",
-      (await dialog.getByRole("slider").count()) === 2 &&
-      (await page.getByRole("button", { name: "Duplicate" }).isVisible()));
-    // After the first Apply the agent stops listening: the button becomes Save
-    // and copy, and the result bar asks for the land line in chat.
-    const copy = page.getByRole("button", { name: "Save and copy", exact: true });
-    record(scope, "after Apply the button reads Save and copy", await copy.isVisible());
-    await copy.click();
+      (await dialog.getByRole("slider").count()) === 2 && (await saveButton().isVisible()));
+    record(scope, "Apply is hidden after the first Apply",
+      (await page.getByRole("button", { name: "Apply", exact: true }).count()) === 0);
+    // After the first Apply the agent stops listening: Save & copy hands the
+    // pick over, and the result bar asks for the land line in chat.
+    await saveButton().click();
     await page.waitForTimeout(300);
     // The dialog is named by its title, which is now the result text.
     const bar = await page.locator("[role=dialog]").innerText();
-    record(scope, "Save and copy asks to paste the land line in chat",
-      /paste it in chat so the agent applies it|Tell the agent: land tweak/.test(bar), bar);
+    record(scope, "Save & copy asks to paste the land line in chat",
+      /paste it in chat so the agent applies it|Tell the agent: land look-2/.test(bar), bar);
     record(scope, "the result bar says where the pick was saved",
-      bar.includes("Saved tweak in localStorage uiTuningLab.result"), bar);
+      bar.includes("Saved Look 2 in localStorage uiTuningLab.result"), bar);
     await page.getByRole("button", { name: "Change" }).click();
     await page.getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(200);
@@ -199,7 +222,7 @@ async function devChecks(engineName, engine, viewportName) {
     }
     const sliders = await dialog.getByRole("slider").evaluateAll(inputs =>
       inputs.map(input => input.closest("label")?.textContent?.trim().split(/\s+/)[0]));
-    const expected = ["Close", "More actions", "Shipped", "Compact", "Relaxed", "Duplicate", "Save and copy", ...sliders];
+    const expected = ["Close", "More actions", "Shipped", "Look 1", "Look 2", "Remove Look 2", "Compact", "Relaxed", "Save & copy", ...sliders];
     const missing = expected.filter(name => !reachable.has(name));
     record(scope, "keyboard reaches every control", missing.length === 0, missing.length ? `missing ${missing.join(", ")}` : "");
   } catch (error) {

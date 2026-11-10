@@ -7,7 +7,7 @@ this installed skill.
 
 Common checks:
 
-- Preserve the baseline, the pins, and the selected chip across rotation, resizing, trait, locale,
+- Preserve the baseline, the looks, and the selected chip across rotation, resizing, trait, locale,
   dark-mode, Dynamic Type, and safe-area changes.
 - Keep focus, selection, keyboard, gesture, and screen-reader ownership intact
   when applying a variant.
@@ -38,16 +38,17 @@ Common checks:
 - On compact iOS, account for popover-to-sheet adaptation.
 - Ignore lab chrome when measuring the feature.
 - Make hot reload registration idempotent.
-- On save failure, show the error and keep the pin in the panel.
+- On save failure, show the error and keep the look in the panel.
 - On corrupt or incompatible saved data, keep the file untouched, keep the
   current look, and report the incompatibility.
-- Apply and × need no confirmation: Shipped is one tap away, Duplicate keeps
-  a version worth keeping, and a new pick replaces the old one.
+- Apply and × need no confirmation: Shipped is one tap away, × shows only on
+  the selected look, Save & copy keeps a version worth keeping, and a new pick
+  replaces the old one.
 - A seeded candidate that now matches the baseline, or whose fields no longer
   exist in the configuration, is dropped from the lab and reported, never
   silently rewritten.
 - The log is the agent's only view of an ephemeral lab's candidates. When the
   log no longer reaches back to the lab's opening (a relaunch, a cleared
-  console), read the result file, or ask the user to press Apply (Save and copy after
+  console), read the result file, or ask the user to press Apply (Save & copy after
   the first Apply) again: it
-  carries every pin still in the panel, with its values.
+  carries every look still in the panel, with its values.
