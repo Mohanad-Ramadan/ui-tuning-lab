@@ -1,5 +1,40 @@
 # Changelog — ui-tuning-lab
 
+## 1.5.0 — 2026-11-11
+
+### The agent runs the fresh build
+
+- After building the lab, the agent quits any running copy of the app,
+  launches the new build, and checks that the running process started after
+  the build before it opens the lab or hands over
+  (`references/setup-protocol.md`, "Run the fresh build"). An app left open
+  from before showed the old code, with no lab.
+
+### Save & pin, Save, and preset names
+
+- **Save & copy is now Save & pin** on Shipped and **Save** on a pinned look.
+  A pinned look keeps its saved version plus the edits made since; Save makes
+  them its new version. Save is disabled with no edits until the first Apply.
+  Both still copy `land <name>`.
+- **Looks are named after their preset:** `Brass-1`, `Brass-2`, `Warm Glow-1`,
+  and `Custom-1` for edits made with no preset. Land codes follow
+  (`land brass-2`). Seeded `look-N` finalists keep their names.
+- Only a save logs `UITUNINGLAB_CANDIDATE` (and writes a persisted profile);
+  leaving an edited look no longer does.
+
+### Undo, Redo, and Reset
+
+- Each look keeps its own history back to its last save. A slider drag is one
+  step; a preset is one step. Reset returns to the last save and can be undone.
+  Command-Z / Command-Shift-Z on macOS, Control-Z / Control-Y on Windows and
+  the web, only while the panel has focus.
+
+### macOS panel keeps its frame
+
+- The panel's hosting view no longer resizes the window to its content
+  (`sizingOptions = []`), so switching chips leaves its size and position
+  alone; Apply and Change resize it with its top edge fixed.
+
 ## 1.4.0 — 2026-11-10
 
 ### Apply reaches the agent by itself
