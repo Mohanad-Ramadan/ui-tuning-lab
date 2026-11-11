@@ -28,6 +28,9 @@ into your agent's skills directory (for Claude Code, `~/.claude/skills/`).
   is read-only. Save & pin keeps the current look as a chip named after its
   preset (Brass-1, Brass-2, Custom-1); on a pinned look the button reads Save.
   Undo, Redo, and Reset step back through your edits since the last save.
+- **Every control shows its default.** Sliders mark the Shipped value with a
+  tick and snap onto it as you drag; a changed control reads
+  `14 px · default 12` and gets a ↺ that puts it alone back to Shipped.
 - **Alternative designs** as a Design picker in the same panel, with the
   original as the baseline.
 - **A finish with no copy-paste.** Apply hands the selected look to the agent

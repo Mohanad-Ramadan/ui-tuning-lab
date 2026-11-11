@@ -16,6 +16,9 @@ release notes: https://github.com/Mohanad-Ramadan/ui-tuning-lab
   **Redo**, and **Reset** step back through edits since the last save. The
   selected chip is outlined and is what the feature shows, so switching chips
   is the comparison.
+- Each control marks its **default** (the Shipped value): sliders show a tick
+  and snap onto it while dragging, and a changed control gets a **↺** that puts
+  that control alone back to Shipped as one Undo step.
 - **Apply** hands the selected look to the agent through the log, a result
   file, and a `land <name>` code on the clipboard, then hides; later picks go
   through Save and a pasted `land <name>`.
