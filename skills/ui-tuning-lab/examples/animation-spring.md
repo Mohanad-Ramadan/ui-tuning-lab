@@ -20,6 +20,12 @@ Every lab in this example provides:
   **Save**.
 - **Undo**, **Redo**, and **Reset**: act on the selected look, back to its last
   save; a whole slider drag is one step, and Reset can be undone.
+- **Default marker and ↺**: each slider marks the Shipped value with a tick
+  under its track, on every chip, and a drag near it snaps to it exactly (with
+  a light tap on iOS); the readout adds `· default` while the value differs.
+  Duration and bounce are one spring, so one **↺** puts both back to Shipped as
+  one Undo step; Offset has its own. On the web, a double-click on a slider's
+  label does the same (`references/control-mapping.md`, "Default marker and per-control reset").
 - **Reduced motion**: the feature keeps its own reduced animation, and the lab says
   when that is what you are seeing.
 - **⋯ menu**: Copy values, which copies the selected look's fields that differ
@@ -193,6 +199,9 @@ struct UITuningLabMotionControls: View {
     @ObservedObject var candidates: UITuningLabCandidates<EntranceMotion>
     let baseline: EntranceMotion
     @State private var sent: String?  // the last pick; set, the lab is one bar
+    @State private var dragging: String?  // the slider being dragged: only a drag snaps
+    @State private var snaps = 0  // counts snaps onto a Shipped value, for the haptic
+    @FocusState private var focused: String?  // ↺ hands focus to its slider as it hides
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
 
@@ -263,21 +272,22 @@ struct UITuningLabMotionControls: View {
                 Button("Snappy") { apply(Self.snappy, named: "snappy") }
                 Button("Playful") { apply(Self.playful, named: "playful") }
             }
-            LabeledContent("Duration", value: String(format: "%.2f s", motion.duration))
-                .accessibilityHidden(true)  // the slider reports its own value
-            Slider(value: look("duration").duration, in: 0.15...1.5) {
-                Text("Duration")
-            } onEditingChanged: { replayWhenReleased($0) }
-            LabeledContent("Bounce", value: String(format: "%.2f", motion.bounce))
-                .accessibilityHidden(true)  // the slider reports its own value
-            Slider(value: look("bounce").bounce, in: 0...0.6) {
-                Text("Bounce")
-            } onEditingChanged: { replayWhenReleased($0) }
-            LabeledContent("Offset", value: "\(Int(motion.offset)) pt")
-                .accessibilityHidden(true)  // the slider reports its own value
-            Slider(value: look("offset").offset, in: 0...120) {
-                Text("Offset")
-            } onEditingChanged: { replayWhenReleased($0) }
+            // The spring is one control made of two sliders: one ↺ puts both
+            // back to Shipped as one Undo step.
+            HStack {
+                Text("Spring")
+                if !candidates.isDefault(\.duration) || !candidates.isDefault(\.bounce) {
+                    Button("↺") {
+                        show(candidates.resetControl(\.duration, \.bounce))
+                        focused = "Duration"
+                    }
+                        .accessibilityLabel(
+                            "Reset Spring to default, \(uiTuningLabNumber(baseline.duration)) s, bounce \(uiTuningLabNumber(baseline.bounce))")
+                }
+            }
+            slider("Duration", \.duration, in: 0.15...1.5, unit: "s", resettable: false)
+            slider("Bounce", \.bounce, in: 0...0.6, resettable: false)
+            slider("Offset", \.offset, in: 0...120, unit: "pt")
             Picker("Speed", selection: $lab.speed) {
                 Text("1×").tag(1.0)
                 Text("0.5×").tag(0.5)
@@ -329,6 +339,7 @@ struct UITuningLabMotionControls: View {
         .onChange(of: lab.speed) { lab.replayToken += 1 }
         // A Form row with several buttons fires all of them on iOS unless borderless.
         .buttonStyle(.borderless)
+        .sensoryFeedback(.selection, trigger: snaps)  // a light tap when a drag snaps to Shipped
     }
 
     /// One chip. The selected chip is outlined and is the look the card shows.
@@ -341,9 +352,44 @@ struct UITuningLabMotionControls: View {
             .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// A slider shows the selected look and edits it; one drag is one Undo step.
-    private func look(_ control: String) -> Binding<EntranceMotion> {
-        Binding(get: { motion }, set: { edit($0, control: control) })
+    /// A slider shows the selected look and edits it; one drag is one Undo
+    /// step, and releasing it replays the card. A tick under the track marks
+    /// the Shipped value, and a drag near it snaps to it exactly, with a light
+    /// tap. ↺ shows while the value differs from Shipped and puts it back as
+    /// one Undo step; the spring's two sliders share the ↺ above them.
+    private func slider(
+        _ label: String, _ field: WritableKeyPath<EntranceMotion, Double>, in range: ClosedRange<Double>,
+        unit: String = "", resettable: Bool = true
+    ) -> some View {
+        let shipped = candidates.defaultValue(field)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                LabeledContent(label, value: uiTuningLabReadout(motion[keyPath: field], shipped: shipped, unit: unit))
+                    .accessibilityHidden(true)  // the slider reports its own value
+                if resettable && !candidates.isDefault(field) {
+                    Button("↺") {
+                        show(candidates.resetControl(field))
+                        focused = label
+                    }
+                        .accessibilityLabel("Reset \(label) to default, \(uiTuningLabReadout(shipped, shipped: shipped, unit: unit))")
+                }
+            }
+            Slider(value: Binding(get: { motion[keyPath: field] }, set: { value in
+                var look = motion
+                let snap = dragging == label && uiTuningLabSnaps(value, to: shipped, in: range)
+                if snap && look[keyPath: field] != shipped { snaps += 1 }
+                look[keyPath: field] = snap ? shipped : value
+                edit(look, control: label)
+            }), in: range) {
+                Text(label)
+            } onEditingChanged: { editing in
+                dragging = editing ? label : nil
+                replayWhenReleased(editing)
+            }
+            .labelsHidden()  // the row above shows the label
+            .focused($focused, equals: label)
+            .uiTuningLabDefaultTick(at: shipped, in: range)
+        }
     }
 
     /// Every control edits the selected look: a pinned look's edits until Save,
@@ -473,7 +519,7 @@ export function EntranceScreen() {
 <!-- file: EntranceScreen.ui-tuning-lab.tsx -->
 ```tsx
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import { appDefault, EntranceCard } from "./EntranceCard";
 import type { EntranceMotion } from "./EntranceCard";
 import type { TuningLabHostProps } from "./EntranceScreen";
@@ -590,6 +636,67 @@ function chipLabel(name: string): string {
   if (!m) return name;
   const words = m[1].split("-").filter(Boolean).map(word => word[0].toUpperCase() + word.slice(1));
   return `${words.join(" ")}-${Number(m[2])}`;
+}
+
+// A range input with the Shipped value marked: a tick under the track, on
+// every chip. Range inputs have no API for one tick at an arbitrary value, so
+// the tick is drawn over the track; THUMB is the browser's thumb width, and the
+// thumb's center runs from THUMB / 2 to the width minus THUMB / 2, so the tick
+// sits under the thumb at that value. 16 px matches Chromium, Firefox, and
+// Safari's default thumbs; measure it again when the app styles the thumb. A
+// drag (never the arrow keys) within 1.5% of the range, or less than half a
+// step, snaps to the Shipped value exactly. The Shipped value must sit on the
+// step grid: a range input cannot hold 12.5 with step="1", so use a step that
+// divides it, or step="any". The readout adds "· default 12" while the value
+// differs. ↺, and double-clicking the label, put this control back to Shipped
+// as one Undo step and move focus to the slider, so it stays in the panel as
+// the ↺ goes away. The tick, the snap, and the readout are display only.
+const THUMB = 16;
+function ShippedSlider({ label, value, shipped, min, max, step = 1, unit = "", onEdit, onReset, resetButton = true,
+  inputRef }: {
+  label: string; value: number; shipped: number; min: number; max: number; step?: number; unit?: string;
+  onEdit: (value: number) => void; onReset: () => void; resetButton?: boolean;
+  inputRef?: RefObject<HTMLInputElement>;
+}) {
+  const dragging = useRef(false);
+  const ownInput = useRef<HTMLInputElement>(null);
+  const input = inputRef ?? ownInput;
+  const reset = () => { onReset(); input.current?.focus(); };
+  // A drag ends wherever the pointer is released, inside the input or not.
+  // Removed on unmount, so closing the lab leaves no listener behind.
+  useEffect(() => {
+    const end = () => { dragging.current = false; };
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    return () => {
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+  }, []);
+  const shown = (n: number) => unit ? `${n} ${unit}` : `${n}`;
+  const readout = value === shipped ? shown(value) : `${shown(value)} · default ${shipped}`;
+  const fraction = (shipped - min) / (max - min);
+  return <div style={rowStyle}>
+    <label>
+      <span onDoubleClick={reset}>{label}</span>{" "}
+      <span style={{ position: "relative", display: "inline-block" }}>
+        <input ref={input} type="range" min={min} max={max} step={step} value={value}
+          onPointerDown={() => { dragging.current = true; }}
+          onChange={e => {
+            const next = Number(e.target.value);
+            const distance = Math.abs(next - shipped);
+            const snap = dragging.current && (distance <= (max - min) * 0.015 || distance < step / 2);
+            onEdit(snap ? shipped : next);
+          }}/>
+        <span aria-hidden="true" style={{ position: "absolute", insetBlockEnd: -2, width: 2, height: 6,
+          insetInlineStart: `calc(${THUMB / 2}px + (100% - ${THUMB}px) * ${fraction} - 1px)`,
+          background: "GrayText", pointerEvents: "none" }}/>
+      </span>
+    </label>
+    <output aria-hidden="true">{readout}</output>
+    {resetButton && value !== shipped && <button type="button"
+      aria-label={`Reset ${label} to default, ${shown(shipped)}`} onClick={reset}>↺</button>}
+  </div>;
 }
 
 export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHostProps) {
@@ -764,6 +871,9 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     show({ value: next, basedOn: preset ?? current.basedOn });
   }
   function apply(name: keyof typeof presets) { edit({ ...presets[name] }, name); replayNow(); }
+  const resetSpring = () => resetControl("durationMs", "bounce");
+  // The spring's ↺ hands focus to its first slider as it goes away.
+  const springInput = useRef<HTMLInputElement>(null);
   // Undo steps the selected look back one edit, never past its last save.
   function undo() {
     const previous = steps.undo[steps.undo.length - 1];
@@ -788,6 +898,13 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     lastControl.current.delete(selected);
     show(selectedPin ? { value: savedLook(selectedPin), basedOn: selectedPin.basedOn }
       : { value: baseline, basedOn: "baseline" });
+  }
+  // ↺ on one control: puts its fields back to Shipped. An ordinary edit:
+  // one Undo step that ends the current slider run, so it never merges with a
+  // drag. On Shipped, matching the baseline again leaves no unsaved edits; on
+  // a pinned look it is an edit that Save keeps.
+  function resetControl(...keys: (keyof EntranceMotion)[]) {
+    edit({ ...current.value, ...Object.fromEntries(keys.map(key => [key, baseline[key]])) });
   }
   // Undo and Redo on the keyboard, only while focus is in the panel: Ctrl or
   // Cmd-Z, and Ctrl or Cmd-Shift-Z or Ctrl-Y. A text field keeps its own undo.
@@ -948,21 +1065,27 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
         <div role="group" aria-label="Controls">
           <button type="button" onClick={() => apply("snappy")}>Snappy</button>
           <button type="button" onClick={() => apply("playful")}>Playful</button>
-          <label>Duration <input type="range" min="150" max="1500" step="10"
-            value={motion.durationMs}
-            onChange={e => edit({ ...motion, durationMs: Number(e.target.value) }, undefined, "durationMs")}/>
-            <output aria-hidden="true">{motion.durationMs}ms</output>
-          </label>
-          <label>Bounce <input type="range" min="0" max="0.6" step="0.05"
-            value={motion.bounce}
-            onChange={e => edit({ ...motion, bounce: Number(e.target.value) }, undefined, "bounce")}/>
-            <output aria-hidden="true">{motion.bounce}</output>
-          </label>
-          <label>Offset <input type="range" min="0" max="120"
-            value={motion.offsetPx}
-            onChange={e => edit({ ...motion, offsetPx: Number(e.target.value) }, undefined, "offsetPx")}/>
-            <output aria-hidden="true">{motion.offsetPx}px</output>
-          </label>
+          {/* The spring is one control made of two sliders: one ↺ puts both
+              back to Shipped as one Undo step. */}
+          <div role="group" aria-label="Spring">
+            <div style={rowStyle}>Spring
+              {(motion.durationMs !== baseline.durationMs || motion.bounce !== baseline.bounce) &&
+                <button type="button" onClick={() => { resetSpring(); springInput.current?.focus(); }}
+                  aria-label={`Reset Spring to default, ${baseline.durationMs} ms, bounce ${baseline.bounce}`}>↺</button>}
+            </div>
+            <ShippedSlider label="Duration" min={150} max={1500} step={10} unit="ms"
+              value={motion.durationMs} shipped={baseline.durationMs}
+              onEdit={durationMs => edit({ ...motion, durationMs }, undefined, "durationMs")}
+              onReset={resetSpring} resetButton={false} inputRef={springInput}/>
+            <ShippedSlider label="Bounce" min={0} max={0.6} step={0.05}
+              value={motion.bounce} shipped={baseline.bounce}
+              onEdit={bounce => edit({ ...motion, bounce }, undefined, "bounce")}
+              onReset={resetSpring} resetButton={false}/>
+          </div>
+          <ShippedSlider label="Offset" min={0} max={120} unit="px"
+            value={motion.offsetPx} shipped={baseline.offsetPx}
+            onEdit={offsetPx => edit({ ...motion, offsetPx }, undefined, "offsetPx")}
+            onReset={() => resetControl("offsetPx")}/>
         </div>
         <div style={rowStyle}>
           <label>Speed <select value={speed}

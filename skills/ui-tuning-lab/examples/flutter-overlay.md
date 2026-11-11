@@ -33,7 +33,12 @@ look keeps its edits when you switch away; on Shipped, which is read-only, they
 make unsaved changes, with no chip outlined, until **Save & pin** keeps them as
 a new look. On a pinned look the same button reads **Save** and keeps the edits
 as its saved version. Each look has its own **Undo**, **Redo**, and **Reset**
-buttons, back to its last save; a slider drag is one step. There are no
+buttons, back to its last save; a slider drag is one step. Each slider marks
+the Shipped value with a tick under its track, on every chip; a pointer drag
+near it snaps to it exactly with a selection click, the keyboard and screen
+reader still reach the values beside it, and the readout reads
+`14 · default 12` while the value differs. **↺** beside a changed slider puts
+that one control back to Shipped as one Undo step (`references/control-mapping.md`, "Default marker and per-control reset"). There are no
 keyboard shortcuts on mobile. **Apply** (hidden after its first use) saves, then
 picks the selected chip and collapses the panel to the result bar (**Change**
 restores it), and the **⋯** menu holds **Copy values** for the selected look.
@@ -121,6 +126,7 @@ class _FeatureScreenState extends State<FeatureScreen> {
 // ignore_for_file: file_names
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -392,6 +398,14 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
 
   void applyPreset(String name) => edit(_presets[name]!, preset: name);
 
+  // ↺ on one control: `restore` copies that control's fields from Shipped (a
+  // spring's two sliders together). An ordinary edit: one Undo step that ends
+  // the current slider run, so it never merges with a drag. On Shipped,
+  // matching the baseline again leaves no unsaved edits; on a pinned look it is
+  // an edit that Save keeps.
+  void resetControl(CardStyle Function(CardStyle look, CardStyle shipped) restore) =>
+      edit(restore(look, _baseline));
+
   // Undo steps the selected look back one edit, never past its last save.
   void undo() {
     final undoList = undoSteps[selected];
@@ -562,12 +576,77 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
     )));
   }
 
-  Widget slider(String label, double value, double max, ValueChanged<double> onChanged) {
+  // Per slider, by label: whether a pointer is down on it, which slider is
+  // being dragged, the last value it sent, and its focus node. Only a pointer
+  // drag snaps to Shipped, never the arrow keys or TalkBack and VoiceOver's
+  // adjust actions (which also call onChangeStart), so those still reach the
+  // values beside it.
+  final Set<String> pointerDown = {};
+  String? dragging;
+  final Map<String, double> lastSent = {};
+  final Map<String, FocusNode> sliderFocus = {};
+
+  @override
+  void dispose() {
+    for (final node in sliderFocus.values) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  // A slider with the Shipped value marked: a tick under the track, on every
+  // chip. Slider has no API for one tick at an arbitrary value, so it is drawn
+  // over the track. The track is inset by half the larger of the thumb and its
+  // overlay, read from the SliderTheme (24 for the default overlay); measure it
+  // again on your Flutter version, whose slider shapes change between Material
+  // versions. A drag within 1.5% of the range, or less than half a step, snaps
+  // to Shipped exactly, with one selection click as it lands. The readout adds
+  // "· default 12" while the value differs, and ↺ puts this control back to
+  // Shipped as one Undo step, then focuses the slider, so focus stays in the
+  // panel as the ↺ goes away. All of it is display only.
+  Widget slider(String label, double value, double shipped, double max, ValueChanged<double> onChanged,
+      VoidCallback onReset) {
+    final theme = SliderTheme.of(context);
+    final thumbInset = math.max(theme.overlayShape?.getPreferredSize(true, false).width ?? 48,
+            theme.thumbShape?.getPreferredSize(true, false).width ?? 20) / 2;
+    final focus = sliderFocus.putIfAbsent(label, FocusNode.new);
+    String number(double v) => v == v.roundToDouble() ? '${v.round()}' : '$v';
     return Row(children: [
       SizedBox(width: 96, child: Text(label)),
-      Expanded(child: Slider(value: value, max: max, divisions: max.toInt(), label: label,
-          onChanged: (v) => onChanged(v.roundToDouble()))),
-      ExcludeSemantics(child: Text('${value.round()}')),
+      Expanded(child: Listener(
+        onPointerDown: (_) => pointerDown.add(label),
+        onPointerUp: (_) => pointerDown.remove(label),
+        onPointerCancel: (_) => pointerDown.remove(label),
+        child: Stack(children: [
+          Slider(value: value, max: max, divisions: max.toInt(), label: label, focusNode: focus,
+              onChangeStart: (_) {
+                dragging = pointerDown.contains(label) ? label : null;
+                lastSent[label] = value;
+              },
+              onChangeEnd: (_) => dragging = null,
+              onChanged: (v) {
+                final distance = (v - shipped).abs();
+                final snap = dragging == label && (distance <= max * 0.015 || distance < 0.5);
+                final next = snap ? shipped : v.roundToDouble();
+                if (snap && lastSent[label] != shipped) HapticFeedback.selectionClick();
+                lastSent[label] = next;
+                onChanged(next);
+              }),
+          Positioned.fill(child: IgnorePointer(child: ExcludeSemantics(child: LayoutBuilder(
+            builder: (context, box) => Stack(children: [
+              Positioned(
+                left: thumbInset + (box.maxWidth - 2 * thumbInset) * shipped / max - 1,
+                top: box.maxHeight / 2 + 6,
+                child: Container(width: 2, height: 6, color: Theme.of(context).colorScheme.outline)),
+            ]))))),
+        ]),
+      )),
+      ExcludeSemantics(child: Text(value == shipped
+          ? number(value) : '${number(value)} · default ${number(shipped)}')),
+      if (value != shipped)
+        IconButton(tooltip: 'Reset $label to default, ${number(shipped)}',
+            onPressed: () { onReset(); focus.requestFocus(); },
+            icon: const ExcludeSemantics(child: Text('↺'))),
     ]);
   }
 
@@ -627,10 +706,12 @@ class _UITuningLabHostState extends State<UITuningLabHost> {
                         child: Text(name[0].toUpperCase() + name.substring(1))),
                 ]),
                 // A slider passes its key, so one drag is one Undo step.
-                slider('Radius', look.cornerRadius, 32,
-                    (v) => edit(look.copyWith(cornerRadius: v), control: 'cornerRadius')),
-                slider('Spacing', look.spacing, 24,
-                    (v) => edit(look.copyWith(spacing: v), control: 'spacing')),
+                slider('Radius', look.cornerRadius, _baseline.cornerRadius, 32,
+                    (v) => edit(look.copyWith(cornerRadius: v), control: 'cornerRadius'),
+                    () => resetControl((look, shipped) => look.copyWith(cornerRadius: shipped.cornerRadius))),
+                slider('Spacing', look.spacing, _baseline.spacing, 24,
+                    (v) => edit(look.copyWith(spacing: v), control: 'spacing'),
+                    () => resetControl((look, shipped) => look.copyWith(spacing: shipped.spacing))),
                 if (status != null) Semantics(liveRegion: true, child: Text(status!)),
               ]))),
               // The edit row: each button is disabled when it has nothing to do.

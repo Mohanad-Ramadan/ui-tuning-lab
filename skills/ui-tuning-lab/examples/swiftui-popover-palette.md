@@ -22,7 +22,11 @@ a new look. On a pinned look the controls make edits that stay with it when you
 switch away, until **Save** makes them its saved version. Undo and Redo step
 through the selected look's edits back to its last save, and a whole slider drag
 is one step; Reset takes the look back to its last save, and Undo can take that
-back. **Apply** (hidden after its first use) saves, picks the selected chip, logs
+back. Each slider marks the Shipped value with a tick under its track, on every
+chip; a drag near it snaps to it exactly with a light tap, VoiceOver's adjust
+action still reaches the values beside it, and the readout reads
+`14 pt · default 12` while the value differs. **↺** beside a changed slider puts
+that one control back to Shipped as one Undo step (`references/control-mapping.md`, "Default marker and per-control reset"). **Apply** (hidden after its first use) saves, picks the selected chip, logs
 `UITUNINGLAB_DONE`, writes Application Support `.ui-tuning-lab/result.json`,
 copies `land <name>`, and collapses the lab to a `Applied:` bar whose Change
 button reopens it. After that, Save & pin and Save hand the pick over too, for
@@ -303,6 +307,9 @@ struct UITuningLabControls: View {
     @EnvironmentObject private var candidates: UITuningLabCandidates<CardStyle>
     @Environment(\.dismiss) private var dismiss
     @State private var sent: String?  // the last pick; set, the lab is one bar
+    @State private var dragging: String?  // the slider being dragged: only a drag snaps
+    @State private var snaps = 0  // counts snaps onto a Shipped value, for the haptic
+    @FocusState private var focused: String?  // ↺ hands focus to its slider as it hides
 
     private static let compact = CardStyle(cornerRadius: 4, spacing: 4)
     private static let relaxed = CardStyle(cornerRadius: 24, spacing: 16)
@@ -366,14 +373,8 @@ struct UITuningLabControls: View {
                 Button("Compact") { edit(Self.compact, preset: "compact") }
                 Button("Relaxed") { edit(Self.relaxed, preset: "relaxed") }
             }
-            LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
-                .accessibilityHidden(true)  // the slider reports its own value
-            Slider(value: look("corner-radius").cornerRadius, in: 0...32, step: 1) {
-                Text("Corner radius")
-            }
-            LabeledContent("Spacing", value: "\(Int(style.spacing)) pt")
-                .accessibilityHidden(true)  // the slider reports its own value
-            Slider(value: look("spacing").spacing, in: 0...24, step: 1) { Text("Spacing") }
+            slider("Corner radius", control: "corner-radius", \.cornerRadius, in: 0...32)
+            slider("Spacing", control: "spacing", \.spacing, in: 0...24)
             // Undo and Redo per look, back to its last save.
             HStack {
                 Button("Undo") { style = candidates.undo() }
@@ -414,6 +415,7 @@ struct UITuningLabControls: View {
         }
         // A Form row with several buttons fires all of them on iOS unless borderless.
         .buttonStyle(.borderless)
+        .sensoryFeedback(.selection, trigger: snaps)  // a light tap when a drag snaps to Shipped
     }
 
     /// One chip. The selected chip is outlined and is the look the feature shows.
@@ -426,9 +428,39 @@ struct UITuningLabControls: View {
             .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// A slider shows the selected look and edits it; one drag is one Undo step.
-    private func look(_ control: String) -> Binding<CardStyle> {
-        Binding(get: { style }, set: { edit($0, control: control) })
+    /// A slider shows the selected look and edits it; one drag is one Undo
+    /// step. A tick under the track marks the Shipped value, and a drag near
+    /// it snaps to it exactly, with a light tap. ↺ shows while the value
+    /// differs from Shipped and puts it back as one Undo step.
+    private func slider(
+        _ label: String, control: String, _ field: WritableKeyPath<CardStyle, CGFloat>, in range: ClosedRange<Double>
+    ) -> some View {
+        let shipped = Double(candidates.defaultValue(field))
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                LabeledContent(label, value: uiTuningLabReadout(Double(style[keyPath: field]), shipped: shipped, unit: "pt"))
+                    .accessibilityHidden(true)  // the slider reports its own value
+                if !candidates.isDefault(field) {
+                    Button("↺") {
+                        style = candidates.resetControl(field)
+                        focused = control
+                    }
+                        .accessibilityLabel("Reset \(label) to default, \(uiTuningLabNumber(shipped)) pt")
+                }
+            }
+            Slider(value: Binding(get: { Double(style[keyPath: field]) }, set: { value in
+                var look = style
+                let snap = dragging == control && uiTuningLabSnaps(value, to: shipped, in: range, step: 1)
+                if snap && look[keyPath: field] != CGFloat(shipped) { snaps += 1 }
+                look[keyPath: field] = CGFloat(snap ? shipped : value)
+                edit(look, control: control)
+            }), in: range, step: 1) {
+                Text(label)
+            } onEditingChanged: { dragging = $0 ? control : nil }
+            .labelsHidden()  // the row above shows the label
+            .focused($focused, equals: control)
+            .uiTuningLabDefaultTick(at: shipped, in: range)
+        }
     }
 
     /// Every control edits the selected look: a pinned look's edits until Save,
@@ -507,6 +539,9 @@ struct UITuningLabControls: View {
     @EnvironmentObject private var candidates: UITuningLabCandidates<CardStyle>
     @Environment(\.dismiss) private var dismiss
     @State private var sent: String?  // the last pick; set, the lab is one bar
+    @State private var dragging: String?  // the slider being dragged: only a drag snaps
+    @State private var snaps = 0  // counts snaps onto a Shipped value, for the haptic
+    @FocusState private var focused: String?  // ↺ hands focus to its slider as it hides
 
     private static let compact = CardStyle(cornerRadius: 4, spacing: 4)
     private static let relaxed = CardStyle(cornerRadius: 24, spacing: 16)
@@ -570,14 +605,8 @@ struct UITuningLabControls: View {
                 Button("Compact") { edit(Self.compact, preset: "compact") }
                 Button("Relaxed") { edit(Self.relaxed, preset: "relaxed") }
             }
-            LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
-                .accessibilityHidden(true)  // the slider reports its own value
-            Slider(value: look("corner-radius").cornerRadius, in: 0...32, step: 1) {
-                Text("Corner radius")
-            }
-            LabeledContent("Spacing", value: "\(Int(style.spacing)) pt")
-                .accessibilityHidden(true)  // the slider reports its own value
-            Slider(value: look("spacing").spacing, in: 0...24, step: 1) { Text("Spacing") }
+            slider("Corner radius", control: "corner-radius", \.cornerRadius, in: 0...32)
+            slider("Spacing", control: "spacing", \.spacing, in: 0...24)
             // Undo and Redo per look, back to its last save.
             HStack {
                 Button("Undo") { style = candidates.undo() }
@@ -618,6 +647,7 @@ struct UITuningLabControls: View {
         }
         // A Form row with several buttons fires all of them on iOS unless borderless.
         .buttonStyle(.borderless)
+        .sensoryFeedback(.selection, trigger: snaps)  // a light tap when a drag snaps to Shipped
         .onAppear(perform: loadSaved)
     }
 
@@ -631,9 +661,39 @@ struct UITuningLabControls: View {
             .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// A slider shows the selected look and edits it; one drag is one Undo step.
-    private func look(_ control: String) -> Binding<CardStyle> {
-        Binding(get: { style }, set: { edit($0, control: control) })
+    /// A slider shows the selected look and edits it; one drag is one Undo
+    /// step. A tick under the track marks the Shipped value, and a drag near
+    /// it snaps to it exactly, with a light tap. ↺ shows while the value
+    /// differs from Shipped and puts it back as one Undo step.
+    private func slider(
+        _ label: String, control: String, _ field: WritableKeyPath<CardStyle, CGFloat>, in range: ClosedRange<Double>
+    ) -> some View {
+        let shipped = Double(candidates.defaultValue(field))
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                LabeledContent(label, value: uiTuningLabReadout(Double(style[keyPath: field]), shipped: shipped, unit: "pt"))
+                    .accessibilityHidden(true)  // the slider reports its own value
+                if !candidates.isDefault(field) {
+                    Button("↺") {
+                        style = candidates.resetControl(field)
+                        focused = control
+                    }
+                        .accessibilityLabel("Reset \(label) to default, \(uiTuningLabNumber(shipped)) pt")
+                }
+            }
+            Slider(value: Binding(get: { Double(style[keyPath: field]) }, set: { value in
+                var look = style
+                let snap = dragging == control && uiTuningLabSnaps(value, to: shipped, in: range, step: 1)
+                if snap && look[keyPath: field] != CGFloat(shipped) { snaps += 1 }
+                look[keyPath: field] = CGFloat(snap ? shipped : value)
+                edit(look, control: control)
+            }), in: range, step: 1) {
+                Text(label)
+            } onEditingChanged: { dragging = $0 ? control : nil }
+            .labelsHidden()  // the row above shows the label
+            .focused($focused, equals: control)
+            .uiTuningLabDefaultTick(at: shipped, in: range)
+        }
     }
 
     /// Every control edits the selected look: a pinned look's edits until Save,

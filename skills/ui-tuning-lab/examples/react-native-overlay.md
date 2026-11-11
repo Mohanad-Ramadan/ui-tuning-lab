@@ -39,7 +39,12 @@ switch away; on Shipped, which is read-only, they make unsaved changes, with no
 chip outlined, until **Save & pin** keeps them as a new look. On a pinned look
 the same button reads **Save** and keeps the edits as its saved version. Each
 look has its own **Undo**, **Redo**, and **Reset** buttons, back to its last
-save; a run of presses on one stepper is one step. There are no keyboard
+save; a run of presses on one stepper is one step. Each stepper marks the
+Shipped value with a tick on a thin track under it, on every chip, and its
+readout reads `14 · default 12` while the value differs. **↺** beside a changed
+stepper puts that one control back to Shipped as one Undo step
+(`references/control-mapping.md`, "Default marker and per-control reset"). A stepper has no drag, so nothing snaps; with a real slider,
+add the snap from that section. There are no keyboard
 shortcuts on mobile. **Apply** (hidden after its first use) saves, then picks
 the selected chip and shrinks the panel to the result bar (**Change** restores
 it), and the **⋯** button holds **Copy values** for the selected look. Closing
@@ -102,7 +107,7 @@ export function FeatureScreen() {
 
 ```tsx
 import { useEffect, useRef, useState } from "react";
-import { DevSettings, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, DevSettings, findNodeHandle, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { appDefault, CardFeature } from "./CardFeature";
 import type { CardConfig } from "./CardFeature";
 import type { TuningLabHostProps } from "./FeatureScreen";
@@ -200,19 +205,46 @@ function Button({ title, onPress, disabled, label, selected }: {
 
 // Core React Native has no slider. This stepper is adjustable for screen
 // readers; use @react-native-community/slider instead if the app already has it.
-function Stepper({ label, value, max, onChange }: {
-  label: string; value: number; max: number; onChange: (v: number) => void;
+// The Shipped value is marked by a tick on a thin track under the stepper, on
+// every chip; the readout adds "· default 12" while the value differs, and ↺
+// puts this control back to Shipped as one Undo step, then moves screen reader
+// focus to the stepper, so it stays in the panel as the ↺ goes away. A stepper
+// has no drag, so nothing snaps; it moves in whole steps from wherever it is,
+// so from a default off the grid (12.5) it reaches 13.5, never 13: keep the
+// default on the stepper's grid. With a real slider,
+// overlay the same tick inset by half the thumb, snap a drag within 1.5% of the
+// range to Shipped, and add a light haptic only if the app already has a
+// haptics module (core Vibration is too strong for a tick). The tick and the
+// readout are display only.
+function Stepper({ label, value, shipped, max, onChange, onReset }: {
+  label: string; value: number; shipped: number; max: number; onChange: (v: number) => void; onReset: () => void;
 }) {
   const set = (v: number) => onChange(Math.min(max, Math.max(0, v)));
-  return <View accessible accessibilityRole="adjustable" accessibilityLabel={label}
-    accessibilityValue={{ min: 0, max, now: value }}
-    accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
-    onAccessibilityAction={e => set(value + (e.nativeEvent.actionName === "increment" ? 1 : -1))}
-    style={styles.row}>
-    <Text style={{ flex: 1 }}>{label}</Text>
-    <Button title="−" onPress={() => set(value - 1)} />
-    <Text style={{ minWidth: 32, textAlign: "center" }}>{value}</Text>
-    <Button title="+" onPress={() => set(value + 1)} />
+  const adjustable = useRef<View>(null);
+  const reset = () => {
+    onReset();
+    const node = findNodeHandle(adjustable.current);
+    if (node) AccessibilityInfo.setAccessibilityFocus(node);
+  };
+  return <View>
+    <View style={styles.row}>
+      <View ref={adjustable} accessible accessibilityRole="adjustable" accessibilityLabel={label}
+        accessibilityValue={{ min: 0, max, now: value }}
+        accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+        onAccessibilityAction={e => set(value + (e.nativeEvent.actionName === "increment" ? 1 : -1))}
+        style={[styles.row, { flex: 1 }]}>
+        <Text style={{ flex: 1 }}>{label}</Text>
+        <Button title="−" onPress={() => set(value - 1)} />
+        <Text style={{ minWidth: 32, textAlign: "center" }}>
+          {value === shipped ? value : `${value} · default ${shipped}`}</Text>
+        <Button title="+" onPress={() => set(value + 1)} />
+      </View>
+      {/* Outside the adjustable group, so a screen reader reaches it. */}
+      {value !== shipped && <Button title="↺" label={`Reset ${label} to default, ${shipped}`} onPress={reset} />}
+    </View>
+    <View style={styles.track} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      <View style={[styles.tick, { left: `${(shipped / max) * 100}%` as const }]} />
+    </View>
   </View>;
 }
 
@@ -352,6 +384,13 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     updateHistory(h => ({ undo: [...h.undo, currentStep], redo: h.redo.slice(0, -1) }));
     show(next);
   }
+  // ↺ on one control: puts its fields back to Shipped. An ordinary edit: one
+  // Undo step that ends the current run of presses. On Shipped, matching the
+  // baseline again leaves no unsaved edits; on a pinned look it is an edit that
+  // Save keeps.
+  function resetControl(...keys: (keyof CardConfig)[]) {
+    edit({ ...config, ...Object.fromEntries(keys.map(key => [key, baseline[key]])) });
+  }
   // Reset takes the selected look back to its last save (Shipped: the baseline)
   // in one step that Undo can take back.
   function reset() {
@@ -487,10 +526,12 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
             <Button title="Relaxed" onPress={() => applyPreset("relaxed")} />
           </View>
           {/* A stepper passes its key, so a run of presses is one Undo step. */}
-          <Stepper label="Radius" value={config.radius} max={32}
-            onChange={radius => edit({ ...config, radius }, { control: "radius" })} />
-          <Stepper label="Gap" value={config.gap} max={24}
-            onChange={gap => edit({ ...config, gap }, { control: "gap" })} />
+          <Stepper label="Radius" value={config.radius} shipped={baseline.radius} max={32}
+            onChange={radius => edit({ ...config, radius }, { control: "radius" })}
+            onReset={() => resetControl("radius")} />
+          <Stepper label="Gap" value={config.gap} shipped={baseline.gap} max={24}
+            onChange={gap => edit({ ...config, gap }, { control: "gap" })}
+            onReset={() => resetControl("gap")} />
           {status && <Text selectable accessibilityLiveRegion="polite">{status}</Text>}
         </ScrollView>
         {/* The edit row: each button is disabled when it has nothing to do. */}
@@ -528,6 +569,9 @@ const styles = StyleSheet.create({
   // Outlined, so the selected chip reads as selected without a label.
   selected: { backgroundColor: "#dbeafe", borderColor: "#06c", borderWidth: 2, paddingHorizontal: 9, paddingVertical: 5 },
   chip: { flexDirection: "row", gap: 2 },
+  // The thin track under a stepper and the tick that marks the Shipped value.
+  track: { height: 2, marginHorizontal: 1, marginBottom: 6, backgroundColor: "#d4d4d4" },
+  tick: { position: "absolute", top: -2, width: 2, height: 6, marginLeft: -1, backgroundColor: "#6b6b6b" },
   bar: {
     flexDirection: "row", alignItems: "center", gap: 8, padding: 8, borderRadius: 20,
     backgroundColor: "white", elevation: 8, shadowOpacity: 0.2, shadowRadius: 8,

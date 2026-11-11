@@ -62,7 +62,9 @@ Rules:
 ## Edits, Undo, Redo, and Reset
 
 Each look keeps its own history: Shipped's unsaved edits, and each pinned
-look's edits since its last save.
+look's edits since its last save. Reset and ↺ differ in what they go back to:
+Reset takes the whole look to its last save, ↺ takes one control to the
+baseline.
 
 - **One step per change.** A preset, a toggle, or a picker choice is one step.
   A run of changes from the same control in a row (one slider drag, a stepper
@@ -76,6 +78,12 @@ look's edits since its last save.
 - **Reset** takes the selected look back to its last save (Shipped: the
   baseline) in one step, and that step can be undone. Disabled when the look
   has no edits.
+- **↺ on one control** is not Reset: it puts that control alone back to the
+  baseline, what Shipped shows, never the look's last save
+  (`references/control-mapping.md`, "Default marker and per-control reset").
+  It is an ordinary edit: one step, which ends the current slider run, so the
+  next drag is its own step. On Shipped, a look that matches the baseline again
+  has no unsaved edits; on a pinned look it is an edit, which Save keeps.
 - **Save & pin and Save** start a fresh history at the version they keep:
   after them Undo and Redo are disabled until the next edit.
 - **Keyboard:** where the platform has a convention and the panel holds focus,

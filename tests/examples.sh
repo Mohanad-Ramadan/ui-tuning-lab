@@ -183,7 +183,7 @@ require_text examples/animation-spring.md 'border: "1px solid GrayText", backgro
 require_text examples/flutter-overlay.md 'side: BorderSide(color: Theme.of(overlayContext).colorScheme.outline)' 'Flutter panel has an outline against a matching background'
 require_text examples/flutter-overlay.md 'side: BorderSide(color: Theme.of(context).colorScheme.outline)' 'Flutter result bar keeps the outline'
 require_text examples/android-compose-sheet.md 'border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)' 'Compose panel has an outline against a matching background'
-require_text examples/web-floating-panel.md '<output aria-hidden="true">{config.radius}px</output>' 'web sliders show their value'
+require_text examples/web-floating-panel.md '<output aria-hidden="true">{readout}</output>' 'web sliders show their value'
 require_text examples/web-floating-panel.md 'firstControl.current?.focus()' 'web dialog receives initial focus'
 require_text examples/web-floating-panel.md 'trigger.current?.focus()' 'web dismissal restores trigger focus'
 require_text examples/web-floating-panel.md 'cancelAnimationFrame(focusFrame)' 'web cleanup cancels pending initial-focus work'
@@ -305,6 +305,51 @@ for example in $EXAMPLES; do
     fi
   done
 done
+
+# Every example has the default marker and per-control reset
+# (references/control-mapping.md): the reset itself, the ↺ with its accessible
+# label, and the readout that names the default.
+for example in android-compose-sheet.md animation-spring.md flutter-overlay.md macos-panel-minimal.md \
+    react-native-overlay.md swiftui-popover-palette.md web-floating-panel.md windows-flyout.md; do
+  require_text "examples/$example" 'Default marker and per-control reset' "$example links the per-control reset"
+  require_text "examples/$example" 'esetControl(' "$example resets one control"
+  require_text "examples/$example" '↺' "$example shows ↺ on a changed control"
+  require_text "examples/$example" 'to default, ' "$example labels ↺ with the default"
+done
+# The readout names the default, in each platform's own format.
+require_text assets/swift/UITuningLabValues.swift '· default \(uiTuningLabNumber(shipped))' 'Swift readout helper names the default'
+for example in swiftui-popover-palette.md macos-panel-minimal.md animation-spring.md; do
+  require_text "examples/$example" 'uiTuningLabReadout(' "$example readout names the default"
+done
+require_text examples/web-floating-panel.md '`${shown(value)} · default ${shipped}`' 'web readout names the default'
+require_text examples/animation-spring.md '`${shown(value)} · default ${shipped}`' 'web motion readout names the default'
+require_text examples/android-compose-sheet.md '"$value dp · default $shipped"' 'Compose readout names the default'
+require_text examples/flutter-overlay.md "'\${number(value)} · default \${number(shipped)}'" 'Flutter readout names the default'
+require_text examples/react-native-overlay.md '`${value} · default ${shipped}`' 'React Native readout names the default'
+require_text examples/windows-flyout.md '$"{value:0.##} · default {shipped:0.##}"' 'Windows readout names the default'
+# ↺ hides once the value is Shipped's, so it hands focus to its control.
+require_text examples/web-floating-panel.md 'const reset = () => { onReset(); input.current?.focus(); };' 'web ↺ keeps focus in the panel'
+require_text examples/swiftui-popover-palette.md '.focused($focused, equals: control)' 'iOS ↺ keeps focus on the slider'
+require_text examples/macos-panel-minimal.md '.focused($focused, equals: title)' 'macOS ↺ keeps focus on the slider'
+require_text examples/windows-flyout.md 'slider.Focus(FocusState.Programmatic);' 'Windows ↺ keeps focus on the slider'
+require_text examples/android-compose-sheet.md 'focus.requestFocus()' 'Compose ↺ keeps focus on the slider'
+require_text examples/flutter-overlay.md 'focus.requestFocus()' 'Flutter ↺ keeps focus on the slider'
+require_text examples/react-native-overlay.md 'AccessibilityInfo.setAccessibilityFocus(node)' 'React Native ↺ keeps focus on the stepper'
+# Every variant users copy has it, not only the default one.
+for example in $EXAMPLES; do
+  for variant in $(example_variants "$SKILL/examples/$example"); do
+    dir="$WORK/${example%.md}-$variant"
+    if grep -rqF 'resetControl(' "$dir"; then ok "$example [$variant] has the per-control reset"; else not_ok "$example [$variant] has the per-control reset"; fi
+    if grep -rqE 'uiTuningLabDefaultTick|ShippedSlider' "$dir"; then ok "$example [$variant] marks the default on its sliders"; else not_ok "$example [$variant] marks the default on its sliders"; fi
+  done
+done
+require_text examples/windows-flyout.md 'title.DoubleTapped += ' 'Windows label double-click resets the control'
+require_text examples/macos-panel-minimal.md '.onTapGesture(count: 2)' 'macOS label double-click resets the control'
+require_text examples/web-floating-panel.md '<span onDoubleClick={reset}>' 'web label double-click resets the control'
+require_text examples/swiftui-popover-palette.md '.sensoryFeedback(.selection, trigger: snaps)' 'iOS snap has a light haptic'
+require_text examples/android-compose-sheet.md 'performHapticFeedback(' 'Android snap has a light haptic'
+require_text examples/flutter-overlay.md 'HapticFeedback.selectionClick()' 'Flutter snap has a light haptic'
+require_text references/control-mapping.md 'Not covered, with no marker and no ↺' 'control mapping lists what has no per-control reset'
 
 # The React Native adaptation is not compiled here, but its host is TypeScript,
 # so the linter can check that the lab module loads only under __DEV__.

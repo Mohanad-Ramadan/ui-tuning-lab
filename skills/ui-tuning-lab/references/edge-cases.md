@@ -46,6 +46,19 @@ Common checks:
   keeping, and a new pick replaces the old one.
 - Undo never reaches past a save, and a new edit clears Redo. A slider drag is
   one step, not one per frame.
+- A default off the step grid (12.5 with a step of 1): a slider with that step
+  can never land on it. A web range input with `step="1"` cannot even hold
+  12.5 (the browser moves it to 13), and a stepper moves in whole steps from
+  wherever it is, so from 12.5 it reaches 13.5, never 13. Pick a step that
+  divides the default (0.5), or a continuous slider (`step="any"` on the web).
+  Then the tick sits at 12.5, a drag near it snaps to exactly 12.5, and the
+  readout and the ↺ label show 12.5, never a rounded value.
+- A default at a range end (a radius of 0): the tick sits at the end of the
+  track, under the thumb's center there, not past the track. A default outside
+  the usual range widens the range to include it; the tick is never hidden.
+- A color default that is a token (`accent`, `surface-raised`): the swatch
+  shows the token's current color with its name, and ↺ restores the token, not
+  the raw color it resolves to, so landing still writes the token.
 - A seeded candidate that now matches the baseline, or whose fields no longer
   exist in the configuration, is dropped from the lab and reported, never
   silently rewritten.

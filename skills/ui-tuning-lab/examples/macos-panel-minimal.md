@@ -19,7 +19,12 @@ a new look. On a pinned look the controls make edits that stay with it when you
 switch away, until **Save** makes them its saved version. Undo and Redo step
 through the selected look's edits back to its last save, and a whole slider drag
 is one step; Command-Z and Command-Shift-Z run them while the panel is key.
-Reset takes the look back to its last save, and Undo can take that back.
+Reset takes the look back to its last save, and Undo can take that back. Each
+slider marks the Shipped value with a tick under its track, on every chip; a
+drag near it snaps to it exactly, the arrow keys still reach the values beside
+it, and the readout reads `40 pt · default 44` while the value differs. **↺**
+beside a changed slider, or a double-click on its label, puts that one control
+back to Shipped as one Undo step (`references/control-mapping.md`, "Default marker and per-control reset").
 **Apply** (hidden after its first use) saves, picks the selected chip, logs
 `UITUNINGLAB_DONE`, writes Application Support
 `<bundle-id>/.ui-tuning-lab/result.json`, copies `land <name>`, and collapses
@@ -258,6 +263,8 @@ struct UITuningLabPanel: View {
     // and reopening the panel.
     @ObservedObject var candidates: UITuningLabCandidates<ToolbarStyle>
     let baseline: ToolbarStyle
+    @State private var dragging: String?  // the slider being dragged: only a drag snaps
+    @FocusState private var focused: String?  // ↺ hands focus to its slider as it hides
 
     private static let compact = ToolbarStyle(height: 32, cornerRadius: 4)
     private static let spacious = ToolbarStyle(height: 56, cornerRadius: 16)
@@ -376,20 +383,44 @@ struct UITuningLabPanel: View {
     }
 
     /// One row per control: the label and value, then the slider with its own
-    /// label hidden, so no label shows twice.
+    /// label hidden, so no label shows twice. A tick under the track marks the
+    /// Shipped value, and a drag near it snaps to it exactly; the arrow keys
+    /// still reach the values beside it. ↺ shows while the value differs from
+    /// Shipped and puts it back as one Undo step; double-clicking the label
+    /// does the same.
     private func slider(_ title: String, _ path: WritableKeyPath<ToolbarStyle, Double>,
                         _ range: ClosedRange<Double>) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            LabeledContent(title, value: "\(Int(model.style[keyPath: path])) pt")
-                .accessibilityHidden(true)  // the slider reports its own value
+        let shipped = candidates.defaultValue(path)
+        let changed = !candidates.isDefault(path)
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                LabeledContent(title, value: uiTuningLabReadout(model.style[keyPath: path], shipped: shipped, unit: "pt"))
+                    .accessibilityHidden(true)  // the slider reports its own value
+                    .onTapGesture(count: 2) { if changed { reset(path, title) } }
+                if changed {
+                    Button("↺") { reset(path, title) }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Reset \(title) to default, \(uiTuningLabNumber(shipped)) pt")
+                }
+            }
             Slider(value: Binding(get: { model.style[keyPath: path] }, set: { value in
                 var next = model.style
-                next[keyPath: path] = value
+                let snap = dragging == title && uiTuningLabSnaps(value, to: shipped, in: range, step: 1)
+                next[keyPath: path] = snap ? shipped : value
                 // One drag is one Undo step.
                 edit(next, control: title)
-            }), in: range, step: 1) { Text(title) }
+            }), in: range, step: 1) { Text(title) } onEditingChanged: { dragging = $0 ? title : nil }
                 .labelsHidden()
+                .focused($focused, equals: title)
+                .uiTuningLabDefaultTick(at: shipped, in: range)
         }
+    }
+
+    /// Puts one slider back to Shipped and keeps focus in the panel on that
+    /// slider, so Command-Z still reaches the panel after the ↺ hides.
+    private func reset(_ path: WritableKeyPath<ToolbarStyle, Double>, _ title: String) {
+        model.style = candidates.resetControl(path)
+        focused = title
     }
 
     /// One chip. The selected chip is outlined and is the look the feature shows.
@@ -485,6 +516,8 @@ struct UITuningLabPanel: View {
     // and reopening the panel.
     @ObservedObject var candidates: UITuningLabCandidates<ToolbarStyle>
     let baseline: ToolbarStyle
+    @State private var dragging: String?  // the slider being dragged: only a drag snaps
+    @FocusState private var focused: String?  // ↺ hands focus to its slider as it hides
 
     // A persisting lab writes each look whenever it is saved, and deletes it on ×.
     private func persist() {
@@ -610,20 +643,44 @@ struct UITuningLabPanel: View {
     }
 
     /// One row per control: the label and value, then the slider with its own
-    /// label hidden, so no label shows twice.
+    /// label hidden, so no label shows twice. A tick under the track marks the
+    /// Shipped value, and a drag near it snaps to it exactly; the arrow keys
+    /// still reach the values beside it. ↺ shows while the value differs from
+    /// Shipped and puts it back as one Undo step; double-clicking the label
+    /// does the same.
     private func slider(_ title: String, _ path: WritableKeyPath<ToolbarStyle, Double>,
                         _ range: ClosedRange<Double>) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            LabeledContent(title, value: "\(Int(model.style[keyPath: path])) pt")
-                .accessibilityHidden(true)  // the slider reports its own value
+        let shipped = candidates.defaultValue(path)
+        let changed = !candidates.isDefault(path)
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                LabeledContent(title, value: uiTuningLabReadout(model.style[keyPath: path], shipped: shipped, unit: "pt"))
+                    .accessibilityHidden(true)  // the slider reports its own value
+                    .onTapGesture(count: 2) { if changed { reset(path, title) } }
+                if changed {
+                    Button("↺") { reset(path, title) }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Reset \(title) to default, \(uiTuningLabNumber(shipped)) pt")
+                }
+            }
             Slider(value: Binding(get: { model.style[keyPath: path] }, set: { value in
                 var next = model.style
-                next[keyPath: path] = value
+                let snap = dragging == title && uiTuningLabSnaps(value, to: shipped, in: range, step: 1)
+                next[keyPath: path] = snap ? shipped : value
                 // One drag is one Undo step.
                 edit(next, control: title)
-            }), in: range, step: 1) { Text(title) }
+            }), in: range, step: 1) { Text(title) } onEditingChanged: { dragging = $0 ? title : nil }
                 .labelsHidden()
+                .focused($focused, equals: title)
+                .uiTuningLabDefaultTick(at: shipped, in: range)
         }
+    }
+
+    /// Puts one slider back to Shipped and keeps focus in the panel on that
+    /// slider, so Command-Z still reaches the panel after the ↺ hides.
+    private func reset(_ path: WritableKeyPath<ToolbarStyle, Double>, _ title: String) {
+        model.style = candidates.resetControl(path)
+        focused = title
     }
 
     /// One chip. The selected chip is outlined and is the look the feature shows.

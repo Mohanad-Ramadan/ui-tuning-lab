@@ -100,9 +100,9 @@ if xcrun --find swiftc >/dev/null 2>&1; then
   if output=$(xcrun swiftc -DDEBUG -o "$WORK/values-check" \
         "$helper/UITuningLabValues.swift" "$helper/main.swift" 2>&1 &&
       "$WORK/values-check" 2>&1); then
-    echo "ok - UITuningLabValues.swift reports only rounded changed fields" >> "$WORK/swift.log"
+    echo "ok - UITuningLabValues.swift reports only rounded changed fields and resets one control undoably" >> "$WORK/swift.log"
   else
-    printf 'not ok - UITuningLabValues.swift reports only rounded changed fields\n%s\n' "$output" >> "$WORK/swift.log"
+    printf 'not ok - UITuningLabValues.swift reports only rounded changed fields and resets one control undoably\n%s\n' "$output" >> "$WORK/swift.log"
   fi
 fi
 # The loop above runs in a subshell, so count its results from the log.

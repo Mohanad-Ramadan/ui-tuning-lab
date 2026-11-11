@@ -38,7 +38,7 @@ async function cardStyles(page) {
 }
 
 async function setRange(page, label, value) {
-  await page.getByLabel(label).evaluate((input, v) => {
+  await page.getByRole("slider", { name: label }).evaluate((input, v) => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
     setter.call(input, String(v));
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -136,7 +136,7 @@ async function devChecks(engineName, engine, viewportName) {
     await button("Redo").click();
     record(scope, "Redo brings the drag back", (await cardStyles(page)).radius === "20px");
     // Undo and Redo on the keyboard, with focus in the panel.
-    await page.getByLabel(/Radius/).focus();
+    await page.getByRole("slider", { name: /Radius/ }).focus();
     await page.keyboard.press("Control+z");
     const undone = (await cardStyles(page)).radius;
     await page.keyboard.press("Control+Shift+z");
@@ -185,6 +185,45 @@ async function devChecks(engineName, engine, viewportName) {
     record(scope, "Reset goes back to the last save", same(tuned, await cardStyles(page)) && (await disabled("Save", "Reset")));
     await button("Undo").click();
     record(scope, "Undo takes Reset back", (await cardStyles(page)).radius === "6px");
+    // ↺ puts one control back to Shipped's value, not the look's last save,
+    // as one step that Undo takes back.
+    const radiusReset = page.getByRole("button", { name: "Reset Radius to default, 12 px", exact: true });
+    const readouts = await page.locator("output").allInnerTexts();
+    record(scope, "a changed slider shows ↺ and names the default",
+      (await radiusReset.count()) === 1 && readouts.includes("6 px · default 12"), readouts.join(" | "));
+    await radiusReset.click();
+    const shippedRadius = await cardStyles(page);
+    record(scope, "↺ on a pinned look puts the control back to Shipped's value",
+      shippedRadius.radius === before.radius && shippedRadius.gap === tuned.gap &&
+      (await radiusReset.count()) === 0 && (await enabled("Save")), JSON.stringify(shippedRadius));
+    await button("Undo").click();
+    record(scope, "Undo takes ↺ back in one step", (await cardStyles(page)).radius === "6px");
+    // ↺ goes away once the value is Shipped's, so it hands focus to its slider:
+    // the panel's Ctrl-Z still reaches Undo.
+    await radiusReset.click();
+    const focusedName = await page.evaluate(() =>
+      document.activeElement?.closest("[role=dialog]") ? document.activeElement.getAttribute("type") : null);
+    await page.keyboard.press("Control+z");
+    record(scope, "↺ keeps focus in the panel, on its slider, so Ctrl-Z undoes it",
+      focusedName === "range" && (await cardStyles(page)).radius === "6px", `focused: ${focusedName}`);
+    // A real drag that ends near the tick lands exactly on Shipped; an arrow
+    // key then moves past it.
+    const radiusSlider = page.getByRole("slider", { name: /Radius/ });
+    const track = await radiusSlider.boundingBox();
+    const xAt = value => track.x + 8 + (track.width - 16) * value / 32;
+    await page.mouse.move(xAt(20), track.y + track.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(xAt(12.3), track.y + track.height / 2, { steps: 8 });
+    await page.mouse.up();
+    record(scope, "a drag that ends near the tick lands exactly on Shipped",
+      (await cardStyles(page)).radius === before.radius, JSON.stringify(await cardStyles(page)));
+    await radiusSlider.focus();
+    await page.keyboard.press("ArrowRight");
+    record(scope, "an arrow key moves past the tick without snapping", (await cardStyles(page)).radius === "13px",
+      JSON.stringify(await cardStyles(page)));
+    await button("Undo").click();
+    record(scope, "Undo takes the drag and the arrow back as one run", (await cardStyles(page)).radius === "6px",
+      JSON.stringify(await cardStyles(page)));
     await saveButton().click();
     await page.waitForTimeout(300);
     const resaved = await page.getByRole("status").allInnerTexts();

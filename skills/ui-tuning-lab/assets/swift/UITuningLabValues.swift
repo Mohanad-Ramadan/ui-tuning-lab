@@ -214,6 +214,39 @@ final class UITuningLabCandidates<Value: Codable & Equatable>: ObservableObject 
         return selectedLook
     }
 
+    /// The Shipped value of one field: what its default marker, caption, or
+    /// swatch shows on every chip, pinned looks included.
+    func defaultValue<Field>(_ field: KeyPath<Value, Field>) -> Field { baseline[keyPath: field] }
+
+    /// Whether the selected look shows the Shipped value of a field; its ↺
+    /// shows only when this is false.
+    func isDefault<Field: Equatable>(_ field: KeyPath<Value, Field>) -> Bool {
+        selectedLook[keyPath: field] == baseline[keyPath: field]
+    }
+
+    /// ↺ on one control: `restore` copies that control's fields from Shipped
+    /// (its second argument) into the look; a spring's two sliders go together,
+    /// whatever their types. An ordinary edit: one Undo step that ends the
+    /// current slider run, so it never merges with a drag. On Shipped, a look
+    /// that matches the baseline again has no unsaved edits; on a pinned look
+    /// it is an edit that Save keeps. Returns the look the feature must now show.
+    @discardableResult
+    func resetControl(_ restore: (inout Value, Value) -> Void) -> Value {
+        var value = selectedLook
+        restore(&value, baseline)
+        edit(value)
+        return selectedLook
+    }
+
+    /// ↺ on one control whose fields share a type, such as a spring's duration
+    /// and bounce: `resetControl(\.duration, \.bounce)`.
+    @discardableResult
+    func resetControl<Field>(_ fields: WritableKeyPath<Value, Field>...) -> Value {
+        resetControl { look, shipped in
+            for field in fields { look[keyPath: field] = shipped[keyPath: field] }
+        }
+    }
+
     /// Removes a look and returns the look the feature must now show.
     @discardableResult
     func remove(_ name: String) -> Value {
@@ -475,7 +508,55 @@ private func uiTuningLabNormalized(_ field: Any) -> Any {
     }
 }
 
+/// Whether a drag lands on a slider's Shipped value: within 1.5% of the
+/// range, or less than half a step, so the grid values on either side never
+/// snap and stay reachable. Only a drag snaps; arrow keys, steppers, and
+/// VoiceOver's adjustable action never do. The Shipped value must sit on the
+/// slider's grid: pick a step that divides it, or a continuous slider.
+func uiTuningLabSnaps(_ value: Double, to shipped: Double, in range: ClosedRange<Double>, step: Double = 0) -> Bool {
+    let distance = abs(value - shipped)
+    return distance <= (range.upperBound - range.lowerBound) * 0.015 || distance < step / 2
+}
+
+/// A slider value as the panel shows it: at most two decimals, none when whole
+/// (`12`, `12.5`, `0.35`).
+func uiTuningLabNumber(_ value: Double) -> String {
+    value.formatted(.number.precision(.fractionLength(0...2)).grouping(.never))
+}
+
+/// A slider's readout: `14 pt · default 12` while it differs from Shipped,
+/// `12 pt` when it matches. Hide it from assistive technology, like the plain
+/// readout: the slider reports its own value.
+func uiTuningLabReadout(_ value: Double, shipped: Double, unit: String = "") -> String {
+    let now = unit.isEmpty ? uiTuningLabNumber(value) : "\(uiTuningLabNumber(value)) \(unit)"
+    return value == shipped ? now : "\(now) · default \(uiTuningLabNumber(shipped))"
+}
+
 extension View {
+    /// Marks a slider's Shipped value with a short tick just under the track,
+    /// shown on every chip. Sliders have no API for one tick at an arbitrary
+    /// value, so it is drawn over the slider; `thumbInset`, half the thumb's
+    /// width, keeps it under the thumb's center at that value (measure it on
+    /// the OS you run). Display only: it is never part of a look.
+    func uiTuningLabDefaultTick(at shipped: Double, in range: ClosedRange<Double>, thumbInset: CGFloat? = nil) -> some View {
+        #if os(macOS)
+        let inset = thumbInset ?? 10
+        #else
+        let inset = thumbInset ?? 14
+        #endif
+        let fraction = (shipped - range.lowerBound) / (range.upperBound - range.lowerBound)
+        return overlay(alignment: .topLeading) {
+            GeometryReader { proxy in
+                Capsule()
+                    .fill(.secondary)
+                    .frame(width: 2, height: 6)
+                    .offset(x: inset + (proxy.size.width - 2 * inset) * fraction - 1, y: proxy.size.height / 2 + 4)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+
     /// Outlines a selected chip or preset, so it reads as selected without a
     /// label: a 2 pt accent ring around the control.
     func uiTuningLabSelected(_ on: Bool) -> some View {

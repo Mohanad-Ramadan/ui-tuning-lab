@@ -36,6 +36,9 @@ A good lab feels like this:
   judgeable.
 - **Undo**, **Redo**, and **Reset** step through the selected look's edits
   since its last save, or drop them all.
+- **Every control shows its default**, the Shipped value: a tick on a slider
+  (a drag snaps to it), a caption on a toggle or option, a swatch beside a
+  color. Its **↺** puts that one control back to Shipped as one Undo step.
 - **Save & pin** keeps edits on Shipped as a new chip; on a pinned look the
   button reads **Save** and keeps its edits. Both copy `land <name>`.
   **Apply** picks the selected chip and hands it to the agent, with no paste:
@@ -46,8 +49,8 @@ A good lab feels like this:
 
 Every UI stack gets the same lab. On Android, Flutter, React Native, Windows,
 or a stack with no example at all, build: the
-panel, presets, direct controls, the chips, Undo, Redo, Reset, Save & pin and
-Save, Apply, the ⋯ menu with Copy values, the hint, and the three activation
+panel, presets, direct controls with their default markers and ↺, the chips,
+Undo, Redo, Reset, Save & pin and Save, Apply, the ⋯ menu with Copy values, the hint, and the three activation
 paths.
 Start from the platform's example, or the nearest one when there is none, and
 keep every guarantee in the safety checklist. Never replace the lab with a row
@@ -90,7 +93,9 @@ picker in the panel, with the original as the baseline
    feature's declared default (what ships), never the value on screen when the
    lab opens: a look kept from an earlier open must still count as a change.
    Pick controls from `references/control-mapping.md`:
-   at least two presets, direct controls, the chips, Undo, Redo, Reset,
+   at least two presets, direct controls with their default markers and ↺
+   (`references/control-mapping.md`, "Default marker and per-control reset"),
+   the chips, Undo, Redo, Reset,
    Save & pin and Save, Apply, the ⋯ menu (Copy values), and the hint, plus
    Replay and Speed for motion
    (`references/candidates.md`). Saved looks stay in memory and the log; the
@@ -166,7 +171,7 @@ module (presets, a diff function) need no marker: the file itself is gated.
 |---|---|
 | **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files (for Kotlin, Dart, and C#, which it cannot read, the manual gate check in `references/platform-handoff.md` instead), and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
 | **Activatable only in development.** The lab opens through the documented agent path, the chosen human path, and a visible fallback; none survives Release. | Hands-on, during the tuning session with the user: every documented path opens the lab, a focused text field keeps shake-to-undo, and the fallback is reachable. Release archive: launch arguments, URL schemes, shake selectors, notification names, key commands, and fallback labels are absent or inert (`references/verify-protocol.md`). |
-| **Reversible.** The Shipped chip shows the baseline (the declared default) exactly, behavior included. | Hands-on, during the tuning session with the user: open, change everything, close, reopen, select Shipped, and compare with the unmodified app. |
+| **Reversible.** The Shipped chip shows the baseline (the declared default) exactly, behavior included. | Hands-on, during the tuning session with the user: open, change everything, close, reopen, select Shipped, and compare with the unmodified app. On a pinned look, change one control and press its ↺: the value equals Shipped's, and Undo brings the change back. |
 | **Explicit persistence.** The only write an ephemeral lab makes is the result file on Apply (and on Save & pin or Save after it); saved looks live only in memory and the log unless the user asked to save them; every write goes only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | An ephemeral lab's only storage writer is the result file; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
 | **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on, during or after the tuning session with the user: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
 
@@ -188,7 +193,8 @@ a save would overwrite a production key.
   platform.
 - `references/ios-hosting.md`: iOS panels, activation, Xcode targets, and UIKit or
   hybrid apps.
-- `references/control-mapping.md`: which control for which value; required controls.
+- `references/control-mapping.md`: which control for which value; required
+  controls; default markers and per-control reset.
 - `references/design-variants.md`: alternative designs of a feature as a
   Design picker in the lab, and landing the winning design's code.
 - `references/candidates.md`: chips, Undo, Redo, Reset, Save & pin, Save, Apply, look names, the

@@ -115,6 +115,14 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
   walks them back one at a time and stops at the last save (the baseline on
   Shipped); Redo brings them back; a new edit disables Redo; Reset returns to
   the last save and Undo brings the edits back. After Save, Undo is disabled.
+- Default marker and ↺ (`references/control-mapping.md`, "Default marker and
+  per-control reset"): every slider shows a tick at the Shipped value, on every
+  chip, under the thumb's center when the slider sits there. A drag near the
+  tick snaps to it; the arrow keys reach the values on either side. On a pinned
+  look, change one control and press its ↺: that value equals Shipped's, the
+  other controls keep their edits, the ↺ hides, and Save is enabled. Undo
+  brings the value back in one step. On Shipped with one edited control, ↺
+  leaves no unsaved edits and outlines Shipped again.
 - Layout: screenshot the panel after opening, after an edit, and after Apply
   then Change. Labels and controls line up in one column, no label shows twice,
   and the hint sits at the bottom. On macOS the panel is never a `Form`, and its

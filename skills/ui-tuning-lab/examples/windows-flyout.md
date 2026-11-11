@@ -29,7 +29,12 @@ saved version. Shipped is read-only, so its edits are unsaved changes, with no
 chip outlined, until **Save & pin** keeps them as a new look. The edit row under
 the controls holds **Undo**, **Redo**, and **Reset**, each disabled when it
 cannot act. Every look has its own history back to its last save, and a slider
-drag is one step. `Ctrl+Z` and `Ctrl+Y` run Undo and Redo as keyboard
+drag is one step. Each slider marks the Shipped value with a tick under its
+track, on every chip (WinUI draws only evenly spaced ticks, so the lab overlays
+it); a drag near it snaps to it exactly, the arrow keys still reach the values
+beside it, and the readout reads `14 · default 12` while the value differs.
+**↺** beside a changed slider, or a double-click on its label, puts that one
+control back to Shipped as one Undo step (`references/control-mapping.md`, "Default marker and per-control reset"). `Ctrl+Z` and `Ctrl+Y` run Undo and Redo as keyboard
 accelerators whose scope is the flyout content, so they work only while focus is
 inside the panel and never reach the app. **Apply** (hidden after its first use)
 saves first, picks the selected chip, and shrinks the flyout to the result bar.
@@ -224,7 +229,8 @@ internal sealed class UITuningLabFlyout
     private Grid? panel;
     private StackPanel? resultBar, chips;
     private TextBlock? resultText, savedText, status, hint;
-    private Slider? radiusSlider, spacingSlider;
+    // Each slider's refresh: shows a look's value, readout, and ↺.
+    private readonly List<Action<CardConfig>> sliders = new();
     private Button? saveButton, applyButton, undoButton, redoButton, resetButton;
 
     public UITuningLabFlyout(Page page, Grid root, CommandBar? toolbar, Func<CardConfig> getLook, Action<CardConfig> setLook)
@@ -387,7 +393,7 @@ internal sealed class UITuningLabFlyout
         if (flyout != null) { flyout.Closed -= OnClosed; flyout.Content = null; }
         flyout = null;
         panel = null; resultBar = chips = null; resultText = savedText = status = null;
-        radiusSlider = spacingSlider = null; saveButton = applyButton = undoButton = redoButton = resetButton = null;
+        sliders.Clear(); saveButton = applyButton = undoButton = redoButton = resetButton = null;
         tuneButton.Focus(FocusState.Programmatic);
     }
 
@@ -432,8 +438,8 @@ internal sealed class UITuningLabFlyout
             presetRow.Children.Add(b);
         }
         body.Children.Add(presetRow);
-        radiusSlider = AddSlider(body, "Corner radius", "cornerRadius", 32, v => getLook() with { CornerRadius = v });
-        spacingSlider = AddSlider(body, "Spacing", "spacing", 24, v => getLook() with { Spacing = v });
+        AddSlider(body, "Corner radius", "cornerRadius", 32, c => c.CornerRadius, (c, v) => c with { CornerRadius = v });
+        AddSlider(body, "Spacing", "spacing", 24, c => c.Spacing, (c, v) => c with { Spacing = v });
         status = new TextBlock { TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         body.Children.Add(status);
@@ -507,20 +513,79 @@ internal sealed class UITuningLabFlyout
         button.KeyboardAccelerators.Add(accelerator);
     }
 
-    private Slider AddSlider(Panel parent, string label, string control, double max, Func<double, CardConfig> edit)
+    // A slider with the Shipped value marked: a tick under the track, on every
+    // chip. WinUI draws only evenly spaced ticks (TickFrequency), so the tick is
+    // a Rectangle laid over the track, inset by half the thumb (ThumbInset) so
+    // it sits under the thumb's center at that value. A pointer drag (never the
+    // arrow keys) within 1.5% of the range, or less than half a step, snaps to
+    // Shipped exactly; there is no haptic on the desktop. The readout adds
+    // "· default 12" while the value differs. ↺, and double-clicking the label,
+    // put this control back to Shipped as one Undo step. All of it is display
+    // only. ThumbInset is half the default WinUI thumb; measure it again on
+    // your WinUI version or when the app restyles the slider.
+    private const double ThumbInset = 10;
+
+    private void AddSlider(Panel parent, string label, string control, double max,
+        Func<CardConfig, double> read, Func<CardConfig, double, CardConfig> write)
     {
-        var readout = new TextBlock();
+        var shipped = read(Baseline);
+        var slider = new Slider { Minimum = 0, Maximum = max, StepFrequency = 1 };
+        // ↺ hides once the value is Shipped's, so focus moves to the slider and
+        // stays inside the panel, where Ctrl+Z still reaches Undo.
+        void Reset()
+        {
+            ResetControl((look, original) => write(look, read(original)));
+            slider.Focus(FocusState.Programmatic);
+        }
+        var title = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center };
+        // The label is a shortcut only: ↺ is the path Narrator and the keyboard use.
+        title.DoubleTapped += (_, _) => Reset();
+        // Narrator names the slider from the label, so it is not announced twice.
+        AutomationProperties.SetLabeledBy(slider, title);
+        var readout = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         // The slider already reports its value to Narrator; keep the readout out of the tree.
         AutomationProperties.SetAccessibilityView(readout, AccessibilityView.Raw);
-        var slider = new Slider { Header = label, Minimum = 0, Maximum = max, StepFrequency = 1, Tag = readout };
+        var reset = MakeButton("↺", Reset);
+        AutomationProperties.SetName(reset, $"Reset {label} to default, {shipped:0.##}");
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        row.Children.Add(title);
+        row.Children.Add(readout);
+        row.Children.Add(reset);
+
+        var dragging = false;
+        // The slider handles pointer events itself, so listen to handled ones too.
+        slider.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => dragging = true), true);
+        slider.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => dragging = false), true);
+        slider.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler((_, _) => dragging = false), true);
         slider.ValueChanged += (_, e) =>
         {
-            readout.Text = $"{e.NewValue:0}";
-            if (!refreshing) Edit(edit(Math.Round(e.NewValue)), control: control);
+            if (refreshing) return;
+            var distance = Math.Abs(e.NewValue - shipped);
+            var snap = dragging && (distance <= max * 0.015 || distance < 0.5);
+            Edit(write(getLook(), snap ? shipped : Math.Round(e.NewValue)), control: control);
         };
-        parent.Children.Add(slider);
-        parent.Children.Add(readout);
-        return slider;
+        var tick = new Microsoft.UI.Xaml.Shapes.Rectangle
+        {
+            Width = 2, Height = 6, HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 18, 0, 0), IsHitTestVisible = false,
+            Fill = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+        };
+        AutomationProperties.SetAccessibilityView(tick, AccessibilityView.Raw);
+        var track = new Grid();
+        track.Children.Add(slider);
+        track.Children.Add(tick);
+        track.SizeChanged += (_, e) =>
+            tick.Margin = new Thickness(ThumbInset + (e.NewSize.Width - 2 * ThumbInset) * shipped / max - 1, 18, 0, 0);
+
+        sliders.Add(look =>
+        {
+            var value = read(look);
+            slider.Value = value;
+            readout.Text = value == shipped ? $"{value:0.##}" : $"{value:0.##} · default {shipped:0.##}";
+            reset.Visibility = value == shipped ? Visibility.Collapsed : Visibility.Visible;
+        });
+        parent.Children.Add(row);
+        parent.Children.Add(track);
     }
 
     private Button MakeButton(string label, Action action)
@@ -623,8 +688,7 @@ internal sealed class UITuningLabFlyout
         hint!.Text = applies > 0
             ? "Save, then paste it in chat"
             : "Save & pin to keep a look · Apply to finish";
-        radiusSlider!.Value = look.CornerRadius;
-        spacingSlider!.Value = look.Spacing;
+        foreach (var show in sliders) show(look);
         saveButton!.Content = SaveTitle;
         saveButton.IsEnabled = CanSave;
         undoButton!.IsEnabled = CanUndo;
@@ -716,6 +780,14 @@ internal sealed class UITuningLabFlyout
         setLook(SelectedLook());
         Refresh();
     }
+
+    // ↺ on one control: `restore` copies that control's fields from Shipped (a
+    // spring's two sliders together). An ordinary edit: one Undo step that ends
+    // the current slider run, so it never merges with a drag. On Shipped,
+    // matching the baseline again leaves no unsaved edits; on a pinned look it is
+    // an edit that Save keeps.
+    private void ResetControl(Func<CardConfig, CardConfig, CardConfig> restore) =>
+        Edit(restore(SelectedLook(), Baseline));
 
     // Undo steps the selected look back one edit, never past its last save.
     private void Undo()

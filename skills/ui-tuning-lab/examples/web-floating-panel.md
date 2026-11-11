@@ -18,7 +18,12 @@ and selects it. On a pinned look the same button reads **Save**: edits stay
 with the look when you switch away, and Save makes them its saved version.
 **Undo**, **Redo**, and **Reset** work on the selected look, back to its last
 save; one slider drag is one step. Ctrl-Z and Ctrl-Shift-Z (Cmd on a Mac, or
-Ctrl-Y) run Undo and Redo only while focus is in the panel. **Apply** (hidden
+Ctrl-Y) run Undo and Redo only while focus is in the panel. Each slider marks
+the Shipped value with a tick under its track, on every chip; a drag near it
+snaps to it exactly, the arrow keys still reach the values beside it, and the
+readout reads `14 px · default 12` while the value differs. **↺** beside a
+changed slider, or a double-click on its label, puts that one control back to
+Shipped as one Undo step (`references/control-mapping.md`, "Default marker and per-control reset"). **Apply** (hidden
 after its first use) saves first, then picks the selected chip: it logs
 `UITUNINGLAB_DONE`, writes the same object to the `localStorage` key
 `uiTuningLab.result`, copies `land <name>` to the clipboard, and shrinks the
@@ -81,7 +86,7 @@ export function FeatureScreen() {
 <!-- file: FeatureScreen.ui-tuning-lab.tsx -->
 ```tsx
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import { appDefault, CardFeature } from "./CardFeature";
 import type { CardConfig } from "./CardFeature";
 import type { TuningLabHostProps } from "./FeatureScreen";
@@ -197,6 +202,67 @@ function chipLabel(name: string): string {
   if (!m) return name;
   const words = m[1].split("-").filter(Boolean).map(word => word[0].toUpperCase() + word.slice(1));
   return `${words.join(" ")}-${Number(m[2])}`;
+}
+
+// A range input with the Shipped value marked: a tick under the track, on
+// every chip. Range inputs have no API for one tick at an arbitrary value, so
+// the tick is drawn over the track; THUMB is the browser's thumb width, and the
+// thumb's center runs from THUMB / 2 to the width minus THUMB / 2, so the tick
+// sits under the thumb at that value. 16 px matches Chromium, Firefox, and
+// Safari's default thumbs; measure it again when the app styles the thumb. A
+// drag (never the arrow keys) within 1.5% of the range, or less than half a
+// step, snaps to the Shipped value exactly. The Shipped value must sit on the
+// step grid: a range input cannot hold 12.5 with step="1", so use a step that
+// divides it, or step="any". The readout adds "· default 12" while the value
+// differs. ↺, and double-clicking the label, put this control back to Shipped
+// as one Undo step and move focus to the slider, so it stays in the panel as
+// the ↺ goes away. The tick, the snap, and the readout are display only.
+const THUMB = 16;
+function ShippedSlider({ label, value, shipped, min, max, step = 1, unit = "", onEdit, onReset, resetButton = true,
+  inputRef }: {
+  label: string; value: number; shipped: number; min: number; max: number; step?: number; unit?: string;
+  onEdit: (value: number) => void; onReset: () => void; resetButton?: boolean;
+  inputRef?: RefObject<HTMLInputElement>;
+}) {
+  const dragging = useRef(false);
+  const ownInput = useRef<HTMLInputElement>(null);
+  const input = inputRef ?? ownInput;
+  const reset = () => { onReset(); input.current?.focus(); };
+  // A drag ends wherever the pointer is released, inside the input or not.
+  // Removed on unmount, so closing the lab leaves no listener behind.
+  useEffect(() => {
+    const end = () => { dragging.current = false; };
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    return () => {
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+  }, []);
+  const shown = (n: number) => unit ? `${n} ${unit}` : `${n}`;
+  const readout = value === shipped ? shown(value) : `${shown(value)} · default ${shipped}`;
+  const fraction = (shipped - min) / (max - min);
+  return <div style={rowStyle}>
+    <label>
+      <span onDoubleClick={reset}>{label}</span>{" "}
+      <span style={{ position: "relative", display: "inline-block" }}>
+        <input ref={input} type="range" min={min} max={max} step={step} value={value}
+          onPointerDown={() => { dragging.current = true; }}
+          onChange={e => {
+            const next = Number(e.target.value);
+            const distance = Math.abs(next - shipped);
+            const snap = dragging.current && (distance <= (max - min) * 0.015 || distance < step / 2);
+            onEdit(snap ? shipped : next);
+          }}/>
+        <span aria-hidden="true" style={{ position: "absolute", insetBlockEnd: -2, width: 2, height: 6,
+          insetInlineStart: `calc(${THUMB / 2}px + (100% - ${THUMB}px) * ${fraction} - 1px)`,
+          background: "GrayText", pointerEvents: "none" }}/>
+      </span>
+    </label>
+    <output aria-hidden="true">{readout}</output>
+    {resetButton && value !== shipped && <button type="button"
+      aria-label={`Reset ${label} to default, ${shown(shipped)}`} onClick={reset}>↺</button>}
+  </div>;
 }
 
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
@@ -384,6 +450,13 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     show(selectedPin ? { value: savedLook(selectedPin), basedOn: selectedPin.basedOn }
       : { value: baseline, basedOn: "baseline" });
   }
+  // ↺ on one control: puts its fields back to Shipped. An ordinary edit:
+  // one Undo step that ends the current slider run, so it never merges with a
+  // drag. On Shipped, matching the baseline again leaves no unsaved edits; on
+  // a pinned look it is an edit that Save keeps.
+  function resetControl(...keys: (keyof CardConfig)[]) {
+    edit({ ...current.value, ...Object.fromEntries(keys.map(key => [key, baseline[key]])) });
+  }
   // Undo and Redo on the keyboard, only while focus is in the panel: Ctrl or
   // Cmd-Z, and Ctrl or Cmd-Shift-Z or Ctrl-Y. A text field keeps its own undo.
   function onPanelKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -539,16 +612,14 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         <div role="group" aria-label="Controls">
           <button type="button" onClick={() => applyPreset("compact")}>Compact</button>
           <button type="button" onClick={() => applyPreset("relaxed")}>Relaxed</button>
-          <label>Radius <input type="range" min="0" max="32"
-            value={config.radius}
-            onChange={e => edit({ ...config, radius: Number(e.target.value) }, undefined, "radius")}/>
-            <output aria-hidden="true">{config.radius}px</output>
-          </label>
-          <label>Gap <input type="range" min="0" max="24"
-            value={config.gap}
-            onChange={e => edit({ ...config, gap: Number(e.target.value) }, undefined, "gap")}/>
-            <output aria-hidden="true">{config.gap}px</output>
-          </label>
+          <ShippedSlider label="Radius" min={0} max={32} unit="px"
+            value={config.radius} shipped={baseline.radius}
+            onEdit={radius => edit({ ...config, radius }, undefined, "radius")}
+            onReset={() => resetControl("radius")}/>
+          <ShippedSlider label="Gap" min={0} max={24} unit="px"
+            value={config.gap} shipped={baseline.gap}
+            onEdit={gap => edit({ ...config, gap }, undefined, "gap")}
+            onReset={() => resetControl("gap")}/>
         </div>
         <div role="group" aria-label="Edits" style={rowStyle}>
           <button type="button" disabled={steps.undo.length === 0} onClick={undo}>Undo</button>
@@ -599,7 +670,7 @@ in storage untouched.
 <!-- file: FeatureScreen.ui-tuning-lab.tsx variant=persist -->
 ```tsx
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import { appDefault, CardFeature } from "./CardFeature";
 import type { CardConfig } from "./CardFeature";
 import type { TuningLabHostProps } from "./FeatureScreen";
@@ -770,6 +841,67 @@ function readStored(reserved: Set<string>): { found: Candidate[]; problems: stri
   }
   found.sort((a, b) => (a.savedAt < b.savedAt ? -1 : a.savedAt > b.savedAt ? 1 : 0));
   return { found: found.map(({ name, basedOn, values }) => ({ name, basedOn, values })), problems };
+}
+
+// A range input with the Shipped value marked: a tick under the track, on
+// every chip. Range inputs have no API for one tick at an arbitrary value, so
+// the tick is drawn over the track; THUMB is the browser's thumb width, and the
+// thumb's center runs from THUMB / 2 to the width minus THUMB / 2, so the tick
+// sits under the thumb at that value. 16 px matches Chromium, Firefox, and
+// Safari's default thumbs; measure it again when the app styles the thumb. A
+// drag (never the arrow keys) within 1.5% of the range, or less than half a
+// step, snaps to the Shipped value exactly. The Shipped value must sit on the
+// step grid: a range input cannot hold 12.5 with step="1", so use a step that
+// divides it, or step="any". The readout adds "· default 12" while the value
+// differs. ↺, and double-clicking the label, put this control back to Shipped
+// as one Undo step and move focus to the slider, so it stays in the panel as
+// the ↺ goes away. The tick, the snap, and the readout are display only.
+const THUMB = 16;
+function ShippedSlider({ label, value, shipped, min, max, step = 1, unit = "", onEdit, onReset, resetButton = true,
+  inputRef }: {
+  label: string; value: number; shipped: number; min: number; max: number; step?: number; unit?: string;
+  onEdit: (value: number) => void; onReset: () => void; resetButton?: boolean;
+  inputRef?: RefObject<HTMLInputElement>;
+}) {
+  const dragging = useRef(false);
+  const ownInput = useRef<HTMLInputElement>(null);
+  const input = inputRef ?? ownInput;
+  const reset = () => { onReset(); input.current?.focus(); };
+  // A drag ends wherever the pointer is released, inside the input or not.
+  // Removed on unmount, so closing the lab leaves no listener behind.
+  useEffect(() => {
+    const end = () => { dragging.current = false; };
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    return () => {
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+  }, []);
+  const shown = (n: number) => unit ? `${n} ${unit}` : `${n}`;
+  const readout = value === shipped ? shown(value) : `${shown(value)} · default ${shipped}`;
+  const fraction = (shipped - min) / (max - min);
+  return <div style={rowStyle}>
+    <label>
+      <span onDoubleClick={reset}>{label}</span>{" "}
+      <span style={{ position: "relative", display: "inline-block" }}>
+        <input ref={input} type="range" min={min} max={max} step={step} value={value}
+          onPointerDown={() => { dragging.current = true; }}
+          onChange={e => {
+            const next = Number(e.target.value);
+            const distance = Math.abs(next - shipped);
+            const snap = dragging.current && (distance <= (max - min) * 0.015 || distance < step / 2);
+            onEdit(snap ? shipped : next);
+          }}/>
+        <span aria-hidden="true" style={{ position: "absolute", insetBlockEnd: -2, width: 2, height: 6,
+          insetInlineStart: `calc(${THUMB / 2}px + (100% - ${THUMB}px) * ${fraction} - 1px)`,
+          background: "GrayText", pointerEvents: "none" }}/>
+      </span>
+    </label>
+    <output aria-hidden="true">{readout}</output>
+    {resetButton && value !== shipped && <button type="button"
+      aria-label={`Reset ${label} to default, ${shown(shipped)}`} onClick={reset}>↺</button>}
+  </div>;
 }
 
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
@@ -975,6 +1107,13 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     show(selectedPin ? { value: savedLook(selectedPin), basedOn: selectedPin.basedOn }
       : { value: baseline, basedOn: "baseline" });
   }
+  // ↺ on one control: puts its fields back to Shipped. An ordinary edit:
+  // one Undo step that ends the current slider run, so it never merges with a
+  // drag. On Shipped, matching the baseline again leaves no unsaved edits; on
+  // a pinned look it is an edit that Save keeps.
+  function resetControl(...keys: (keyof CardConfig)[]) {
+    edit({ ...current.value, ...Object.fromEntries(keys.map(key => [key, baseline[key]])) });
+  }
   // Undo and Redo on the keyboard, only while focus is in the panel: Ctrl or
   // Cmd-Z, and Ctrl or Cmd-Shift-Z or Ctrl-Y. A text field keeps its own undo.
   function onPanelKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -1166,16 +1305,14 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
         <div role="group" aria-label="Controls">
           <button type="button" onClick={() => applyPreset("compact")}>Compact</button>
           <button type="button" onClick={() => applyPreset("relaxed")}>Relaxed</button>
-          <label>Radius <input type="range" min="0" max="32"
-            value={config.radius}
-            onChange={e => edit({ ...config, radius: Number(e.target.value) }, undefined, "radius")}/>
-            <output aria-hidden="true">{config.radius}px</output>
-          </label>
-          <label>Gap <input type="range" min="0" max="24"
-            value={config.gap}
-            onChange={e => edit({ ...config, gap: Number(e.target.value) }, undefined, "gap")}/>
-            <output aria-hidden="true">{config.gap}px</output>
-          </label>
+          <ShippedSlider label="Radius" min={0} max={32} unit="px"
+            value={config.radius} shipped={baseline.radius}
+            onEdit={radius => edit({ ...config, radius }, undefined, "radius")}
+            onReset={() => resetControl("radius")}/>
+          <ShippedSlider label="Gap" min={0} max={24} unit="px"
+            value={config.gap} shipped={baseline.gap}
+            onEdit={gap => edit({ ...config, gap }, undefined, "gap")}
+            onReset={() => resetControl("gap")}/>
         </div>
         <div role="group" aria-label="Edits" style={rowStyle}>
           <button type="button" disabled={steps.undo.length === 0} onClick={undo}>Undo</button>

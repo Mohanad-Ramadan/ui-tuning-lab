@@ -32,7 +32,12 @@ version. Shipped is read-only, so its edits are unsaved changes, with no chip
 outlined, until **Save & pin** keeps them as a new look. The edit row under
 the controls holds **Undo**, **Redo**, and **Reset**, each disabled when it
 cannot act. Every look has its own history back to its last save, and a slider
-drag is one step. There are no keyboard shortcuts: the panel uses buttons only.
+drag is one step. Each slider marks the Shipped value with a tick under its
+track, on every chip; a drag near it snaps to it exactly with a light haptic
+tick, TalkBack's adjust action still reaches the values beside it, and the
+readout reads `14 dp · default 12` while the value differs. **↺** beside a
+changed slider puts that one control back to Shipped as one Undo step
+(`references/control-mapping.md`, "Default marker and per-control reset"). There are no keyboard shortcuts: the panel uses buttons only.
 **Apply** (hidden after its first use) saves first, picks the selected chip, and
 shrinks the panel to the result bar. The **⋯** menu holds Copy values. Closing
 keeps the selected look on screen. The panel's height is capped and the hint
@@ -441,6 +446,17 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
     fun applyPreset(name: String, setStyle: (CardStyle) -> Unit) =
         edit(uiTuningLabPresets.getValue(name), setStyle, preset = name)
 
+    // The Shipped look: what each control's default marker shows, on every chip.
+    val shipped: CardStyle get() = baseline
+
+    // ↺ on one control: `restore` copies that control's fields from Shipped (a
+    // spring's two sliders together). An ordinary edit: one Undo step that ends
+    // the current slider run, so it never merges with a drag. On Shipped,
+    // matching the baseline again leaves no unsaved edits; on a pinned look it is
+    // an edit that Save keeps.
+    fun resetControl(setStyle: (CardStyle) -> Unit, restore: (look: CardStyle, shipped: CardStyle) -> CardStyle) =
+        edit(restore(selectedLook, baseline), setStyle)
+
     // Undo steps the selected look back one edit, never past its last save.
     fun undo(setStyle: (CardStyle) -> Unit) {
         val steps = undoSteps[selected].orEmpty()
@@ -581,8 +597,11 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
 package com.example.cards
 
 import androidx.activity.compose.BackHandler
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -601,13 +620,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 // A non-modal panel: it consumes touches only inside its own bounds, so the
@@ -710,10 +736,12 @@ fun UITuningLabPanel(
                             modifier = Modifier.padding(end = 8.dp)) { Text(name.replaceFirstChar(Char::uppercase)) }
                     }
                 }
-                UITuningLabSlider("Corner radius", style.cornerRadius, 32) {
+                UITuningLabSlider("Corner radius", style.cornerRadius, lab.shipped.cornerRadius, 32,
+                    onReset = { lab.resetControl(setStyle) { look, shipped -> look.copy(cornerRadius = shipped.cornerRadius) } }) {
                     lab.edit(style.copy(cornerRadius = it), setStyle, control = "cornerRadius")
                 }
-                UITuningLabSlider("Spacing", style.spacing, 24) {
+                UITuningLabSlider("Spacing", style.spacing, lab.shipped.spacing, 24,
+                    onReset = { lab.resetControl(setStyle) { look, shipped -> look.copy(spacing = shipped.spacing) } }) {
                     lab.edit(style.copy(spacing = it), setStyle, control = "spacing")
                 }
                 lab.status?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
@@ -743,16 +771,56 @@ fun UITuningLabPanel(
     }
 }
 
+// A slider with the Shipped value marked: a tick under the track, on every chip.
+// Slider has no API for one tick at an arbitrary value, so it is drawn over the
+// track; THUMB_INSET, half the thumb's width, keeps it under the thumb's center
+// at that value. 10.dp fits the Material 3 slider this was written against;
+// measure it again on your Material 3 version or a restyled thumb. A drag
+// (never TalkBack's adjust action) within 1.5% of the range, or less than half
+// a step, snaps to Shipped exactly, with one light haptic tick as it lands.
+// The readout adds "· default 12" while the value differs, and ↺ puts this
+// control back to Shipped as one Undo step, then focuses the slider, so focus
+// stays in the panel as the ↺ goes away. All of it is display only.
+private val THUMB_INSET = 10.dp
+
 @Composable
-private fun UITuningLabSlider(label: String, value: Int, max: Int, onChange: (Int) -> Unit) {
+private fun UITuningLabSlider(
+    label: String, value: Int, shipped: Int, max: Int, onReset: () -> Unit, onChange: (Int) -> Unit,
+) {
+    val view = LocalView.current
+    val interaction = remember { MutableInteractionSource() }
+    val dragging by interaction.collectIsDraggedAsState()
+    val focus = remember { FocusRequester() }
+    // The last value this slider sent, so the haptic fires once, on the move onto Shipped.
+    val lastSent = remember { intArrayOf(value) }
+    if (!dragging) lastSent[0] = value  // a drag starts from the value shown
+    val tick = MaterialTheme.colorScheme.outline
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f))
         // The slider already reports its value to TalkBack; hide the readout.
-        Text("$value dp", Modifier.clearAndSetSemantics { })
+        Text(if (value == shipped) "$value dp" else "$value dp · default $shipped", Modifier.clearAndSetSemantics { })
+        if (value != shipped) {
+            IconButton(onClick = { onReset(); focus.requestFocus() }, modifier = Modifier.size(32.dp).semantics {
+                contentDescription = "Reset $label to default, $shipped dp"
+            }) { Text("↺", Modifier.clearAndSetSemantics { }) }
+        }
     }
-    Slider(value = value.toFloat(), onValueChange = { onChange(it.roundToInt()) },
-        valueRange = 0f..max.toFloat(), steps = max - 1,
-        modifier = Modifier.semantics { contentDescription = label })
+    Slider(value = value.toFloat(), onValueChange = { raw ->
+            val distance = abs(raw - shipped)
+            val snap = dragging && (distance <= max * 0.015f || distance < 0.5f)
+            val next = if (snap) shipped else raw.roundToInt()
+            if (snap && lastSent[0] != shipped) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            lastSent[0] = next
+            onChange(next)
+        },
+        valueRange = 0f..max.toFloat(), steps = max - 1, interactionSource = interaction,
+        modifier = Modifier.focusRequester(focus).semantics { contentDescription = label }.drawWithContent {
+            drawContent()
+            val inset = THUMB_INSET.toPx()
+            val x = inset + (size.width - 2 * inset) * shipped / max
+            drawRect(tick, topLeft = Offset(x - 1.dp.toPx(), size.height / 2 + 6.dp.toPx()),
+                size = Size(2.dp.toPx(), 6.dp.toPx()))
+        })
 }
 ```
 

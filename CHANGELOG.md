@@ -1,5 +1,33 @@
 # Changelog — ui-tuning-lab
 
+## Unreleased
+
+### Each control shows its default, and puts it back
+
+- **Default markers:** every slider shows a tick at the Shipped value, on
+  every chip, drawn over the track under the thumb's center. A drag near it
+  snaps to it exactly, with a light haptic on iOS, Android, and Flutter; the
+  arrow keys and steppers still reach the values beside it. The default must
+  sit on the slider's step grid. The readout reads
+  `14 px · default 12` while the value differs. Toggles, options, colors, and
+  easing presets mark their default with a caption or swatch
+  (`references/control-mapping.md`, "Default marker and per-control reset").
+- **↺ on each control** puts that control alone back to Shipped, shown only
+  while it differs, with the label `Reset <Label> to default, <value>`. On the
+  web, macOS, and Windows, double-clicking the label does the same. A spring's
+  two sliders share one ↺. It is one Undo step that ends the slider run; on
+  Shipped, a look back at the baseline has no unsaved edits, and on a pinned
+  look it is an edit that Save keeps. Focus moves to the control's slider as
+  the ↺ goes away. Reset still takes the whole look to its last save.
+- A slider's range always includes the baseline; setup widens the range
+  rather than hide the marker.
+- `UITuningLabValues.swift` adds `resetControl(_:)`, `isDefault(_:)`, and
+  `defaultValue(_:)` on the looks store, and the shared slider helpers
+  `uiTuningLabSnaps`, `uiTuningLabNumber`, `uiTuningLabReadout`, and
+  `uiTuningLabDefaultTick`. Every example has the markers, snap, readout, and
+  ↺; React Native's stepper has no drag, so it has the marker and ↺ but
+  nothing snaps.
+
 ## 1.5.0 — 2026-11-11
 
 ### The agent runs the fresh build
