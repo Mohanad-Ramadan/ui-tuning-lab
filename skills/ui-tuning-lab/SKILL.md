@@ -4,7 +4,7 @@ description: "Adds a temporary, development-only control panel beside a real scr
 license: MIT
 metadata:
   author: "Mohanad Ramadan"
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # UI Tuning Lab
