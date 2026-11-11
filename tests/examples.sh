@@ -39,7 +39,7 @@ for example in $EXAMPLES; do
     not_ok "$example has no tagged source files"
   # The result file (uiTuningLab.result, .ui-tuning-lab/result.json) is the one
   # write an ephemeral lab makes; pins must not reach storage.
-  elif grep -Eq 'UITuningLabProfile|uiTuningLab\.candidates|candidates/|Button\("Save"|>Save</button>|func save\(|function save\(' "$dir"/*; then
+  elif grep -Eq 'UITuningLabProfile|uiTuningLab\.candidates|candidates/|Button\("Save"|>Save</button>|func save\(_|function save\(' "$dir"/*; then
     not_ok "$example default source includes persistence"
   else
     ok "$example default source is ephemeral"
@@ -189,9 +189,15 @@ require_text examples/web-floating-panel.md 'trigger.current?.focus()' 'web dism
 require_text examples/web-floating-panel.md 'cancelAnimationFrame(focusFrame)' 'web cleanup cancels pending initial-focus work'
 require_text examples/web-floating-panel.md 'value={config.gap}' 'web lab controls every config field'
 require_text examples/web-floating-panel.md 'uiTuningLab.candidates.' 'web candidates use the uiTuningLab namespace'
-require_text examples/swiftui-popover-palette.md '.onDisappear { candidates.leave() }' 'iOS closing keeps the selected look and logs an edited pin'
-require_text examples/macos-panel-minimal.md 'candidates.leave()' 'macOS closing keeps the selected look and logs an edited pin'
 require_text examples/macos-panel-minimal.md '.frame(width: 320, height: 420, alignment: .top)' 'macOS panel keeps its size after Change'
+require_text examples/macos-panel-minimal.md 'sizingOptions = []' 'macOS panel never resizes itself to its content'
+require_text examples/macos-panel-minimal.md '.keyboardShortcut("z", modifiers: .command)' 'macOS panel runs Undo on Command-Z'
+require_text examples/macos-panel-minimal.md '.keyboardShortcut("z", modifiers: [.command, .shift])' 'macOS panel runs Redo on Command-Shift-Z'
+if grep -rqE '\.leave\(\)|func leave\(' "$SKILL/examples" "$SKILL/assets"; then
+  not_ok 'leaving a look logs nothing: only a save logs' "$(grep -rnE '\.leave\(\)|func leave\(' "$SKILL/examples" "$SKILL/assets")"
+else
+  ok 'leaving a look logs nothing: only a save logs'
+fi
 require_text examples/macos-panel-minimal.md 'override func cancelOperation(_ sender: Any?) { close() }' 'macOS panel closes on Escape'
 require_text examples/web-floating-panel.md 'when the browser has no Popover API. The feature keeps the selected look.' 'web closing keeps the selected look'
 require_text examples/animation-spring.md 'lab.replayToken += 1' 'SwiftUI motion lab can replay'
@@ -260,34 +266,36 @@ for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; d
   fi
 done
 
-# Chips (Look N), Save & copy, Apply (hidden after the first), and the result file
+# Chips (named after their preset), Undo, Redo, Reset, Save & pin and Save,
+# Apply (hidden after the first), and the result file
 # are in every variant users copy (references/candidates.md), the ephemeral
 # default included.
 for example in $EXAMPLES; do
   for variant in $(example_variants "$SKILL/examples/$example"); do
     dir="$WORK/${example%.md}-$variant"
     label="$example [$variant]"
-    for needle in 'Shipped' 'Save & copy' 'Apply' 'Save & copy to keep a look · Apply to finish' \
-        'Save & copy, then paste it in chat' 'Applied: ' 'Saved ' 'Look ' 'look-' \
+    for needle in 'Shipped' 'Save & pin' 'Apply' 'Save & pin to keep a look · Apply to finish' \
+        'Save, then paste it in chat' 'Applied: ' 'Saved ' 'Pinned ' 'custom' 'Undo' 'Redo' 'Reset' \
         'paste it in chat so the agent applies it' 'land ' 'result' 'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE' \
         'only on the selected look'; do
       if grep -rqF "$needle" "$dir"; then ok "$label has $needle"; else not_ok "$label has $needle"; fi
     done
     # Apply is shown only until the first Apply.
     if grep -rqE 'applies ===? 0' "$dir"; then ok "$label hides Apply after the first"; else not_ok "$label hides Apply after the first"; fi
-    # Duplicate and auto-named pins are gone: a chip appears only through Save & copy.
+    # Duplicate and auto-named pins are gone: a chip appears only through Save & pin.
     if grep -rqE 'Duplicate|duplicate\(|nextName\(|FavoriteName|"tweak"' "$dir"; then
       not_ok "$label has no Duplicate or auto-named pins" "$(grep -rnE 'Duplicate|duplicate\(|nextName\(|FavoriteName|"tweak"' "$dir")"
     else
       ok "$label has no Duplicate or auto-named pins"
     fi
-    # There is no draft, stash, or Reset: the selected chip is the look shown,
-    # and selection is an outline, never a "<source> + edits" label.
-    retired='\+ edits|draftMatch|stashedDraft|Pin looks to compare|"Reset"|>Reset<'
+    # There is no draft or stash: the selected chip is the look shown, and
+    # selection is an outline, never a "<source> + edits" label. Save & copy
+    # and generic Look N names are retired.
+    retired='\+ edits|draftMatch|stashedDraft|Pin looks to compare|Save & copy|"look-|Look [0-9]'
     if grep -rqE "$retired" "$dir"; then
-      not_ok "$label has no draft, stash, or Reset" "$(grep -rnE "$retired" "$dir")"
+      not_ok "$label has no draft, stash, or retired names" "$(grep -rnE "$retired" "$dir")"
     else
-      ok "$label has no draft, stash, or Reset"
+      ok "$label has no draft, stash, or retired names"
     fi
     # The old labels and glyphs are gone from the panel.
     if grep -rqE '★|✓|"Now"|>Now<|Use this|"Original"|>Original<' "$dir"; then

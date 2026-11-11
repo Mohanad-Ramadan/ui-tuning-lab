@@ -9,20 +9,27 @@ development module (`references/activation.md`). The baseline is the declared
 default, `appDefault`; closing unmounts the popover and its listener.
 
 The panel follows `references/candidates.md`. A chip row under the header shows
-**Shipped** and each saved look (**Look 1**, **Look 2**, …); the selected chip is outlined, and the feature always
-shows it. Switching chips is the comparison. Moving a control or applying a preset edits the selected look in place, and a
-saved look keeps its edits when you switch away; on Shipped, which is
-read-only, it makes unsaved changes, with no chip outlined, until **Save &
-copy** keeps them as the next Look N. **Apply** (hidden after its first use) picks the selected
-chip: it logs `UITUNINGLAB_DONE`, writes the same object to the `localStorage`
-key `uiTuningLab.result`, copies `land <name>` to the clipboard, and shrinks the
+**Shipped** and each pinned look, named after its preset and numbered
+(**Compact-1**, **Relaxed-1**, or **Custom-1** for a look with no preset). The
+selected chip is outlined, and the feature always shows it, so switching chips
+is the comparison. Shipped is read-only: an edit on it shows live as unsaved
+changes, with no chip outlined, until **Save & pin** keeps them as a new look
+and selects it. On a pinned look the same button reads **Save**: edits stay
+with the look when you switch away, and Save makes them its saved version.
+**Undo**, **Redo**, and **Reset** work on the selected look, back to its last
+save; one slider drag is one step. Ctrl-Z and Ctrl-Shift-Z (Cmd on a Mac, or
+Ctrl-Y) run Undo and Redo only while focus is in the panel. **Apply** (hidden
+after its first use) saves first, then picks the selected chip: it logs
+`UITUNINGLAB_DONE`, writes the same object to the `localStorage` key
+`uiTuningLab.result`, copies `land <name>` to the clipboard, and shrinks the
 panel to `Applied: <name>` with **Change** to reopen it. The **⋯** menu holds
 **Copy values**, which logs the selected look's changed fields as one
 `UITUNINGLAB_VALUES {...}` line (`references/landing-protocol.md`).
 
 The default lab is ephemeral: looks live in React state and the console log,
-and the result key is its only write. `initialCandidates` seeds the looks when
-the lab is reopened in a later session.
+and the result key is its only write. A look logs its `UITUNINGLAB_CANDIDATE`
+line only when it is saved. `initialCandidates` seeds the looks when the lab is
+reopened in a later session.
 
 <!-- file: CardFeature.tsx -->
 ```tsx
@@ -74,6 +81,7 @@ export function FeatureScreen() {
 <!-- file: FeatureScreen.ui-tuning-lab.tsx -->
 ```tsx
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { appDefault, CardFeature } from "./CardFeature";
 import type { CardConfig } from "./CardFeature";
 import type { TuningLabHostProps } from "./FeatureScreen";
@@ -98,8 +106,14 @@ const rowStyle = { display: "flex", flexWrap: "wrap", alignItems: "center", gap:
 const selectedStyle = (on: boolean) =>
   on ? { outline: "2px solid Highlight", outlineOffset: 1, fontWeight: 600 } as const : undefined;
 
-// A look: the fields that differ from the baseline, plus where it started.
+// A pinned look: its saved version, as the fields that differ from the
+// baseline, plus where it came from. Edits since its last save live in `drafts`.
 type Candidate = { name: string; basedOn: string; values: Partial<CardConfig> };
+// One point in a look's history: what it showed, and where it came from.
+type Step = { value: CardConfig; basedOn: string };
+// Each look's Undo and Redo steps, back to its last save.
+type History = { undo: Step[]; redo: Step[] };
+const noHistory: History = { undo: [], redo: [] };
 // Looks the lab opens with. Empty by default; a later session seeds the
 // finalists kept in the project here (references/candidates.md).
 const initialCandidates: Candidate[] = [];
@@ -109,7 +123,8 @@ const resultKey = "uiTuningLab.result";
 // are kept for older logs.
 const reservedNames = ["draft", "now", "original", "baseline"];
 
-// Preset keys are kebab-case: the key is what a look records as basedOn.
+// Preset keys are kebab-case: the key is what a look records as basedOn, and
+// names the look when it is pinned (`compact-1`, shown as Compact-1).
 const presets = {
   compact: { radius: 4, gap: 4 },
   relaxed: { radius: 24, gap: 16 },
@@ -150,17 +165,38 @@ function sortedJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-// The next look's name, `look-N`: one past the highest number issued in this
-// run, removed ones included, so a number is never reused.
-function nextLookName(issued: Set<string>): string {
-  const used = [...issued].map(name => /^look-([0-9]+)$/.exec(name)).map(m => (m ? Number(m[1]) : 0));
-  return `look-${Math.max(0, ...used) + 1}`;
+// Two looks are the same when they differ from the baseline in the same fields.
+function sameLook(a: CardConfig, b: CardConfig): boolean {
+  return sortedJson(changedValues(baseline, a)) === sortedJson(changedValues(baseline, b));
 }
-// A chip's label: `Look 2` for `look-2`, Shipped for `original`, else the name.
+// A pinned look's saved version, every field filled in.
+function savedLook(candidate: Candidate): CardConfig {
+  return { ...baseline, ...candidate.values };
+}
+// A copy of a record without one key.
+function without<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const copy = { ...record };
+  delete copy[key];
+  return copy;
+}
+
+// A new look's name, `<prefix>-N`: the prefix is its preset's key, or `custom`
+// for a look started from Shipped with no preset; N is one past the highest
+// number issued for that prefix in this run, removed ones included, so a name
+// is never reused.
+function pinName(issued: Set<string>, prefix: string): string {
+  const used = [...issued].filter(name => name.startsWith(`${prefix}-`))
+    .map(name => name.slice(prefix.length + 1)).filter(rest => /^[0-9]+$/.test(rest)).map(Number);
+  return `${prefix}-${Math.max(0, ...used) + 1}`;
+}
+// A chip's label: `Compact-2` for `compact-2`, `Warm Glow-1` for `warm-glow-1`,
+// Shipped for `original`; a name that does not end in `-N` as it is.
 function chipLabel(name: string): string {
   if (name === "original") return "Shipped";
-  const m = /^look-([0-9]+)$/.exec(name);
-  return m ? `Look ${m[1]}` : name;
+  const m = /^(.+)-([0-9]+)$/.exec(name);
+  if (!m) return name;
+  const words = m[1].split("-").filter(Boolean).map(word => word[0].toUpperCase() + word.slice(1));
+  return `${words.join(" ")}-${Number(m[2])}`;
 }
 
 export default function UITuningLabFeature({ config, setConfig }: TuningLabHostProps) {
@@ -171,35 +207,52 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
   const changeButton = useRef<HTMLButtonElement>(null);
-  // Looks live in memory and in the log. A look is a
-  // look being worked on: the controls edit the selected look in place.
+  // Pinned looks live in memory and in the log, oldest first.
   const [candidates, setCandidates] = useState(initialCandidates);
   // Every name issued in this run, removed ones included: names are never reused.
   const issued = useRef(new Set([...reservedNames, ...initialCandidates.map(c => c.name)]));
-  // The values each look last logged, so a look logs again only after it changed.
+  // The line each look last logged, so a save that changed nothing logs nothing.
   const logged = useRef(new Map<string, string>());
   // The selected chip: "original" (Shipped) or a look's name. The feature always
   // shows it.
   const [selected, setSelected] = useState("original");
-  // Edits made on Shipped and not saved yet: the preset they started from, or
-  // null when there are none. While set, no chip is outlined.
-  const [unsavedBasedOn, setUnsavedBasedOn] = useState<string | null>(null);
+  // Edits made on Shipped and not pinned yet, with the preset they came from.
+  // While set, no chip is outlined.
+  const [unsaved, setUnsaved] = useState<Step | null>(null);
+  // Each pinned look's edits since its last save, by name. They stay with the
+  // look when the user switches away.
+  const [drafts, setDrafts] = useState<Record<string, CardConfig>>({});
+  // Undo and Redo per look ("original" for Shipped), and the control of each
+  // look's newest step, so one slider drag is one step.
+  const [history, setHistory] = useState<Record<string, History>>({});
+  const lastControl = useRef(new Map<string, string | undefined>());
   // The winner after Apply; while set, the panel is the result bar.
   const [sent, setSent] = useState<string | null>(null);
-  // How many times Apply ran. The first reaches the agent's waiter; after it the
-  // agent no longer listens, so the button becomes Save & copy and the next pick goes
-  // through chat as a pasted `land <name>`. Change does not reset it.
+  // How many times a pick reached the agent. The first Apply reaches its
+  // waiter; after it the agent no longer listens, so Apply hides and Save & pin
+  // and Save also hand the pick over, for the user to paste as `land <name>`.
+  // Change does not reset it.
   const [applies, setApplies] = useState(0);
   const [copied, setCopied] = useState(true);  // the clipboard took `land <name>`
-  // The result bar's second line: where Apply saved the pick, or null when it could not.
+  // The result bar's second line: where the pick was saved, or null when it could not.
   const [saved, setSaved] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const selectedPin = candidates.find(c => c.name === selected);
-  const selectedValues = selectedPin?.values ?? changedValues(baseline, config);
-  const shippedOutlined = selected === "original" && unsavedBasedOn === null;
+  // The look the feature shows, and where it came from.
+  const current: Step = selectedPin
+    ? { value: drafts[selectedPin.name] ?? savedLook(selectedPin), basedOn: selectedPin.basedOn }
+    : unsaved ?? { value: baseline, basedOn: "baseline" };
+  const selectedValues = changedValues(baseline, current.value);
+  const shippedOutlined = selected === "original" && unsaved === null;
+  const steps = history[selected] ?? noHistory;
+  const hasEdits = selectedPin ? selectedPin.name in drafts : unsaved !== null;
+  // Save & pin needs edits on Shipped. Save needs edits until the first Apply;
+  // after it, Save is how a pick reaches the chat, so it stays enabled.
+  const saveTitle = selectedPin ? "Save" : "Save & pin";
+  const canSave = selectedPin ? hasEdits || applies > 0 : unsaved !== null;
 
-  // Read the latest looks and selection through refs, so the close path, which
-  // runs from an effect, never reads stale state.
+  // Read the latest looks and selection through refs, so an effect that runs
+  // once per open never reads stale state.
   const latest = useRef({ candidates, selected });
   useLayoutEffect(() => { latest.current = { candidates, selected }; });
 
@@ -210,18 +263,10 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     logged.current.set(candidate.name, line);
     console.info(`UITUNINGLAB_CANDIDATE ${line}`);
   }
-  // A look edited in place logs its new values once it is left: another chip is
-  // selected, the lab closes, or Apply.
-  function leave() {
-    const { candidates, selected } = latest.current;
-    const pin = candidates.find(c => c.name === selected);
-    if (pin) logPin(pin);
-  }
 
   // The one close path. It runs from the popover's toggle event, or directly
   // when the browser has no Popover API. The feature keeps the selected look.
   function finishClose() {
-    leave();
     setSent(null);
     setMenuOpen(false);
     setOpen(false);
@@ -265,71 +310,144 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   // Seeded looks log their own line the first time the lab shows them.
   useEffect(() => {
     if (!open) return;
-    for (const c of candidates) if (!logged.current.has(c.name)) logPin(c);
-  }, [open, candidates]);
+    for (const c of latest.current.candidates) if (!logged.current.has(c.name)) logPin(c);
+  }, [open]);
 
   function openLab() { setStatus(null); setOpen(true); }
-  // Selecting a chip shows its look in the real feature. Switching chips is the
-  // comparison.
-  function select(chip: string) {
-    if (chip === selected && unsavedBasedOn === null) return;
-    leave();
-    setUnsavedBasedOn(null);  // unsaved edits on Shipped are dropped
-    const pin = candidates.find(c => c.name === chip);
-    setConfig({ ...baseline, ...pin?.values });
-    setSelected(chip);
-  }
-  // Every control edits the selected look. Shipped is read-only, so an edit on
-  // it shows live as unsaved changes until Save & copy; a saved look changes in
-  // place and keeps its edits when the user switches away.
-  function edit(next: CardConfig, preset?: string) {
-    if (!selectedPin) {
-      setUnsavedBasedOn(current => preset ?? current ?? "baseline");
-      setConfig(next);
-      return;
+
+  // Shows a step on the selected look. Matching the last save leaves no edits.
+  function show(step: Step) {
+    if (selectedPin) {
+      const name = selectedPin.name;
+      setCandidates(list => list.map(c => c.name === name ? { ...c, basedOn: step.basedOn } : c));
+      setDrafts(all => sameLook(step.value, savedLook(selectedPin))
+        ? without(all, name) : { ...all, [name]: step.value });
+    } else {
+      setUnsaved(sameLook(step.value, baseline) ? null : step);
     }
-    const values = changedValues(baseline, next);
-    setCandidates(list => list.map(c => c.name === selected
-      ? { ...c, values, basedOn: preset ?? c.basedOn } : c));
-    setConfig(next);
+    setConfig(step.value);
+  }
+  function setSteps(name: string, next: History) {
+    setHistory(all => ({ ...all, [name]: next }));
+  }
+  function clearHistory(name: string) {
+    setHistory(all => without(all, name));
+    lastControl.current.delete(name);
+  }
+
+  // Selecting a chip shows its look in the real feature. Switching chips is the
+  // comparison. Unsaved edits on Shipped are dropped, so Shipped always shows
+  // the baseline; a pinned look keeps its edits.
+  function select(chip: string) {
+    if (chip === selected && unsaved === null) return;
+    lastControl.current.delete(selected);  // a drag after coming back is its own step
+    clearHistory("original");
+    setUnsaved(null);
+    const pin = candidates.find(c => c.name === chip);
+    setSelected(pin ? pin.name : "original");
+    setConfig(pin ? drafts[pin.name] ?? savedLook(pin) : { ...baseline });
+  }
+  // Every control edits the selected look: on Shipped as unsaved edits, on a
+  // pinned look as edits on top of its saved version. A preset becomes its
+  // basedOn. Sliders pass their key as `control`: a run of edits from the same
+  // control in a row is one Undo step. Presets pass none, so each is a step.
+  function edit(next: CardConfig, preset?: string, control?: string) {
+    if (sameLook(next, current.value) && (preset === undefined || preset === current.basedOn)) return;
+    const extend = control !== undefined && control === lastControl.current.get(selected) && steps.undo.length > 0;
+    setSteps(selected, { undo: extend ? steps.undo : [...steps.undo, current], redo: [] });
+    lastControl.current.set(selected, control);
+    show({ value: next, basedOn: preset ?? current.basedOn });
   }
   function applyPreset(name: keyof typeof presets) { edit({ ...presets[name] }, name); }
-  // Keeps the current look: unsaved edits on Shipped become the next Look N,
-  // selected; a selected look is logged as it is. Returns the look (none on
-  // plain Shipped) and the list it is in, read before React re-renders.
-  function keep(): { look?: Candidate; list: Candidate[] } {
-    if (selectedPin) { logPin(selectedPin); return { look: selectedPin, list: candidates }; }
-    if (unsavedBasedOn === null) return { list: candidates };
-    const look: Candidate = { name: nextLookName(issued.current), basedOn: unsavedBasedOn,
-      values: changedValues(baseline, config) };
+  // Undo steps the selected look back one edit, never past its last save.
+  function undo() {
+    const previous = steps.undo[steps.undo.length - 1];
+    if (!previous) return;
+    setSteps(selected, { undo: steps.undo.slice(0, -1), redo: [...steps.redo, current] });
+    lastControl.current.delete(selected);
+    show(previous);
+  }
+  // Redo brings back the edit Undo last took away.
+  function redo() {
+    const next = steps.redo[steps.redo.length - 1];
+    if (!next) return;
+    setSteps(selected, { undo: [...steps.undo, current], redo: steps.redo.slice(0, -1) });
+    lastControl.current.delete(selected);
+    show(next);
+  }
+  // Reset takes the selected look back to its last save (Shipped: the
+  // baseline) in one step that Undo can take back.
+  function reset() {
+    if (!hasEdits) return;
+    setSteps(selected, { undo: [...steps.undo, current], redo: [] });
+    lastControl.current.delete(selected);
+    show(selectedPin ? { value: savedLook(selectedPin), basedOn: selectedPin.basedOn }
+      : { value: baseline, basedOn: "baseline" });
+  }
+  // Undo and Redo on the keyboard, only while focus is in the panel: Ctrl or
+  // Cmd-Z, and Ctrl or Cmd-Shift-Z or Ctrl-Y. A text field keeps its own undo.
+  function onPanelKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    const target = event.target as HTMLElement;
+    if ((target instanceof HTMLInputElement && target.type !== "range") ||
+        target instanceof HTMLTextAreaElement || target.isContentEditable) return;
+    const key = event.key.toLowerCase();
+    if (key === "z" && !event.shiftKey) { event.preventDefault(); undo(); }
+    else if ((key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey)) { event.preventDefault(); redo(); }
+  }
+
+  // Keeps the selected look's edits: unsaved edits on Shipped become a new
+  // look, named after its preset and selected; a pinned look's edits become its
+  // saved version. Logs a look that changed. Returns the look (none on plain
+  // Shipped), the list it is in, read before React re-renders, and whether it
+  // pinned a new look.
+  function commit(): { look?: Candidate; list: Candidate[]; pinned: boolean } {
+    if (selectedPin) {
+      const look = { ...selectedPin, values: changedValues(baseline, current.value) };
+      const list = candidates.map(c => c.name === look.name ? look : c);
+      setCandidates(list);
+      setDrafts(all => without(all, look.name));
+      clearHistory(look.name);
+      logPin(look);
+      return { look, list, pinned: false };
+    }
+    if (unsaved === null) return { list: candidates, pinned: false };
+    const prefix = unsaved.basedOn === "baseline" ? "custom" : unsaved.basedOn;
+    const look: Candidate = { name: pinName(issued.current, prefix), basedOn: unsaved.basedOn,
+      values: changedValues(baseline, unsaved.value) };
     issued.current.add(look.name);
     const list = [...candidates, look];
     setCandidates(list);
     setSelected(look.name);
-    setUnsavedBasedOn(null);
+    setUnsaved(null);
+    clearHistory("original");
     logPin(look);
-    return { look, list };
+    return { look, list, pinned: true };
   }
-  // Save & copy keeps the current look as a chip to compare and copies its
+  // Save & pin on Shipped, Save on a pinned look: keeps the look and copies its
   // land code. Before the first Apply the agent is listening for Apply, so
   // nothing more happens; after it, the pick is handed over for pasting.
-  async function saveAndCopy() {
-    const { look, list } = keep();
+  async function saveLook() {
+    if (!canSave) return;
+    const { look, list, pinned } = commit();
     if (!look) return;
     if (applies > 0) { await handOver(look, list); return; }
+    setSaved(null);
+    const kept = pinned ? `Pinned ${chipLabel(look.name)}` : `Saved ${chipLabel(look.name)}`;
     try {
       await navigator.clipboard.writeText(`land ${look.name}`);
-      setStatus(`Saved ${chipLabel(look.name)} · copied land ${look.name}`);
+      setStatus(`${kept} · copied land ${look.name}`);
     } catch {
-      setStatus(`Saved ${chipLabel(look.name)}; clipboard unavailable, tell the agent "land ${look.name}"`);
+      setStatus(`${kept}; clipboard unavailable, tell the agent "land ${look.name}"`);
     }
   }
-  // Apply keeps unsaved edits as a look first, then hands the pick over.
+  // Apply saves first (unsaved edits on Shipped are pinned, a selected look's
+  // edits saved), then hands the pick over.
   async function applyLook() {
-    const { look, list } = keep();
+    const { look, list } = commit();
     await handOver(look, list);
   }
-  // Reports the selected look.
+  // Reports the selected look as shown, edits included.
   async function copyValues() {
     setMenuOpen(false);
     const values = sortedJson(selectedValues);
@@ -343,12 +461,16 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   }
   function remove(name: string) {
     setCandidates(list => list.filter(c => c.name !== name));
+    setDrafts(all => without(all, name));
+    clearHistory(name);
     logged.current.delete(name);
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
+    setStatus(`Removed ${chipLabel(name)}`);
     if (selected === name) { setConfig({ ...baseline }); setSelected("original"); }
   }
   // Hands a pick to the agent: logs it, sends it to the waiter, stores the
   // result, and copies its land code. Picking again replaces the result.
+  // `candidates` carry each look's saved version.
   async function handOver(look: Candidate | undefined, list: Candidate[]) {
     const winner = look ? look.name : "original";
     const result = { candidates: list, values: look?.values ?? {}, winner };
@@ -383,7 +505,7 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     <button ref={trigger} type="button" onClick={openLab} disabled={open}
       style={triggerStyle}>Card Lab</button>
     {open && <div ref={panel} {...popoverManual} style={panelStyle} role="dialog"
-      aria-labelledby="ui-tuning-lab-title">
+      aria-labelledby="ui-tuning-lab-title" onKeyDown={onPanelKeyDown}>
       {sent ? <><p style={rowStyle}>
         <strong id="ui-tuning-lab-title">{applies > 1
           ? (copied ? `Copied land ${sent}: paste it in chat so the agent applies it` : `Tell the agent: land ${sent}`)
@@ -419,26 +541,30 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
           <button type="button" onClick={() => applyPreset("relaxed")}>Relaxed</button>
           <label>Radius <input type="range" min="0" max="32"
             value={config.radius}
-            onChange={e => edit({ ...config, radius: Number(e.target.value) })}/>
+            onChange={e => edit({ ...config, radius: Number(e.target.value) }, undefined, "radius")}/>
             <output aria-hidden="true">{config.radius}px</output>
           </label>
           <label>Gap <input type="range" min="0" max="24"
             value={config.gap}
-            onChange={e => edit({ ...config, gap: Number(e.target.value) })}/>
+            onChange={e => edit({ ...config, gap: Number(e.target.value) }, undefined, "gap")}/>
             <output aria-hidden="true">{config.gap}px</output>
           </label>
         </div>
+        <div role="group" aria-label="Edits" style={rowStyle}>
+          <button type="button" disabled={steps.undo.length === 0} onClick={undo}>Undo</button>
+          <button type="button" disabled={steps.redo.length === 0} onClick={redo}>Redo</button>
+          <button type="button" disabled={!hasEdits} onClick={reset}>Reset</button>
+        </div>
         <div style={rowStyle}>
-          <button type="button" disabled={!selectedPin && unsavedBasedOn === null}
-            onClick={saveAndCopy}>Save & copy</button>
+          <button type="button" disabled={!canSave} onClick={saveLook}>{saveTitle}</button>
           {/* Apply reaches the agent once; after that it is hidden for good. */}
           {applies === 0 && <button type="button" onClick={applyLook}>Apply</button>}
         </div>
       </>}
-      {status && <p role="status">{status}</p>}
+      {status && !sent && <p role="status">{status}</p>}
       {!sent && <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
-        {applies > 0 ? "Save & copy, then paste it in chat"
-          : "Save & copy to keep a look · Apply to finish"}</p>}
+        {applies > 0 ? "Save, then paste it in chat"
+          : "Save & pin to keep a look · Apply to finish"}</p>}
     </div>}
   </>;
 }
@@ -462,7 +588,8 @@ Only when the user explicitly requests saved profiles, replace
 `FeatureScreen.ui-tuning-lab.tsx` with this version. The feature files stay
 unchanged, and the writer and loader live only in the development-only module.
 Each look writes a `schemaVersion: 2` profile under `uiTuningLab.candidates.<name>`
-on Save & copy and again whenever it logs new values (leaving it after an edit), × deletes that key, and
+when it is saved (Save & pin, Save, or Apply), never while it is only edited;
+× deletes that key, and
 opening the lab loads every such key into the chips; every stored name is taken,
 readable or not. The baseline stays the declared default, so Shipped still shows
 it. Unreadable or incompatible entries (wrong
@@ -472,6 +599,7 @@ in storage untouched.
 <!-- file: FeatureScreen.ui-tuning-lab.tsx variant=persist -->
 ```tsx
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { appDefault, CardFeature } from "./CardFeature";
 import type { CardConfig } from "./CardFeature";
 import type { TuningLabHostProps } from "./FeatureScreen";
@@ -510,8 +638,14 @@ type UITuningLabProfile = {
 // Each look is stored under its own key: uiTuningLab.candidates.<name>.
 const candidateKey = "uiTuningLab.candidates.";
 
-// A look: the fields that differ from the baseline, plus where it started.
+// A pinned look: its saved version, as the fields that differ from the
+// baseline, plus where it came from. Edits since its last save live in `drafts`.
 type Candidate = { name: string; basedOn: string; values: Partial<CardConfig> };
+// One point in a look's history: what it showed, and where it came from.
+type Step = { value: CardConfig; basedOn: string };
+// Each look's Undo and Redo steps, back to its last save.
+type History = { undo: Step[]; redo: Step[] };
+const noHistory: History = { undo: [], redo: [] };
 // Looks the lab opens with, before anything stored is loaded. Empty by
 // default; a later session can seed finalists kept in the project here.
 const initialCandidates: Candidate[] = [];
@@ -521,7 +655,8 @@ const resultKey = "uiTuningLab.result";
 // are kept for older logs.
 const reservedNames = ["draft", "now", "original", "baseline"];
 
-// Preset keys are kebab-case: the key is what a look records as basedOn.
+// Preset keys are kebab-case: the key is what a look records as basedOn, and
+// names the look when it is pinned (`compact-1`, shown as Compact-1).
 const presets = {
   compact: { radius: 4, gap: 4 },
   relaxed: { radius: 24, gap: 16 },
@@ -562,17 +697,38 @@ function sortedJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-// The next look's name, `look-N`: one past the highest number issued in this
-// run, removed ones included, so a number is never reused.
-function nextLookName(issued: Set<string>): string {
-  const used = [...issued].map(name => /^look-([0-9]+)$/.exec(name)).map(m => (m ? Number(m[1]) : 0));
-  return `look-${Math.max(0, ...used) + 1}`;
+// Two looks are the same when they differ from the baseline in the same fields.
+function sameLook(a: CardConfig, b: CardConfig): boolean {
+  return sortedJson(changedValues(baseline, a)) === sortedJson(changedValues(baseline, b));
 }
-// A chip's label: `Look 2` for `look-2`, Shipped for `original`, else the name.
+// A pinned look's saved version, every field filled in.
+function savedLook(candidate: Candidate): CardConfig {
+  return { ...baseline, ...candidate.values };
+}
+// A copy of a record without one key.
+function without<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const copy = { ...record };
+  delete copy[key];
+  return copy;
+}
+
+// A new look's name, `<prefix>-N`: the prefix is its preset's key, or `custom`
+// for a look started from Shipped with no preset; N is one past the highest
+// number issued for that prefix in this run, removed ones included, so a name
+// is never reused.
+function pinName(issued: Set<string>, prefix: string): string {
+  const used = [...issued].filter(name => name.startsWith(`${prefix}-`))
+    .map(name => name.slice(prefix.length + 1)).filter(rest => /^[0-9]+$/.test(rest)).map(Number);
+  return `${prefix}-${Math.max(0, ...used) + 1}`;
+}
+// A chip's label: `Compact-2` for `compact-2`, `Warm Glow-1` for `warm-glow-1`,
+// Shipped for `original`; a name that does not end in `-N` as it is.
 function chipLabel(name: string): string {
   if (name === "original") return "Shipped";
-  const m = /^look-([0-9]+)$/.exec(name);
-  return m ? `Look ${m[1]}` : name;
+  const m = /^(.+)-([0-9]+)$/.exec(name);
+  if (!m) return name;
+  const words = m[1].split("-").filter(Boolean).map(word => word[0].toUpperCase() + word.slice(1));
+  return `${words.join(" ")}-${Number(m[2])}`;
 }
 
 function reasonOf(error: unknown): string {
@@ -624,58 +780,72 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   const trigger = useRef<HTMLButtonElement>(null);
   const firstControl = useRef<HTMLButtonElement>(null);
   const changeButton = useRef<HTMLButtonElement>(null);
-  // Looks live in memory and in the log; each is mirrored to localStorage. A look is a
-  // look being worked on: the controls edit the selected look in place.
+  // Pinned looks live in memory and in the log, oldest first; each saved
+  // version is mirrored to localStorage.
   const [candidates, setCandidates] = useState(initialCandidates);
   // Every name issued in this run, removed ones included: names are never reused.
   const issued = useRef(new Set([...reservedNames, ...initialCandidates.map(c => c.name)]));
-  // The values each look last logged, so a look logs again only after it changed.
+  // The line each look last logged, so a save that changed nothing logs nothing.
   const logged = useRef(new Map<string, string>());
   // The selected chip: "original" (Shipped) or a look's name. The feature always
   // shows it.
   const [selected, setSelected] = useState("original");
-  // Edits made on Shipped and not saved yet: the preset they started from, or
-  // null when there are none. While set, no chip is outlined.
-  const [unsavedBasedOn, setUnsavedBasedOn] = useState<string | null>(null);
+  // Edits made on Shipped and not pinned yet, with the preset they came from.
+  // While set, no chip is outlined.
+  const [unsaved, setUnsaved] = useState<Step | null>(null);
+  // Each pinned look's edits since its last save, by name. They stay with the
+  // look when the user switches away.
+  const [drafts, setDrafts] = useState<Record<string, CardConfig>>({});
+  // Undo and Redo per look ("original" for Shipped), and the control of each
+  // look's newest step, so one slider drag is one step.
+  const [history, setHistory] = useState<Record<string, History>>({});
+  const lastControl = useRef(new Map<string, string | undefined>());
+  // A failed profile write during the current save, so the next status keeps it.
+  const storeError = useRef<string | null>(null);
   // The winner after Apply; while set, the panel is the result bar.
   const [sent, setSent] = useState<string | null>(null);
-  // How many times Apply ran. The first reaches the agent's waiter; after it the
-  // agent no longer listens, so the button becomes Save & copy and the next pick goes
-  // through chat as a pasted `land <name>`. Change does not reset it.
+  // How many times a pick reached the agent. The first Apply reaches its
+  // waiter; after it the agent no longer listens, so Apply hides and Save & pin
+  // and Save also hand the pick over, for the user to paste as `land <name>`.
+  // Change does not reset it.
   const [applies, setApplies] = useState(0);
   const [copied, setCopied] = useState(true);  // the clipboard took `land <name>`
-  // The result bar's second line: where Apply saved the pick, or null when it could not.
+  // The result bar's second line: where the pick was saved, or null when it could not.
   const [saved, setSaved] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const selectedPin = candidates.find(c => c.name === selected);
-  const selectedValues = selectedPin?.values ?? changedValues(baseline, config);
-  const shippedOutlined = selected === "original" && unsavedBasedOn === null;
+  // The look the feature shows, and where it came from.
+  const current: Step = selectedPin
+    ? { value: drafts[selectedPin.name] ?? savedLook(selectedPin), basedOn: selectedPin.basedOn }
+    : unsaved ?? { value: baseline, basedOn: "baseline" };
+  const selectedValues = changedValues(baseline, current.value);
+  const shippedOutlined = selected === "original" && unsaved === null;
+  const steps = history[selected] ?? noHistory;
+  const hasEdits = selectedPin ? selectedPin.name in drafts : unsaved !== null;
+  // Save & pin needs edits on Shipped. Save needs edits until the first Apply;
+  // after it, Save is how a pick reaches the chat, so it stays enabled.
+  const saveTitle = selectedPin ? "Save" : "Save & pin";
+  const canSave = selectedPin ? hasEdits || applies > 0 : unsaved !== null;
 
-  // Read the latest looks and selection through refs, so the close path, which
-  // runs from an effect, never reads stale state.
+  // Read the latest looks and selection through refs, so an effect that runs
+  // once per open never reads stale state.
   const latest = useRef({ candidates, selected });
   useLayoutEffect(() => { latest.current = { candidates, selected }; });
 
-  // Logs a look's line when it is new or changed since it last logged.
-  function logPin(candidate: Candidate) {
+  // Logs a look's line when it is new or changed since it last logged, and
+  // stores it: a look is written only when it is saved. Seeded and stored
+  // looks log without being written again.
+  function logPin(candidate: Candidate, storing = true) {
     const line = sortedJson(candidate);
     if (logged.current.get(candidate.name) === line) return;
     logged.current.set(candidate.name, line);
     console.info(`UITUNINGLAB_CANDIDATE ${line}`);
-    store(candidate);
-  }
-  // A look edited in place logs its new values once it is left: another chip is
-  // selected, the lab closes, or Apply.
-  function leave() {
-    const { candidates, selected } = latest.current;
-    const pin = candidates.find(c => c.name === selected);
-    if (pin) logPin(pin);
+    if (storing) store(candidate);
   }
 
   // The one close path. It runs from the popover's toggle event, or directly
   // when the browser has no Popover API. The feature keeps the selected look.
   function finishClose() {
-    leave();
     setSent(null);
     setMenuOpen(false);
     setOpen(false);
@@ -717,12 +887,15 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
   useEffect(() => { (sent ? changeButton : firstControl).current?.focus(); }, [sent]);
 
   // Stored looks load each time the lab opens; in-memory ones that are not
-  // stored (the initial candidates) stay in the list.
+  // stored (the initial candidates) stay in the list. Seeded and stored looks
+  // log their own line the first time the lab shows them.
   useEffect(() => {
     if (!open) return;
+    for (const c of latest.current.candidates) if (!logged.current.has(c.name)) logPin(c, false);
     try {
       const { found, problems } = readStored(issued.current);
       setCandidates(list => [...found, ...list.filter(c => !found.some(f => f.name === c.name))]);
+      for (const c of found) if (!logged.current.has(c.name)) logPin(c, false);
       if (problems.length > 0) {
         setStatus({ text: `Skipped unreadable pins, left in storage: ${problems.join(", ")}`, error: true });
       }
@@ -731,94 +904,170 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     }
   }, [open]);
 
-  // Seeded and stored looks log their own line the first time the lab shows them.
-  useEffect(() => {
-    if (!open) return;
-    for (const c of candidates) if (!logged.current.has(c.name)) logPin(c);
-  }, [open, candidates]);
-
   function openLab() { setStatus(null); setOpen(true); }
-  // Selecting a chip shows its look in the real feature. Switching chips is the
-  // comparison.
-  function select(chip: string) {
-    if (chip === selected && unsavedBasedOn === null) return;
-    leave();
-    setUnsavedBasedOn(null);  // unsaved edits on Shipped are dropped
-    const pin = candidates.find(c => c.name === chip);
-    setConfig({ ...baseline, ...pin?.values });
-    setSelected(chip);
-  }
-  // Every control edits the selected look. Shipped is read-only, so an edit on
-  // it shows live as unsaved changes until Save & copy; a saved look changes in
-  // place and keeps its edits when the user switches away.
-  function edit(next: CardConfig, preset?: string) {
-    if (!selectedPin) {
-      setUnsavedBasedOn(current => preset ?? current ?? "baseline");
-      setConfig(next);
-      return;
+
+  // Shows a step on the selected look. Matching the last save leaves no edits.
+  function show(step: Step) {
+    if (selectedPin) {
+      const name = selectedPin.name;
+      setCandidates(list => list.map(c => c.name === name ? { ...c, basedOn: step.basedOn } : c));
+      setDrafts(all => sameLook(step.value, savedLook(selectedPin))
+        ? without(all, name) : { ...all, [name]: step.value });
+    } else {
+      setUnsaved(sameLook(step.value, baseline) ? null : step);
     }
-    const values = changedValues(baseline, next);
-    setCandidates(list => list.map(c => c.name === selected
-      ? { ...c, values, basedOn: preset ?? c.basedOn } : c));
-    setConfig(next);
+    setConfig(step.value);
+  }
+  function setSteps(name: string, next: History) {
+    setHistory(all => ({ ...all, [name]: next }));
+  }
+  function clearHistory(name: string) {
+    setHistory(all => without(all, name));
+    lastControl.current.delete(name);
+  }
+
+  // Selecting a chip shows its look in the real feature. Switching chips is the
+  // comparison. Unsaved edits on Shipped are dropped, so Shipped always shows
+  // the baseline; a pinned look keeps its edits.
+  function select(chip: string) {
+    if (chip === selected && unsaved === null) return;
+    lastControl.current.delete(selected);  // a drag after coming back is its own step
+    clearHistory("original");
+    setUnsaved(null);
+    const pin = candidates.find(c => c.name === chip);
+    setSelected(pin ? pin.name : "original");
+    setConfig(pin ? drafts[pin.name] ?? savedLook(pin) : { ...baseline });
+  }
+  // Every control edits the selected look: on Shipped as unsaved edits, on a
+  // pinned look as edits on top of its saved version. A preset becomes its
+  // basedOn. Sliders pass their key as `control`: a run of edits from the same
+  // control in a row is one Undo step. Presets pass none, so each is a step.
+  function edit(next: CardConfig, preset?: string, control?: string) {
+    if (sameLook(next, current.value) && (preset === undefined || preset === current.basedOn)) return;
+    const extend = control !== undefined && control === lastControl.current.get(selected) && steps.undo.length > 0;
+    setSteps(selected, { undo: extend ? steps.undo : [...steps.undo, current], redo: [] });
+    lastControl.current.set(selected, control);
+    show({ value: next, basedOn: preset ?? current.basedOn });
   }
   function applyPreset(name: keyof typeof presets) { edit({ ...presets[name] }, name); }
-  // Keeps the current look: unsaved edits on Shipped become the next Look N,
-  // selected; a selected look is logged as it is. Returns the look (none on
-  // plain Shipped) and the list it is in, read before React re-renders.
-  function keep(): { look?: Candidate; list: Candidate[] } {
-    if (selectedPin) { logPin(selectedPin); return { look: selectedPin, list: candidates }; }
-    if (unsavedBasedOn === null) return { list: candidates };
-    const look: Candidate = { name: nextLookName(issued.current), basedOn: unsavedBasedOn,
-      values: changedValues(baseline, config) };
+  // Undo steps the selected look back one edit, never past its last save.
+  function undo() {
+    const previous = steps.undo[steps.undo.length - 1];
+    if (!previous) return;
+    setSteps(selected, { undo: steps.undo.slice(0, -1), redo: [...steps.redo, current] });
+    lastControl.current.delete(selected);
+    show(previous);
+  }
+  // Redo brings back the edit Undo last took away.
+  function redo() {
+    const next = steps.redo[steps.redo.length - 1];
+    if (!next) return;
+    setSteps(selected, { undo: [...steps.undo, current], redo: steps.redo.slice(0, -1) });
+    lastControl.current.delete(selected);
+    show(next);
+  }
+  // Reset takes the selected look back to its last save (Shipped: the
+  // baseline) in one step that Undo can take back.
+  function reset() {
+    if (!hasEdits) return;
+    setSteps(selected, { undo: [...steps.undo, current], redo: [] });
+    lastControl.current.delete(selected);
+    show(selectedPin ? { value: savedLook(selectedPin), basedOn: selectedPin.basedOn }
+      : { value: baseline, basedOn: "baseline" });
+  }
+  // Undo and Redo on the keyboard, only while focus is in the panel: Ctrl or
+  // Cmd-Z, and Ctrl or Cmd-Shift-Z or Ctrl-Y. A text field keeps its own undo.
+  function onPanelKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    const target = event.target as HTMLElement;
+    if ((target instanceof HTMLInputElement && target.type !== "range") ||
+        target instanceof HTMLTextAreaElement || target.isContentEditable) return;
+    const key = event.key.toLowerCase();
+    if (key === "z" && !event.shiftKey) { event.preventDefault(); undo(); }
+    else if ((key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey)) { event.preventDefault(); redo(); }
+  }
+
+  // Keeps the selected look's edits: unsaved edits on Shipped become a new
+  // look, named after its preset and selected; a pinned look's edits become its
+  // saved version. Logs a look that changed. Returns the look (none on plain
+  // Shipped), the list it is in, read before React re-renders, and whether it
+  // pinned a new look.
+  function commit(): { look?: Candidate; list: Candidate[]; pinned: boolean } {
+    storeError.current = null;
+    if (selectedPin) {
+      const look = { ...selectedPin, values: changedValues(baseline, current.value) };
+      const list = candidates.map(c => c.name === look.name ? look : c);
+      setCandidates(list);
+      setDrafts(all => without(all, look.name));
+      clearHistory(look.name);
+      logPin(look);
+      return { look, list, pinned: false };
+    }
+    if (unsaved === null) return { list: candidates, pinned: false };
+    const prefix = unsaved.basedOn === "baseline" ? "custom" : unsaved.basedOn;
+    const look: Candidate = { name: pinName(issued.current, prefix), basedOn: unsaved.basedOn,
+      values: changedValues(baseline, unsaved.value) };
     issued.current.add(look.name);
     const list = [...candidates, look];
     setCandidates(list);
     setSelected(look.name);
-    setUnsavedBasedOn(null);
+    setUnsaved(null);
+    clearHistory("original");
     logPin(look);
-    return { look, list };
+    return { look, list, pinned: true };
   }
-  // Save & copy keeps the current look as a chip to compare and copies its
+  // Save & pin on Shipped, Save on a pinned look: keeps the look and copies its
   // land code. Before the first Apply the agent is listening for Apply, so
   // nothing more happens; after it, the pick is handed over for pasting.
-  async function saveAndCopy() {
-    const { look, list } = keep();
+  async function saveLook() {
+    if (!canSave) return;
+    const { look, list, pinned } = commit();
     if (!look) return;
     if (applies > 0) { await handOver(look, list); return; }
+    setSaved(null);
+    const kept = pinned ? `Pinned ${chipLabel(look.name)}` : `Saved ${chipLabel(look.name)}`;
     try {
       await navigator.clipboard.writeText(`land ${look.name}`);
-      setStatus({ text: `Saved ${chipLabel(look.name)} · copied land ${look.name}` });
+      setStatus(storeError.current ? { text: storeError.current, error: true }
+        : { text: `${kept} · copied land ${look.name}` });
     } catch {
-      setStatus({ text: `Saved ${chipLabel(look.name)}; clipboard unavailable, tell the agent "land ${look.name}"` });
+      setStatus(storeError.current ? { text: storeError.current, error: true }
+        : { text: `${kept}; clipboard unavailable, tell the agent "land ${look.name}"` });
     }
   }
-  // Apply keeps unsaved edits as a look first, then hands the pick over.
+  // Apply saves first (unsaved edits on Shipped are pinned, a selected look's
+  // edits saved), then hands the pick over.
   async function applyLook() {
-    const { look, list } = keep();
+    const { look, list } = commit();
     await handOver(look, list);
   }
-  // Writes a look's profile under its own key. A failed write is reported; the
-  // look stays in the panel and the log still has it.
+  // Writes a look's profile under its own key. A rewrite keeps the first
+  // savedAt, so looks load in the order they were pinned. A failed write is
+  // reported, and stays shown through the rest of the save; the look stays in
+  // the panel and the log still has it.
   function store(candidate: Candidate) {
+    const key = candidateKey + candidate.name;
+    let firstSavedAt: unknown;
+    try { firstSavedAt = JSON.parse(localStorage.getItem(key) ?? "null")?.savedAt; } catch { firstSavedAt = undefined; }
     const profile: UITuningLabProfile = {
       basedOn: candidate.basedOn,
       container: "FeatureScreen.popover",
       name: candidate.name,
       notes: "",
-      overrides: { ...baseline, ...candidate.values },
+      overrides: savedLook(candidate),
       platform: "web",
-      savedAt: new Date().toISOString(),
+      savedAt: typeof firstSavedAt === "string" ? firstSavedAt : new Date().toISOString(),
       schemaVersion: 2,
       scope: ["appearance", "layout"],
     };
     try {
-      localStorage.setItem(candidateKey + candidate.name, JSON.stringify(profile));
+      localStorage.setItem(key, JSON.stringify(profile));
     } catch (error) {
-      setStatus({ text: `${candidate.name} not saved: ${reasonOf(error)}`, error: true });
+      storeError.current = `${chipLabel(candidate.name)} not saved: ${reasonOf(error)}`;
+      setStatus({ text: storeError.current, error: true });
     }
   }
-  // Reports the selected look.
+  // Reports the selected look as shown, edits included.
   async function copyValues() {
     setMenuOpen(false);
     const values = sortedJson(selectedValues);
@@ -834,16 +1083,20 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     try {
       localStorage.removeItem(candidateKey + name);
     } catch (error) {
-      setStatus({ text: `Remove failed: ${reasonOf(error)}`, error: true });
+      setStatus({ text: `${chipLabel(name)} not removed: ${reasonOf(error)}`, error: true });
       return;
     }
     setCandidates(list => list.filter(c => c.name !== name));
+    setDrafts(all => without(all, name));
+    clearHistory(name);
     logged.current.delete(name);
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
+    setStatus({ text: `Removed ${chipLabel(name)}` });
     if (selected === name) { setConfig({ ...baseline }); setSelected("original"); }
   }
   // Hands a pick to the agent: logs it, sends it to the waiter, stores the
   // result, and copies its land code. Picking again replaces the result.
+  // `candidates` carry each look's saved version.
   async function handOver(look: Candidate | undefined, list: Candidate[]) {
     const winner = look ? look.name : "original";
     const result = { candidates: list, values: look?.values ?? {}, winner };
@@ -868,7 +1121,8 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
       setCopied(false);
       problems.push(`clipboard unavailable; tell the agent "land ${winner}"`);
     }
-    setStatus(problems.length > 0 ? { text: `Logged to the console; ${problems.join("; ")}`, error: true } : null);
+    setStatus(problems.length > 0 ? { text: `Logged to the console; ${problems.join("; ")}`, error: true }
+      : storeError.current ? { text: storeError.current, error: true } : null);
     setApplies(n => n + 1);
     setSent(winner);
   }
@@ -878,7 +1132,7 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
     <button ref={trigger} type="button" onClick={openLab} disabled={open}
       style={triggerStyle}>Card Lab</button>
     {open && <div ref={panel} {...popoverManual} style={panelStyle} role="dialog"
-      aria-labelledby="ui-tuning-lab-title">
+      aria-labelledby="ui-tuning-lab-title" onKeyDown={onPanelKeyDown}>
       {sent ? <><p style={rowStyle}>
         <strong id="ui-tuning-lab-title">{applies > 1
           ? (copied ? `Copied land ${sent}: paste it in chat so the agent applies it` : `Tell the agent: land ${sent}`)
@@ -914,34 +1168,38 @@ export default function UITuningLabFeature({ config, setConfig }: TuningLabHostP
           <button type="button" onClick={() => applyPreset("relaxed")}>Relaxed</button>
           <label>Radius <input type="range" min="0" max="32"
             value={config.radius}
-            onChange={e => edit({ ...config, radius: Number(e.target.value) })}/>
+            onChange={e => edit({ ...config, radius: Number(e.target.value) }, undefined, "radius")}/>
             <output aria-hidden="true">{config.radius}px</output>
           </label>
           <label>Gap <input type="range" min="0" max="24"
             value={config.gap}
-            onChange={e => edit({ ...config, gap: Number(e.target.value) })}/>
+            onChange={e => edit({ ...config, gap: Number(e.target.value) }, undefined, "gap")}/>
             <output aria-hidden="true">{config.gap}px</output>
           </label>
         </div>
+        <div role="group" aria-label="Edits" style={rowStyle}>
+          <button type="button" disabled={steps.undo.length === 0} onClick={undo}>Undo</button>
+          <button type="button" disabled={steps.redo.length === 0} onClick={redo}>Redo</button>
+          <button type="button" disabled={!hasEdits} onClick={reset}>Reset</button>
+        </div>
         <div style={rowStyle}>
-          <button type="button" disabled={!selectedPin && unsavedBasedOn === null}
-            onClick={saveAndCopy}>Save & copy</button>
+          <button type="button" disabled={!canSave} onClick={saveLook}>{saveTitle}</button>
           {/* Apply reaches the agent once; after that it is hidden for good. */}
           {applies === 0 && <button type="button" onClick={applyLook}>Apply</button>}
         </div>
       </>}
-      {status && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
+      {status && !sent && <p role={status.error ? "alert" : "status"}>{status.text}</p>}
       {!sent && <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
-        {applies > 0 ? "Save & copy, then paste it in chat"
-          : "Save & copy to keep a look · Apply to finish"}</p>}
+        {applies > 0 ? "Save, then paste it in chat"
+          : "Save & pin to keep a look · Apply to finish"}</p>}
     </div>}
   </>;
 }
 ```
 
 
-Creating or editing a look writes only `uiTuningLab.candidates.<name>`, and ×
-deletes only that key.
+Saving a look writes only `uiTuningLab.candidates.<name>`, and × deletes only
+that key. Unsaved edits are never written.
 Storage failures are shown in the status line and leave the chips unchanged.
 Inspect the emitted production bundle to confirm that the lab module and storage
 code were eliminated.

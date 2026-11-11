@@ -9,6 +9,7 @@ tests. Record these working choices:
 - Labs already in the project
 - Reuse an existing control surface
 - Wire the host
+- Run the fresh build
 - Proceed or ask
 
 - target: feature unless the request explicitly names the container;
@@ -79,7 +80,7 @@ Before building a panel, look for one the project already has:
 | React Native `DevSettings.addMenuItem` or Flipper plugins | the existing developer menu |
 
 Reuse changes only the control surface. The four guarantees, the naming rule, a
-baseline, the chips, Save & copy, Apply with its hint, Copy values
+baseline, the chips, Undo, Redo, Reset, Save & pin and Save, Apply with its hint, Copy values
 (`references/candidates.md`), and landing still apply. When the tool cannot host
 one of them (Storybook renders outside the running app, so its chips would not
 show the real feature), add it as a plain button beside the library's panel or say
@@ -174,6 +175,40 @@ DEV gate exactly as in `examples/web-floating-panel.md`):
 
 The lab module imports the host's props type with `import type`. That import is
 erased at build time, so the two modules never import each other at runtime.
+
+## Run the fresh build
+
+An app that was already open when the lab was added keeps running the old
+code: it has no lab, and the agent path or the user's shortcut does nothing.
+Hot reload is not enough either, since the lab adds files, gates, and launch
+handling. After every build that adds or changes the lab, before the smoke
+launch and before **How to try it**:
+
+1. **Quit every running copy.** Ask nothing; it is a development build.
+
+   | Platform | Quit |
+   |---|---|
+   | macOS | `osascript -e 'quit app id "<bundle-id>"'`, then `pkill -x <ExecutableName>` if it is still running a few seconds later |
+   | iOS Simulator | `xcrun simctl terminate booted <bundle-id>` |
+   | Android (Compose, Flutter, React Native) | `adb shell am force-stop <package>` |
+   | Flutter desktop | quit the app; stop the `flutter run` session |
+   | Windows | `Stop-Process -Name <App> -ErrorAction SilentlyContinue` |
+   | Web | stop and restart the dev server when its config or entry changed; otherwise reload every open tab of the app, not just the one you opened |
+
+2. **Launch the new build**, with the agent path when it is the smoke launch:
+   the exact product the build wrote (macOS: `open -n <path>/<App>.app --args
+   -UITuningLabOpen 1` from the build's own products directory, never an older
+   copy in `/Applications`; iOS: `xcrun simctl install booted <App>.app`, then
+   `simctl launch`; Android: install, then `am start -S`; Flutter and React
+   Native: a full restart or a new `run`).
+3. **Confirm it is the new one.** The process must have started after the
+   build finished: compare its start time (`ps -o lstart= -p <pid>`) or its new
+   process ID with the one you quit, and the binary's modification time with
+   the build. On the web, the lab's toggle must be in the page you load. If it
+   is not, quit and launch again before going on; never hand over a stale app.
+4. Leave the fresh build running for the user, the lab closed (or open, when
+   the smoke launch leaves it open on purpose), and say in **How to try it**
+   that the app on screen is the new build.
 
 ## Proceed or ask
 

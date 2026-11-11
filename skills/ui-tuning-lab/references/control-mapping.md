@@ -24,11 +24,15 @@ a list of fields is fine; keep each one labelled.
 
 - **Presets**: at least two meaningful presets that differ clearly from the
   baseline and from each other.
-- **Chips, Save & copy, and Apply**, with the hint line: see
+- **Chips, Save & pin and Save, and Apply**, with the hint line: see
   `references/candidates.md`. The selected chip is outlined and is what the
-  feature shows; the controls edit it in place. Shipped is read-only, so an edit
-  on it stays unsaved until Save & copy keeps it as the next Look N, and never
-  lands on the baseline.
+  feature shows; the controls edit it. Shipped is read-only, so an edit on it
+  stays unsaved until Save & pin keeps it as a new look named after its preset
+  (`Brass-1`), and never lands on the baseline. On a pinned look the button
+  reads Save and keeps its edits.
+- **Undo, Redo, and Reset** in one row under the controls: per-look history
+  since the last save, one step per control run, Reset back to the last save
+  (`references/candidates.md`, "Edits, Undo, Redo, and Reset").
 - **⋯ menu** with **Copy values** (`references/landing-protocol.md`; it reports
   the selected look).
 - **Target picker**, when the feature has variants to choose between (a theme,

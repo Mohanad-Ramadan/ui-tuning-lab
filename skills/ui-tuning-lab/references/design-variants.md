@@ -4,7 +4,7 @@ Use this when the user asks for alternative designs of a feature ("make three
 better versions of this list", "try a card layout and a timeline") rather than
 new values for the existing one. The variants are different widget or view
 trees, so they cannot be reached by sliders alone, but they still go through
-the same lab: the same panel, chips, Save & copy, Apply,
+the same lab: the same panel, chips, Save & pin, Apply,
 and landing. A row of chips or tabs dropped into the screen is not a lab.
 
 ## Where ideas come from
@@ -48,7 +48,8 @@ accessibility, right-to-left, light and dark).
 6. **Everything else is unchanged.** The Shipped chip renders `original`
    with the baseline values; Copy values reports only what differs
    (`{"design":"strip","cardRadius":16}`); a saved look records the design in
-   `values` and is numbered like any other (`Look 2`); the chips flip the real
+   `values` and is named after the design or preset it came from
+   (`Timeline-2`); the chips flip the real
    screen between looks of different designs; Apply hands the pick
    over (`references/candidates.md`). A saved profile
    keeps `design` inside `overrides` like any other field, so a persisted or

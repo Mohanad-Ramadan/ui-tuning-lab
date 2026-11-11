@@ -91,27 +91,35 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
 - Copy values copies, and logs as one `UITUNINGLAB_VALUES` line, only the fields
   that differ from the baseline; `{}` when nothing changed. Landing writes those
   values into the feature defaults (`references/landing-protocol.md`).
-- Chips, Save & copy, and Apply (`references/candidates.md`): at most one chip
-  is outlined, and it is the look the feature shows; after an edit on Shipped no
-  chip is outlined and no chip appears. Save & copy then adds **Look 1**,
-  selects it, and copies `land look-1` without a `UITUNINGLAB_DONE` line. An edit
-  on a saved look changes it in place and is still there after switching away
-  and back; switching away logs its new `UITUNINGLAB_CANDIDATE` line. Save & copy
-  is disabled on Shipped with no edits; × shows only on the selected look and
+- Chips, Save & pin and Save, and Apply (`references/candidates.md`): at most
+  one chip is outlined, and it is the look the feature shows; after an edit on
+  Shipped no chip is outlined and no chip appears. Applying a preset such as
+  Brass and pressing Save & pin adds **Brass-1**, selects it, turns the button
+  into Save (disabled), and copies `land brass-1` without a `UITUNINGLAB_DONE`
+  line; edits made from Shipped with no preset pin as **Custom-1**. An edit on
+  a pinned look enables Save, Undo, and Reset and is still there after
+  switching away and back; it logs nothing until Save, which logs the new
+  `UITUNINGLAB_CANDIDATE` line. Save & pin is disabled on Shipped with no edits; × shows only on the selected look and
   logs `UITUNINGLAB_CANDIDATE_REMOVED`. Apply logs one
   `UITUNINGLAB_DONE` line naming the selected chip as `winner`, ends the
   agent's background waiter with that line (no message from the user), writes
   the result file, copies `land <name>`, and shrinks the panel to the result bar; Change
   brings back the whole panel, controls included, at its full size (on desktop
   windows that follow their content, check the frame after Change). After
-  Change, Apply is gone and the hint reads *Save & copy, then paste it in chat*;
-  Save & copy shows `Copied land <name>: paste it in chat so the agent applies
-  it` over `Saved Look N in .ui-tuning-lab/result.json` (web: in
+  Change, Apply is gone and the hint reads *Save, then paste it in chat*;
+  Save shows `Copied land <name>: paste it in chat so the agent applies
+  it` over `Saved Brass-2 in .ui-tuning-lab/result.json` (web: in
   `localStorage uiTuningLab.result`), and the pasted line lands. The hint is
   visible without scrolling past the controls.
+- Undo, Redo, and Reset: two slider drags then a preset are three steps; Undo
+  walks them back one at a time and stops at the last save (the baseline on
+  Shipped); Redo brings them back; a new edit disables Redo; Reset returns to
+  the last save and Undo brings the edits back. After Save, Undo is disabled.
 - Layout: screenshot the panel after opening, after an edit, and after Apply
   then Change. Labels and controls line up in one column, no label shows twice,
-  and the hint sits at the bottom. On macOS the panel is never a `Form`.
+  and the hint sits at the bottom. On macOS the panel is never a `Form`, and its
+  frame (origin and size) is unchanged after tapping every chip, pinning a
+  look, and removing one; only Apply and Change resize it, keeping its top edge.
 - When persistence was requested, each look writes only its namespaced
   candidate (`.ui-tuning-lab/candidates/<name>.json` or
   `uiTuningLab.candidates.<name>`), which passes `verify.sh profile`, and

@@ -41,14 +41,16 @@ Common checks:
 - On save failure, show the error and keep the look in the panel.
 - On corrupt or incompatible saved data, keep the file untouched, keep the
   current look, and report the incompatibility.
-- Apply and × need no confirmation: Shipped is one tap away, × shows only on
-  the selected look, Save & copy keeps a version worth keeping, and a new pick
-  replaces the old one.
+- Apply, Reset, and × need no confirmation: Shipped is one tap away, Reset can
+  be undone, × shows only on the selected look, Save keeps a version worth
+  keeping, and a new pick replaces the old one.
+- Undo never reaches past a save, and a new edit clears Redo. A slider drag is
+  one step, not one per frame.
 - A seeded candidate that now matches the baseline, or whose fields no longer
   exist in the configuration, is dropped from the lab and reported, never
   silently rewritten.
 - The log is the agent's only view of an ephemeral lab's candidates. When the
   log no longer reaches back to the lab's opening (a relaunch, a cleared
-  console), read the result file, or ask the user to press Apply (Save & copy after
+  console), read the result file, or ask the user to press Apply (Save after
   the first Apply) again: it
   carries every look still in the panel, with its values.

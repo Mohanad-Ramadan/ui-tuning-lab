@@ -11,12 +11,14 @@ release notes: https://github.com/Mohanad-Ramadan/ui-tuning-lab
 ## How a lab works
 
 - **Shipped** is the declared default and is read-only; editing it makes unsaved
-  changes until **Save & copy** keeps them as Look 1, Look 2, …. The selected
-  chip is outlined and is what the feature shows, so switching chips is the
-  comparison.
+  changes until **Save & pin** keeps them as a chip named after its preset
+  (Brass-1, Custom-1). On a pinned look the button reads **Save**. **Undo**,
+  **Redo**, and **Reset** step back through edits since the last save. The
+  selected chip is outlined and is what the feature shows, so switching chips
+  is the comparison.
 - **Apply** hands the selected look to the agent through the log, a result
   file, and a `land <name>` code on the clipboard, then hides; later picks go
-  through Save & copy and a pasted `land <name>`.
+  through Save and a pasted `land <name>`.
 - Every lab opens through an agent path, one or more human fast paths the user
   picks, and a visible fallback. Shake is offered only when inspection proves it
   free.

@@ -11,17 +11,25 @@ Every lab type carries the `UITuningLab` prefix and lives in a file wrapped in
 **Copy values** puts the fields that differ from the baseline on the pasteboard
 and logs them as one `UITUNINGLAB_VALUES {...}` line for landing
 (`references/landing-protocol.md`).
-The chips, **Save & copy**, **Apply**, and the **⋯** menu (Copy values) follow
-`references/candidates.md`. The chip row shows Shipped and each saved look (**Look 1**, **Look 2**, …); the
-selected chip is outlined, and the feature always shows it, so switching chips is
-the comparison. The controls edit the selected look in place, and a saved look keeps its edits when
-you switch away; on Shipped, which is read-only, they make unsaved changes,
-with no chip outlined, until **Save & copy** keeps them as the next Look N. **Apply** (hidden after its first use) picks the selected chip, logs
+The chips, **Save & pin** / **Save**, the **Undo**, **Redo**, and **Reset** row,
+**Apply**, and the **⋯** menu (Copy values) follow `references/candidates.md`.
+The chip row shows Shipped and each pinned look, named after its preset
+(**Compact-1**, **Relaxed-1**, or **Custom-1** for a look started from the
+sliders); the selected chip is outlined, and the feature always shows it, so
+switching chips is the comparison. Shipped is read-only: the controls make
+unsaved changes on it, with no chip outlined, until **Save & pin** keeps them as
+a new look. On a pinned look the controls make edits that stay with it when you
+switch away, until **Save** makes them its saved version. Undo and Redo step
+through the selected look's edits back to its last save, and a whole slider drag
+is one step; Reset takes the look back to its last save, and Undo can take that
+back. **Apply** (hidden after its first use) saves, picks the selected chip, logs
 `UITUNINGLAB_DONE`, writes Application Support `.ui-tuning-lab/result.json`,
 copies `land <name>`, and collapses the lab to a `Applied:` bar whose Change
-button reopens it. The host owns the `UITuningLabCandidates` store beside the
-feature, so the looks and the selection survive closing the popover; they live in
-memory and in the log, and a name is never reused within a run. Closing the lab
+button reopens it. After that, Save & pin and Save hand the pick over too, for
+pasting in chat. The host owns the `UITuningLabCandidates` store beside the
+feature, so the looks, their edits, and the selection survive closing the
+popover; they live in memory and in the log, and a name is never reused within a
+run. Only a save logs a look's `UITUNINGLAB_CANDIDATE` line. Closing the lab
 leaves the feature on the selected look. The hint is pinned below the scrolling
 Form, so it shows at the smallest detent. To reopen a session, seed the store's
 `initial:` array; each seeded look logs its own `UITUNINGLAB_CANDIDATE` line.
@@ -318,9 +326,9 @@ struct UITuningLabControls: View {
                 panel
             }
         }
+        // Closing keeps the feature on the selected look, edits included, and
+        // logs nothing: only a save does.
         .frame(minWidth: 280)
-        // The feature keeps the selected look; an edited look logs its values.
-        .onDisappear { candidates.leave() }
     }
 
     private var panel: some View {
@@ -360,18 +368,28 @@ struct UITuningLabControls: View {
             }
             LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
                 .accessibilityHidden(true)  // the slider reports its own value
-            Slider(value: look.cornerRadius, in: 0...32, step: 1) {
+            Slider(value: look("corner-radius").cornerRadius, in: 0...32, step: 1) {
                 Text("Corner radius")
             }
             LabeledContent("Spacing", value: "\(Int(style.spacing)) pt")
                 .accessibilityHidden(true)  // the slider reports its own value
-            Slider(value: look.spacing, in: 0...24, step: 1) { Text("Spacing") }
+            Slider(value: look("spacing").spacing, in: 0...24, step: 1) { Text("Spacing") }
+            // Undo and Redo per look, back to its last save.
             HStack {
-                // Save & copy keeps the current look as a chip to compare; after the
-                // first Apply it also hands the pick over for pasting in chat.
-                Button("Save & copy") {
+                Button("Undo") { style = candidates.undo() }
+                    .disabled(!candidates.canUndo)
+                Button("Redo") { style = candidates.redo() }
+                    .disabled(!candidates.canRedo)
+                Button("Reset") { style = candidates.reset() }
+                    .disabled(!candidates.canReset)
+            }
+            HStack {
+                // Save & pin keeps Shipped's edits as a new chip; Save keeps a
+                // pinned look's edits. After the first Apply either one also hands
+                // the pick over for pasting in chat.
+                Button(candidates.saveTitle) {
                     let applied = candidates.applies > 0
-                    if let name = candidates.saveAndCopy(), applied { sent = name }
+                    if let name = candidates.save(), applied { sent = name }
                 }
                 .disabled(!candidates.canSave)
                 Spacer()
@@ -385,8 +403,8 @@ struct UITuningLabControls: View {
         // Pinned below the scrolling controls, so it shows at every detent.
         .safeAreaInset(edge: .bottom) {
             Text(candidates.applies > 0
-                ? "Save & copy, then paste it in chat"
-                : "Save & copy to keep a look · Apply to finish")
+                ? "Save, then paste it in chat"
+                : "Save & pin to keep a look · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -408,15 +426,15 @@ struct UITuningLabControls: View {
             .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// The sliders show the selected look and edit it.
-    private var look: Binding<CardStyle> {
-        Binding(get: { style }, set: { edit($0) })
+    /// A slider shows the selected look and edits it; one drag is one Undo step.
+    private func look(_ control: String) -> Binding<CardStyle> {
+        Binding(get: { style }, set: { edit($0, control: control) })
     }
 
-    /// Every control edits the selected look: a saved look in place, or, on
-    /// Shipped, unsaved changes until Save & copy.
-    private func edit(_ value: CardStyle, preset: String? = nil) {
-        candidates.edit(value, preset: preset)
+    /// Every control edits the selected look: a pinned look's edits until Save,
+    /// or, on Shipped, unsaved changes until Save & pin.
+    private func edit(_ value: CardStyle, preset: String? = nil, control: String? = nil) {
+        candidates.edit(value, preset: preset, control: control)
         style = candidates.selectedLook
     }
 }
@@ -439,8 +457,8 @@ product.
 The looks above are ephemeral. If the user explicitly requests persistence,
 replace `UITuningLabControls.swift` with this version. `FeatureScreen.swift` stays
 unchanged, and the envelope, writer, and loader stay development-only. Each look
-is written as a `schemaVersion` 2 profile on Save & copy and again whenever
-it logs new values (leaving it after an edit), and × deletes that look's file and nothing else. Opening the
+is written as a `schemaVersion` 2 profile when it is saved (Save & pin, Save,
+or Apply), never on an unsaved edit, and × deletes that look's file and nothing else. Opening the
 lab adds every saved look as a chip, ordered by the `savedAt` of its first write
 (which keeps fractional seconds) and then by name, and logs each one; the
 baseline stays the declared default, so Shipped still shows it. Every stored
@@ -512,9 +530,9 @@ struct UITuningLabControls: View {
                 panel
             }
         }
+        // Closing keeps the feature on the selected look, edits included, and
+        // logs nothing: only a save does.
         .frame(minWidth: 280)
-        // The feature keeps the selected look; an edited look logs its values.
-        .onDisappear { candidates.leave() }
     }
 
     private var panel: some View {
@@ -554,18 +572,28 @@ struct UITuningLabControls: View {
             }
             LabeledContent("Corner radius", value: "\(Int(style.cornerRadius)) pt")
                 .accessibilityHidden(true)  // the slider reports its own value
-            Slider(value: look.cornerRadius, in: 0...32, step: 1) {
+            Slider(value: look("corner-radius").cornerRadius, in: 0...32, step: 1) {
                 Text("Corner radius")
             }
             LabeledContent("Spacing", value: "\(Int(style.spacing)) pt")
                 .accessibilityHidden(true)  // the slider reports its own value
-            Slider(value: look.spacing, in: 0...24, step: 1) { Text("Spacing") }
+            Slider(value: look("spacing").spacing, in: 0...24, step: 1) { Text("Spacing") }
+            // Undo and Redo per look, back to its last save.
             HStack {
-                // Save & copy keeps the current look as a chip to compare; after the
-                // first Apply it also hands the pick over for pasting in chat.
-                Button("Save & copy") {
+                Button("Undo") { style = candidates.undo() }
+                    .disabled(!candidates.canUndo)
+                Button("Redo") { style = candidates.redo() }
+                    .disabled(!candidates.canRedo)
+                Button("Reset") { style = candidates.reset() }
+                    .disabled(!candidates.canReset)
+            }
+            HStack {
+                // Save & pin keeps Shipped's edits as a new chip; Save keeps a
+                // pinned look's edits. After the first Apply either one also hands
+                // the pick over for pasting in chat.
+                Button(candidates.saveTitle) {
                     let applied = candidates.applies > 0
-                    if let name = candidates.saveAndCopy(), applied { sent = name }
+                    if let name = candidates.save(), applied { sent = name }
                 }
                 .disabled(!candidates.canSave)
                 Spacer()
@@ -579,8 +607,8 @@ struct UITuningLabControls: View {
         // Pinned below the scrolling controls, so it shows at every detent.
         .safeAreaInset(edge: .bottom) {
             Text(candidates.applies > 0
-                ? "Save & copy, then paste it in chat"
-                : "Save & copy to keep a look · Apply to finish")
+                ? "Save, then paste it in chat"
+                : "Save & pin to keep a look · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -603,15 +631,15 @@ struct UITuningLabControls: View {
             .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// The sliders show the selected look and edit it.
-    private var look: Binding<CardStyle> {
-        Binding(get: { style }, set: { edit($0) })
+    /// A slider shows the selected look and edits it; one drag is one Undo step.
+    private func look(_ control: String) -> Binding<CardStyle> {
+        Binding(get: { style }, set: { edit($0, control: control) })
     }
 
-    /// Every control edits the selected look: a saved look in place, or, on
-    /// Shipped, unsaved changes until Save & copy.
-    private func edit(_ value: CardStyle, preset: String? = nil) {
-        candidates.edit(value, preset: preset)
+    /// Every control edits the selected look: a pinned look's edits until Save,
+    /// or, on Shipped, unsaved changes until Save & pin.
+    private func edit(_ value: CardStyle, preset: String? = nil, control: String? = nil) {
+        candidates.edit(value, preset: preset, control: control)
         style = candidates.selectedLook
     }
 
@@ -636,7 +664,7 @@ struct UITuningLabControls: View {
     /// or a name that differs from its file or is not kebab-case is reported and
     /// left untouched.
     private func loadSaved() {
-        // A persisting lab writes each look whenever it logs, and deletes it on ×.
+        // A persisting lab writes each look whenever it is saved, and deletes it on ×.
         candidates.store = save
         candidates.unstore = { try FileManager.default.removeItem(at: UITuningLabProfile.fileURL($0)) }
         let files = ((try? FileManager.default.contentsOfDirectory(
