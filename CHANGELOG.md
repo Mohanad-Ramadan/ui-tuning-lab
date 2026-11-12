@@ -1,5 +1,47 @@
 # Changelog — ui-tuning-lab
 
+## Unreleased
+
+### A pinned look never changes: edits fork a new tune, and Save is gone
+
+- **Every chip is read-only.** Any edit while a pinned look is outlined (a
+  slider, toggle, preset, picker, design, or ↺) forks it: no chip is outlined,
+  and the edit becomes unsaved edits that start from that look's values, shown
+  live, exactly like unsaved edits on Shipped. The pinned look is unchanged.
+  The fork keeps the look's `basedOn`, so a fork of Brass-1 pins as Brass-2
+  and a fork of Custom-1 as Custom-2; a preset applied afterwards changes it.
+- **Save & pin is the only save button.** Save is removed everywhere. Save &
+  pin is always shown, enabled only with unsaved edits; it pins them as a new
+  look, selects it, and copies `land <name>`. After the first Apply it also
+  hands the pick over (Done line, result file, beacon, result bar), the role
+  Save had. The hint after Apply reads *Save & pin, then paste it in chat*.
+  Apply pins unsaved edits first, else picks the selected chip.
+- **One history, for the unsaved edits.** Undo, Redo, and Reset act only on
+  them: undoing back past the first edit after a fork, or Reset, outlines the
+  look they were forked from again; edits (↺ included) that come back to that
+  look's values do the same. Tapping any chip, the forked one included, drops
+  the unsaved edits. × shows only on the outlined look. Per-look drafts and
+  histories are gone, and a persisting lab never rewrites a candidate file:
+  only a new pin writes one.
+- `UITuningLabValues.swift`: the store drops drafts, per-look histories, and
+  `saveTitle`; it adds `unsavedFrom`, and `save()` only pins. Every example
+  (web, motion, macOS, SwiftUI, Windows, Compose, Flutter, React Native)
+  follows the same model, and the specs, verify protocol, and pilot checks are
+  updated.
+
+### macOS: the result bar shows after Apply
+
+- The macOS example resized the panel inside the `$sent` emission, which
+  `@Published` sends before the value is stored; `setFrame(_:display: true)`
+  laid SwiftUI out with the old value, so after Apply the panel stayed full
+  size, showing the controls without Apply, and `Applied: <name> · Change`
+  never appeared. The resize now runs on the next run-loop turn. The example
+  also notes that a utility panel hides while its app is inactive and returns,
+  bar included, when the app is active again.
+- `references/verify-protocol.md`: Apply, result bar, and Change is now a
+  mandatory hands-on check with screenshots, including a round trip to
+  another app on macOS.
+
 ## 1.6.0 — 2026-11-12
 
 ### Each control shows its default, and puts it back

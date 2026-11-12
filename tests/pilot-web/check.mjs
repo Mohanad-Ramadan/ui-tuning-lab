@@ -99,7 +99,6 @@ async function devChecks(engineName, engine, viewportName) {
 
     const button = name => page.getByRole("button", { name, exact: true });
     const pinButton = () => button("Save & pin");
-    const saveButton = () => button("Save");
     const removeCount = () => page.getByRole("button", { name: /^Remove / }).count();
     const enabled = async (...names) => {
       for (const name of names) if (await button(name).isDisabled()) return false;
@@ -154,8 +153,8 @@ async function devChecks(engineName, engine, viewportName) {
     const savedStatus = await page.getByRole("status").allInnerTexts();
     record(scope, "Save & pin says what it pinned and copied",
       savedStatus.some(text => /Pinned Compact-1/.test(text) && /land compact-1/.test(text)), savedStatus.join(" | "));
-    record(scope, "on a pinned look the button is Save, disabled with no edits",
-      (await pinButton().count()) === 0 && (await saveButton().isDisabled()));
+    record(scope, "on a pinned look Save & pin stays, disabled with no edits, and there is no Save",
+      (await pinButton().isDisabled()) && (await button("Save").count()) === 0);
     record(scope, "a save starts a fresh history", await disabled("Undo", "Redo", "Reset"));
 
     // A real click: it fails if the panel covers the feature.
@@ -171,31 +170,36 @@ async function devChecks(engineName, engine, viewportName) {
     await button("Compact-1").click();
     record(scope, "the look's chip renders its look", same(tuned, await cardStyles(page)));
 
-    // Edits on a pinned look enable Save, Undo, and Reset, and stay with it when
-    // the user switches away; switching logs nothing.
+    // A pinned look never changes: an edit on it forks unsaved edits that start
+    // from its values, outline no chip, and log nothing.
     logs.length = 0;
     await setRange(page, /Radius/, 6);
-    record(scope, "an edit on a pinned look enables Save, Undo, and Reset", await enabled("Save", "Undo", "Reset"));
-    await button("Shipped").click();
-    await button("Compact-1").click();
-    record(scope, "a pinned look keeps its edits after switching away",
-      (await cardStyles(page)).radius === "6px" && same(await pressed(), ["Compact-1"]) && (await enabled("Save")));
-    record(scope, "editing and switching log nothing", !logs.some(text => text.startsWith("UITUNINGLAB_")), logs.join(" | "));
-    await button("Reset").click();
-    record(scope, "Reset goes back to the last save", same(tuned, await cardStyles(page)) && (await disabled("Save", "Reset")));
+    record(scope, "an edit on a pinned look forks it: no chip outlined, no ×",
+      same(await pressed(), []) && (await removeCount()) === 0 && (await cardStyles(page)).radius === "6px");
+    record(scope, "the fork enables Save & pin, Undo, and Reset", await enabled("Save & pin", "Undo", "Reset"));
+    record(scope, "editing logs nothing", !logs.some(text => text.startsWith("UITUNINGLAB_")), logs.join(" | "));
     await button("Undo").click();
-    record(scope, "Undo takes Reset back", (await cardStyles(page)).radius === "6px");
-    // ↺ puts one control back to Shipped's value, not the look's last save,
-    // as one step that Undo takes back.
+    record(scope, "Undo back past the first edit outlines the look it was forked from",
+      same(await pressed(), ["Compact-1"]) && same(tuned, await cardStyles(page)) &&
+      (await disabled("Save & pin", "Reset")) && (await enabled("Redo")));
+    await button("Redo").click();
+    await button("Reset").click();
+    record(scope, "Reset drops the fork back to the look it came from, outlined",
+      same(tuned, await cardStyles(page)) && same(await pressed(), ["Compact-1"]) &&
+      (await disabled("Save & pin", "Reset")));
+    await button("Undo").click();
+    record(scope, "Undo takes Reset back", (await cardStyles(page)).radius === "6px" && same(await pressed(), []));
+    // ↺ puts one control back to Shipped's value, not the forked look's, as
+    // one step that Undo takes back.
     const radiusReset = page.getByRole("button", { name: "Reset Radius to default, 12 px", exact: true });
     const readouts = await page.locator("output").allInnerTexts();
     record(scope, "a changed slider shows ↺ and names the default",
       (await radiusReset.count()) === 1 && readouts.includes("6 px · default 12"), readouts.join(" | "));
     await radiusReset.click();
     const shippedRadius = await cardStyles(page);
-    record(scope, "↺ on a pinned look puts the control back to Shipped's value",
+    record(scope, "↺ on a fork puts the control back to Shipped's value",
       shippedRadius.radius === before.radius && shippedRadius.gap === tuned.gap &&
-      (await radiusReset.count()) === 0 && (await enabled("Save")), JSON.stringify(shippedRadius));
+      (await radiusReset.count()) === 0 && (await enabled("Save & pin")), JSON.stringify(shippedRadius));
     await button("Undo").click();
     record(scope, "Undo takes ↺ back in one step", (await cardStyles(page)).radius === "6px");
     // ↺ goes away once the value is Shipped's, so it hands focus to its slider:
@@ -224,13 +228,23 @@ async function devChecks(engineName, engine, viewportName) {
     await button("Undo").click();
     record(scope, "Undo takes the drag and the arrow back as one run", (await cardStyles(page)).radius === "6px",
       JSON.stringify(await cardStyles(page)));
-    await saveButton().click();
+    // Edits that match the look they were forked from again outline it.
+    await setRange(page, /Radius/, Number.parseInt(tuned.radius));
+    record(scope, "edits back at the forked look outline it again",
+      same(await pressed(), ["Compact-1"]) && (await disabled("Save & pin")));
+    await setRange(page, /Radius/, 6);
+    // Save & pin keeps the fork as a new look (it kept Compact-1's basedOn, so
+    // Compact-2) and leaves Compact-1 as it was.
+    await pinButton().click();
     await page.waitForTimeout(300);
-    const resaved = await page.getByRole("status").allInnerTexts();
-    record(scope, "Save keeps the edits and logs the look",
-      resaved.some(text => /Saved Compact-1/.test(text) && /land compact-1/.test(text)) &&
-      logs.some(text => text.startsWith("UITUNINGLAB_CANDIDATE ") && text.includes('"radius":6')) &&
-      (await saveButton().isDisabled()), `${resaved.join(" | ")} || ${logs.join(" | ")}`);
+    const pinnedAgain = await page.getByRole("status").allInnerTexts();
+    record(scope, "Save & pin keeps the fork as Compact-2 and selects it",
+      pinnedAgain.some(text => /Pinned Compact-2/.test(text) && /land compact-2/.test(text)) &&
+      same(await pressed(), ["Compact-2"]) && (await pinButton().isDisabled()) &&
+      logs.some(text => text.startsWith("UITUNINGLAB_CANDIDATE ") && text.includes('"name":"compact-2"') &&
+        text.includes('"radius":6')), `${pinnedAgain.join(" | ")} || ${logs.join(" | ")}`);
+    await button("Compact-1").click();
+    record(scope, "the forked look is unchanged", same(tuned, await cardStyles(page)));
 
     // Change exactly one field so an over-reporting Copy cannot pass.
     await button("Shipped").click();
@@ -262,7 +276,7 @@ async function devChecks(engineName, engine, viewportName) {
     await dialog.waitFor();
     record(scope, "reopening keeps the looks and the unsaved edits",
       same(await pressed(), []) &&
-      (await page.locator("[aria-label=Looks] button[aria-pressed]").count()) === 2 &&
+      (await page.locator("[aria-label=Looks] button[aria-pressed]").count()) === 3 &&
       (await cardStyles(page)).gap === "20px");
     logs.length = 0;
     await page.getByRole("button", { name: "Apply" }).click();
@@ -274,22 +288,23 @@ async function devChecks(engineName, engine, viewportName) {
     record(scope, "the result bar names the applied look", applied.includes("Applied: Custom-1"), applied);
     await page.getByRole("button", { name: "Change" }).click();
     record(scope, "Change brings back the controls",
-      (await dialog.getByRole("slider").count()) === 2 && (await saveButton().isVisible()));
+      (await dialog.getByRole("slider").count()) === 2 && (await pinButton().isVisible()));
     record(scope, "Apply is hidden after the first Apply",
       (await page.getByRole("button", { name: "Apply", exact: true }).count()) === 0);
     const hint = await page.locator("[role=dialog]").innerText();
-    record(scope, "after Apply the hint asks to save and paste", hint.includes("Save, then paste it in chat"), hint);
-    // After the first Apply the agent stops listening: Save stays enabled and
-    // hands the pick over, and the result bar asks for the land line in chat.
-    record(scope, "after Apply Save stays enabled with no edits", !(await saveButton().isDisabled()));
-    await saveButton().click();
+    record(scope, "after Apply the hint asks to Save & pin and paste", hint.includes("Save & pin, then paste it in chat"), hint);
+    // After the first Apply the agent stops listening: Save & pin hands the
+    // pick over, and the result bar asks for the land line in chat.
+    record(scope, "after Apply Save & pin still needs unsaved edits", await pinButton().isDisabled());
+    await setRange(page, /Gap/, 10);
+    await pinButton().click();
     await page.waitForTimeout(300);
     // The dialog is named by its title, which is now the result text.
     const bar = await page.locator("[role=dialog]").innerText();
-    record(scope, "Save asks to paste the land line in chat",
-      /Copied land custom-1: paste it in chat so the agent applies it|Tell the agent: land custom-1/.test(bar), bar);
+    record(scope, "Save & pin after Apply asks to paste the land line in chat",
+      /Copied land custom-2: paste it in chat so the agent applies it|Tell the agent: land custom-2/.test(bar), bar);
     record(scope, "the result bar says where the pick was saved",
-      bar.includes("Saved Custom-1 in localStorage uiTuningLab.result"), bar);
+      bar.includes("Saved Custom-2 in localStorage uiTuningLab.result"), bar);
     await page.getByRole("button", { name: "Change" }).click();
     await page.getByRole("button", { name: "Close" }).click();
     await page.waitForTimeout(200);
@@ -311,8 +326,9 @@ async function devChecks(engineName, engine, viewportName) {
     }
     const sliders = await dialog.getByRole("slider").evaluateAll(inputs =>
       inputs.map(input => input.closest("label")?.textContent?.trim().split(/\s+/)[0]));
-    // Undo, Redo, and Reset are disabled here (no edits), so Tab skips them.
-    const expected = ["Close", "More actions", "Shipped", "Compact-1", "Custom-1", "Remove Custom-1", "Compact", "Relaxed", "Save", ...sliders];
+    // Undo, Redo, Reset, and Save & pin are disabled here (no edits), so Tab skips them.
+    const expected = ["Close", "More actions", "Shipped", "Compact-1", "Compact-2", "Custom-1", "Custom-2",
+      "Remove Custom-2", "Compact", "Relaxed", ...sliders];
     const missing = expected.filter(name => !reachable.has(name));
     record(scope, "keyboard reaches every control", missing.length === 0, missing.length ? `missing ${missing.join(", ")}` : "");
   } catch (error) {

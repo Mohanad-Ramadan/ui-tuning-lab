@@ -16,20 +16,21 @@ Activation (`references/activation.md`):
   during inspection that the app does not already use it.
 - **Visible fallback:** the Card Lab button itself, with an accessible name.
 
-The page owns the `UITuningLabFlyout` instance, so looks, `basedOn`, their
-edits and histories, and the selection survive closing the flyout. The default
+The page owns the `UITuningLabFlyout` instance, so looks, the unsaved edits
+with their history, and the selection survive closing the flyout. The default
 lab is ephemeral: looks live in memory and the debug output only, and a name is
 never reused within a process. The panel follows `references/candidates.md`.
 The chip row under the header shows **Shipped** and each pinned look, named
 after its preset (**Compact-1**, **Relaxed-1**, **Custom-1**); the selected chip
 is checked and outlined, and the feature always shows it. Switching chips is
-the comparison. Moving a slider or applying a preset edits the selected look. A
-pinned look keeps its edits when you switch away until **Save** makes them its
-saved version. Shipped is read-only, so its edits are unsaved changes, with no
-chip outlined, until **Save & pin** keeps them as a new look. The edit row under
-the controls holds **Undo**, **Redo**, and **Reset**, each disabled when it
-cannot act. Every look has its own history back to its last save, and a slider
-drag is one step. Each slider marks the Shipped value with a tick under its
+the comparison. Every chip is read-only, a pinned look included: moving a
+slider or applying a preset forks the selected chip into unsaved changes that
+start from its values, with no chip outlined, until **Save & pin** keeps them as
+a new look (an edit on **Compact-1** pins as **Compact-2**); the chip it came
+from never changes, and clicking a chip drops the unsaved changes. The edit row
+under the controls holds **Undo**, **Redo**, and **Reset**, each disabled when
+it cannot act. They work on the unsaved changes, back to the chip they were
+forked from, which is outlined again, and a slider drag is one step. Each slider marks the Shipped value with a tick under its
 track, on every chip (WinUI draws only evenly spaced ticks, so the lab overlays
 it); a drag near it snaps to it exactly, the arrow keys still reach the values
 beside it, and the readout reads `14 · default 12` while the value differs.
@@ -37,7 +38,7 @@ beside it, and the readout reads `14 · default 12` while the value differs.
 control back to Shipped as one Undo step (`references/control-mapping.md`, "Default marker and per-control reset"). `Ctrl+Z` and `Ctrl+Y` run Undo and Redo as keyboard
 accelerators whose scope is the flyout content, so they work only while focus is
 inside the panel and never reach the app. **Apply** (hidden after its first use)
-saves first, picks the selected chip, and shrinks the flyout to the result bar.
+pins unsaved changes first, picks the selected chip, and shrinks the flyout to the result bar.
 The **⋯** menu holds Copy values. Closing keeps the selected look on screen. The
 hint is a grid row below the `ScrollViewer`, so it stays visible.
 
@@ -192,35 +193,34 @@ internal sealed class UITuningLabFlyout
     // Saved looks the lab opens with. Empty by default; a later session seeds the
     // finalists kept in the project here (references/candidates.md).
     private readonly List<UITuningLabCandidate> candidates = new();
-    // Each pinned look's edits since its last save, by name.
-    private readonly Dictionary<string, CardConfig> drafts = new();
-    // One point in a look's history: what it showed, and where it came from.
+    // One point in the unsaved edits' history: what it showed, and where it came from.
     private sealed record Step(CardConfig Value, string BasedOn);
-    // Undo and Redo steps per look ("original" for Shipped), back to its last save.
-    private readonly Dictionary<string, List<Step>> undoSteps = new(), redoSteps = new();
-    // The control of each look's newest step, so a drag stays one step.
-    private readonly Dictionary<string, string?> lastControl = new();
+    // Undo and Redo steps of the unsaved edits, back to the chip they were forked from.
+    private readonly List<Step> undoSteps = new(), redoSteps = new();
+    // The control of the newest step, so a drag stays one step.
+    private string? lastControl;
     // Every name issued, removed ones included, so a look number is never reused.
     private readonly HashSet<string> issued = new();
-    // The line each look last logged, so a look logs again only after it changed.
+    // The line each look last logged, so a look logs once.
     private readonly Dictionary<string, string> logged = new();
-    // The selected chip: "original" (Shipped) or a look's name. The feature always
-    // shows it.
+    // The selected chip: "original" (Shipped) or a look's name. The feature shows
+    // it, or the unsaved edits forked from it.
     private string selected = "original";
-    // Edits made on Shipped and not pinned yet; while set, no chip is outlined.
+    // Edits not pinned yet, forked from the selected chip; while set, no chip is
+    // outlined. The chip itself never changes.
     private CardConfig? unsaved;
     private string unsavedBasedOn = "baseline";
     private string? result; // the last pick; while set, the flyout is the result bar
     // How many picks reached the agent. The first Apply reaches its waiter; after
-    // it the agent no longer listens, so Apply hides and Save & pin and Save also
-    // hand the pick over for the user to paste as `land <name>`. Change does not
-    // reset it.
+    // it the agent no longer listens, so Apply hides and Save & pin also hands
+    // the pick over for the user to paste as `land <name>`. Change does not reset
+    // it.
     private int applies;
     // The result bar's second line: where the pick was saved, or why it could not.
     private string? saved;
     // Whether the last pick's land code reached the clipboard.
     private bool copied;
-    // A failed profile write during the current save, so the next status keeps it.
+    // A failed profile write during the current pin, so the next status keeps it.
     private string? storeError;
     private Flyout? flyout;
     private bool allowClose;
@@ -425,9 +425,9 @@ internal sealed class UITuningLabFlyout
             VerticalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
         };
 
-        // Always enabled: the controls show the selected look and edit it. On
-        // Shipped, a change stays unsaved until Save & pin. Sliders pass their
-        // key, so a drag is one Undo step; presets pass none.
+        // Always enabled: the controls show the selected look; a change forks it
+        // into unsaved edits until Save & pin. Sliders pass their key, so a drag
+        // is one Undo step; presets pass none.
         var body = new StackPanel { Spacing = 8 };
         // Presets are actions, not states, so they are never outlined.
         var presetRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -454,8 +454,8 @@ internal sealed class UITuningLabFlyout
         edits.Children.Add(resetButton);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 0) };
-        // Save & pin on Shipped, Save on a pinned look; Refresh keeps the label current.
-        saveButton = MakeButton(SaveTitle, Save);
+        // Save & pin, the one save button: pins the unsaved edits.
+        saveButton = MakeButton("Save & pin", Save);
         actions.Children.Add(saveButton);
         applyButton = MakeButton("Apply", Apply);
         actions.Children.Add(applyButton);
@@ -597,59 +597,41 @@ internal sealed class UITuningLabFlyout
 
     private UITuningLabCandidate? SelectedPin() => candidates.Find(c => c.Name == selected);
 
-    // The look the feature shows: the selected look with its edits, else unsaved
-    // edits on Shipped, else the baseline.
-    private CardConfig SelectedLook() =>
-        SelectedPin() is { } pin ? drafts.GetValueOrDefault(pin.Name) ?? ApplyValues(pin.Values) : unsaved ?? Baseline;
+    // The selected chip's look, which unsaved edits fork from.
+    private Step Source() => SelectedPin() is { } pin
+        ? new Step(ApplyValues(pin.Values), pin.BasedOn) : new Step(Baseline, "baseline");
 
-    // Whether the selected look has edits since its last save.
-    private bool HasEdits => SelectedPin() == null ? unsaved != null : drafts.ContainsKey(selected);
+    // The look the feature shows: the unsaved edits, else the selected chip.
+    private CardConfig SelectedLook() => unsaved ?? Source().Value;
 
-    // The save button's label: Save & pin on Shipped, Save on a pinned look.
-    private string SaveTitle => SelectedPin() == null ? "Save & pin" : "Save";
+    // Save & pin, the one save button, and Reset need unsaved edits.
+    private bool HasEdits => unsaved != null;
+    private bool CanUndo => undoSteps.Count > 0;
+    private bool CanRedo => redoSteps.Count > 0;
 
-    // Save & pin needs edits on Shipped. Save needs edits until the first Apply;
-    // after it, Save is how a pick reaches the chat, so it stays enabled.
-    private bool CanSave => SelectedPin() == null ? unsaved != null : HasEdits || applies > 0;
-    private bool CanUndo => undoSteps.TryGetValue(selected, out var steps) && steps.Count > 0;
-    private bool CanRedo => redoSteps.TryGetValue(selected, out var steps) && steps.Count > 0;
+    // What the feature shows now, as a history step.
+    private Step CurrentStep() => unsaved is { } value ? new Step(value, unsavedBasedOn) : Source();
 
-    // What the selected look shows now, as a history step.
-    private Step CurrentStep() => new(SelectedLook(), SelectedPin()?.BasedOn ?? unsavedBasedOn);
-
-    private static void Push(Dictionary<string, List<Step>> steps, string key, Step step)
+    private static Step? Pop(List<Step> steps)
     {
-        if (!steps.TryGetValue(key, out var list)) steps[key] = list = new();
-        list.Add(step);
-    }
-
-    private static Step? Pop(Dictionary<string, List<Step>> steps, string key)
-    {
-        if (!steps.TryGetValue(key, out var list) || list.Count == 0) return null;
-        var step = list[^1];
-        list.RemoveAt(list.Count - 1);
+        if (steps.Count == 0) return null;
+        var step = steps[^1];
+        steps.RemoveAt(steps.Count - 1);
         return step;
     }
 
-    private void ClearHistory(string name)
+    private void ClearHistory()
     {
-        undoSteps.Remove(name);
-        redoSteps.Remove(name);
-        lastControl.Remove(name);
+        undoSteps.Clear();
+        redoSteps.Clear();
+        lastControl = null;
     }
 
-    // Shows a step on the selected look. Matching the last save leaves no edits.
+    // Shows a step. Matching the chip the edits were forked from leaves no
+    // unsaved edits, and that chip is outlined again.
     private void Show(Step next)
     {
-        var index = candidates.FindIndex(c => c.Name == selected);
-        if (index >= 0)
-        {
-            var pin = candidates[index];
-            candidates[index] = pin with { BasedOn = next.BasedOn };
-            if (next.Value == ApplyValues(pin.Values)) drafts.Remove(selected);
-            else drafts[selected] = next.Value;
-        }
-        else if (next.Value == Baseline)
+        if (next.Value == Source().Value)
         {
             unsaved = null;
             unsavedBasedOn = "baseline";
@@ -686,11 +668,10 @@ internal sealed class UITuningLabFlyout
         // Apply reaches the agent once; after that it is hidden for good.
         applyButton!.Visibility = applies == 0 ? Visibility.Visible : Visibility.Collapsed;
         hint!.Text = applies > 0
-            ? "Save, then paste it in chat"
+            ? "Save & pin, then paste it in chat"
             : "Save & pin to keep a look · Apply to finish";
         foreach (var show in sliders) show(look);
-        saveButton!.Content = SaveTitle;
-        saveButton.IsEnabled = CanSave;
+        saveButton!.IsEnabled = HasEdits;
         undoButton!.IsEnabled = CanUndo;
         redoButton!.IsEnabled = CanRedo;
         resetButton!.IsEnabled = HasEdits;
@@ -700,8 +681,8 @@ internal sealed class UITuningLabFlyout
         {
             var name = c.Name;
             AddChip(ChipLabel(name), name);
-            // × only on the selected look, so nothing is removed by accident.
-            if (selected != name) continue;
+            // × only on the selected look, outlined, so nothing is removed by accident.
+            if (selected != name || unsaved != null) continue;
             var remove = new Button { Content = "×" };
             AutomationProperties.SetName(remove, $"Remove {ChipLabel(name)}");
             remove.Click += (_, _) => Later(() => Remove(name));
@@ -723,10 +704,10 @@ internal sealed class UITuningLabFlyout
     }
 
     // At most one chip is checked and outlined: the selected one, and none while
-    // Shipped has unsaved edits.
+    // there are unsaved edits.
     private void AddChip(string label, string target)
     {
-        var on = selected == target && (target != "original" || unsaved == null);
+        var on = selected == target && unsaved == null;
         var chip = new ToggleButton { Content = label, IsChecked = on };
         Outline(chip, on);
         chip.Click += (_, _) => Later(() => Select(target));
@@ -736,8 +717,7 @@ internal sealed class UITuningLabFlyout
     // The chips are rebuilt by Refresh; do that after the click, not inside it.
     private void Later(Action action) => tuneButton.DispatcherQueue.TryEnqueue(() => { if (flyout != null) action(); });
 
-    // Logs a look's line when it is new or changed since it last logged. Only a
-    // save logs.
+    // Logs a look's line the first time. Only a pin logs.
     private void LogPin(UITuningLabCandidate c)
     {
         var line = Json(c.AsJson());
@@ -747,15 +727,14 @@ internal sealed class UITuningLabFlyout
     }
 
     // Clicking a chip shows its look in the real feature. Switching chips is the
-    // comparison. Unsaved edits on Shipped are dropped, so Shipped always shows
-    // the baseline; a pinned look keeps its edits. Clicking the selected chip
-    // only re-checks it.
+    // comparison. Unsaved edits are dropped, so a chip always shows its look
+    // exactly, the one they were forked from included. Clicking the outlined
+    // chip only re-checks it.
     private void Select(string chip)
     {
         if (chip != selected || unsaved != null)
         {
-            lastControl.Remove(selected); // a drag after coming back is its own step
-            ClearHistory("original");
+            ClearHistory();
             unsaved = null;
             unsavedBasedOn = "baseline";
             selected = candidates.Exists(c => c.Name == chip) ? chip : "original";
@@ -764,18 +743,18 @@ internal sealed class UITuningLabFlyout
         Refresh();
     }
 
-    // Every control edits the selected look: on Shipped as unsaved edits, on a
-    // pinned look as edits on top of its saved version. A preset becomes its
-    // basedOn. Sliders pass `control`, their key: a run of edits from the same
-    // control in a row is one Undo step. Presets pass none, so each is a step.
+    // Every control makes unsaved edits. On an outlined chip the first edit forks
+    // it: the edits start from its values and basedOn, and the chip itself never
+    // changes. A preset becomes their basedOn. Sliders pass `control`, their key:
+    // a run of edits from the same control in a row is one Undo step. Presets
+    // pass none, so each is a step.
     private void Edit(CardConfig next, string? preset = null, string? control = null)
     {
         var current = CurrentStep();
         if (next == current.Value && (preset == null || preset == current.BasedOn)) return;
-        if (control == null || control != lastControl.GetValueOrDefault(selected) || !CanUndo)
-            Push(undoSteps, selected, current);
-        redoSteps.Remove(selected);
-        lastControl[selected] = control;
+        if (control == null || control != lastControl || !CanUndo) undoSteps.Add(current);
+        redoSteps.Clear();
+        lastControl = control;
         Show(new Step(next, preset ?? current.BasedOn));
         setLook(SelectedLook());
         Refresh();
@@ -783,18 +762,19 @@ internal sealed class UITuningLabFlyout
 
     // ↺ on one control: `restore` copies that control's fields from Shipped (a
     // spring's two sliders together). An ordinary edit: one Undo step that ends
-    // the current slider run, so it never merges with a drag. On Shipped,
-    // matching the baseline again leaves no unsaved edits; on a pinned look it is
-    // an edit that Save keeps.
+    // the current slider run, so it never merges with a drag. On a pinned look it
+    // forks unsaved edits; edits that match the chip they were forked from again
+    // are dropped, and that chip is outlined.
     private void ResetControl(Func<CardConfig, CardConfig, CardConfig> restore) =>
         Edit(restore(SelectedLook(), Baseline));
 
-    // Undo steps the selected look back one edit, never past its last save.
+    // Undo steps the unsaved edits back one, never past the chip they were forked
+    // from, which is outlined again when they reach it.
     private void Undo()
     {
-        if (Pop(undoSteps, selected) is not { } previous) return;
-        Push(redoSteps, selected, CurrentStep());
-        lastControl.Remove(selected);
+        if (Pop(undoSteps) is not { } previous) return;
+        redoSteps.Add(CurrentStep());
+        lastControl = null;
         Show(previous);
         setLook(SelectedLook());
     }
@@ -802,42 +782,31 @@ internal sealed class UITuningLabFlyout
     // Redo brings back the edit Undo last took away.
     private void Redo()
     {
-        if (Pop(redoSteps, selected) is not { } next) return;
-        Push(undoSteps, selected, CurrentStep());
-        lastControl.Remove(selected);
+        if (Pop(redoSteps) is not { } next) return;
+        undoSteps.Add(CurrentStep());
+        lastControl = null;
         Show(next);
         setLook(SelectedLook());
     }
 
-    // Reset takes the selected look back to its last save (Shipped: the baseline)
-    // in one step that Undo can take back.
+    // Reset drops the unsaved edits back to the chip they were forked from,
+    // outlined again, in one step that Undo can take back.
     private void Reset()
     {
         if (!HasEdits) return;
-        Push(undoSteps, selected, CurrentStep());
-        redoSteps.Remove(selected);
-        lastControl.Remove(selected);
-        var pin = SelectedPin();
-        Show(pin != null ? new Step(ApplyValues(pin.Values), pin.BasedOn) : new Step(Baseline, "baseline"));
+        undoSteps.Add(CurrentStep());
+        redoSteps.Clear();
+        lastControl = null;
+        Show(Source());
         setLook(SelectedLook());
     }
 
-    // Keeps the selected look's edits: unsaved edits on Shipped become a new look,
-    // named `<prefix>-N` after its basedOn (`custom` for baseline) and selected; a
-    // pinned look's edits become its saved version. Either way the history starts
-    // fresh and the look logs. Returns true when it pinned a new look.
+    // Pins the unsaved edits as a new look, named `<prefix>-N` after their
+    // basedOn (`custom` for baseline), selected and outlined; the history starts
+    // fresh and the look logs. Returns false with no unsaved edits.
     private bool Commit()
     {
         storeError = null;
-        var index = candidates.FindIndex(c => c.Name == selected);
-        if (index >= 0)
-        {
-            if (drafts.TryGetValue(selected, out var draft)) candidates[index] = candidates[index] with { Values = Changed(draft) };
-            drafts.Remove(selected);
-            ClearHistory(selected);
-            LogPin(candidates[index]);
-            return false;
-        }
         if (unsaved is not { } value) return false;
         var prefix = unsavedBasedOn == "baseline" ? "custom" : unsavedBasedOn;
         var number = issued.Select(n => Regex.Match(n, $"^{Regex.Escape(prefix)}-([0-9]+)$"))
@@ -848,22 +817,20 @@ internal sealed class UITuningLabFlyout
         selected = candidate.Name;
         unsaved = null;
         unsavedBasedOn = "baseline";
-        ClearHistory("original");
+        ClearHistory();
         LogPin(candidate);
         return true;
     }
 
-    // Save & pin on Shipped or Save on a pinned look: keeps the edits and copies
-    // the look's land code. Before the first Apply the agent is listening for
-    // Apply, so nothing more happens; after it, the pick is handed over for pasting.
+    // Save & pin, the one save button: pins the unsaved edits and copies the new
+    // look's land code. Before the first Apply the agent is listening for Apply,
+    // so nothing more happens; after it, the pick is handed over for pasting.
     private void Save()
     {
-        if (!CanSave) return;
-        var pinned = Commit();
-        if (SelectedPin() is not { } look) return;
+        if (!Commit() || SelectedPin() is not { } look) return;
         if (applies > 0) { HandOver(look); return; }
         saved = null;
-        var kept = $"{(pinned ? "Pinned" : "Saved")} {ChipLabel(look.Name)}";
+        var kept = $"Pinned {ChipLabel(look.Name)}";
         var line = CopyText($"land {look.Name}") ? $"{kept} · copied land {look.Name}" : $"{kept} · Tell the agent: land {look.Name}";
         SetStatus(storeError ?? line);
     }
@@ -884,18 +851,16 @@ internal sealed class UITuningLabFlyout
     private void Remove(string name)
     {
         candidates.RemoveAll(c => c.Name == name);
-        drafts.Remove(name);
-        ClearHistory(name);
         logged.Remove(name);
         Log("UITUNINGLAB_CANDIDATE_REMOVED", new SortedDictionary<string, object?> { ["name"] = name });
-        if (selected == name) selected = "original";
+        if (selected == name) { selected = "original"; ClearHistory(); }
         setLook(SelectedLook());
         SetStatus($"Removed {ChipLabel(name)}");
         Refresh();
     }
 
-    // Apply saves first (unsaved edits on Shipped are pinned, a selected look's
-    // edits saved), then hands the pick over.
+    // Apply pins unsaved edits first, like Save & pin, then hands the selected
+    // chip over.
     private void Apply()
     {
         Commit();
@@ -983,8 +948,8 @@ winner, straight to `Feature.Apply`. Build Debug and Release.
 ## Persistence variant, only when requested
 
 One `schemaVersion: 2` profile per look (`references/platform-handoff.md`),
-written whenever a look is saved (Save & pin, Save, and Apply), never for unsaved edits, and
-deleted by ×:
+written once, when a look is pinned (Save & pin, or Apply with unsaved edits), never for unsaved
+edits and never again after that, and deleted by ×:
 packaged apps use `ApplicationData.Current.LocalFolder\.ui-tuning-lab\candidates\<name>.json`,
 unpackaged apps `%LOCALAPPDATA%\<app-name>\.ui-tuning-lab\candidates\<name>.json`.
 Add to the class, inside `#if DEBUG`:
@@ -992,27 +957,19 @@ Add to the class, inside `#if DEBUG`:
 ```csharp
 private static string CandidateDirectory() => System.IO.Path.Combine(LabDirectory(), "candidates");
 
-// Atomic: a temporary file, then a replacing move over the look's last profile.
-// A rewrite keeps the first savedAt, so looks load in the order they were pinned.
+// Atomic: a temporary file, then a move into place. A pinned look never changes,
+// so it is written once, when it is pinned; savedAt orders the looks when they load.
 private static void WriteCandidate(UITuningLabCandidate c)
 {
     var overrides = ApplyValues(c.Values);
     var dir = System.IO.Directory.CreateDirectory(CandidateDirectory()).FullName;
     var target = System.IO.Path.Combine(dir, c.Name + ".json");
     var temp = target + ".tmp";
-    string? savedAt = null;
-    try
-    {
-        using var existing = JsonDocument.Parse(System.IO.File.ReadAllText(target));
-        if (existing.RootElement.TryGetProperty("savedAt", out var first)
-            && first.ValueKind == JsonValueKind.String) savedAt = first.GetString();
-    }
-    catch (Exception) { } // no earlier profile, or an unreadable one: a fresh savedAt
     System.IO.File.WriteAllText(temp, Json(new SortedDictionary<string, object?>
     {
         ["basedOn"] = c.BasedOn, ["container"] = "FeaturePage.Flyout", ["name"] = c.Name, ["notes"] = "",
         ["overrides"] = new SortedDictionary<string, double>(AsMap(overrides)), ["platform"] = "windows",
-        ["savedAt"] = savedAt ?? DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture), ["schemaVersion"] = 2,
+        ["savedAt"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture), ["schemaVersion"] = 2,
         ["scope"] = new List<object?> { "appearance", "layout" },
     }));
     try { System.IO.File.Move(temp, target, overwrite: true); } finally { System.IO.File.Delete(temp); }
@@ -1053,7 +1010,7 @@ private (List<UITuningLabCandidate> Found, List<string> Problems) ReadStored()
 
 Wiring: `LogPin` gains a `bool store = true` parameter and ends with
 `if (store) { try { WriteCandidate(c); } catch (Exception e) { storeError = $"{ChipLabel(c.Name)} not saved: {e.Message}"; SetStatus(storeError); } }`,
-so every `UITUNINGLAB_CANDIDATE` line (Save & pin, Save, and Apply) writes the profile, and a failed write shows in the status line while the
+so every `UITUNINGLAB_CANDIDATE` line (a new pin) writes the profile, and a failed write shows in the status line while the
 look stays in the panel; `Save` and `HandOver` keep that line instead of their own. `Remove` deletes `<dir>\<name>.json` first and stops
 with a status on failure. `Open` calls `ReadStored()`, adds found candidates not
 already listed, and shows the problems in the status line before logging

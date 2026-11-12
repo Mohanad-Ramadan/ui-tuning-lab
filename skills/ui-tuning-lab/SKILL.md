@@ -30,17 +30,18 @@ A good lab feels like this:
 - **Chips** are Shipped and each pinned look, named after its preset and
   numbered (**Brass-1**, **Brass-2**, **Custom-1**); the selected chip is
   outlined and is always what the feature shows, so switching chips is the
-  comparison. The controls edit the selected look; on Shipped, which is
-  read-only, they make unsaved changes that no chip holds until Save & pin. No
-  chip appears or is renamed on its own. **Replay** and **Speed** make motion
+  comparison. Every chip is read-only, a pinned look included: the controls
+  fork the selected chip into unsaved changes that no chip holds, with no chip
+  outlined, until Save & pin keeps them as a new look (an edit on Brass-1 pins
+  as Brass-2). No chip appears, changes, or is renamed on its own. **Replay** and **Speed** make motion
   judgeable.
-- **Undo**, **Redo**, and **Reset** step through the selected look's edits
-  since its last save, or drop them all.
+- **Undo**, **Redo**, and **Reset** step through the unsaved changes back to
+  the chip they were forked from, which is outlined again, or drop them all.
 - **Every control shows its default**, the Shipped value: a tick on a slider
   (a drag snaps to it), a caption on a toggle or option, a swatch beside a
   color. Its **↺** puts that one control back to Shipped as one Undo step.
-- **Save & pin** keeps edits on Shipped as a new chip; on a pinned look the
-  button reads **Save** and keeps its edits. Both copy `land <name>`.
+- **Save & pin**, the one save button, keeps the unsaved changes as a new
+  chip and copies `land <name>`; there is no Save.
   **Apply** picks the selected chip and hands it to the agent, with no paste:
   log line, result file, and a `land <name>` code on the clipboard. Apply hides
   after its first use. One hint line says how to finish.
@@ -50,7 +51,7 @@ A good lab feels like this:
 Every UI stack gets the same lab. On Android, Flutter, React Native, Windows,
 or a stack with no example at all, build: the
 panel, presets, direct controls with their default markers and ↺, the chips,
-Undo, Redo, Reset, Save & pin and Save, Apply, the ⋯ menu with Copy values, the hint, and the three activation
+Undo, Redo, Reset, Save & pin, Apply, the ⋯ menu with Copy values, the hint, and the three activation
 paths.
 Start from the platform's example, or the nearest one when there is none, and
 keep every guarantee in the safety checklist. Never replace the lab with a row
@@ -96,7 +97,7 @@ picker in the panel, with the original as the baseline
    at least two presets, direct controls with their default markers and ↺
    (`references/control-mapping.md`, "Default marker and per-control reset"),
    the chips, Undo, Redo, Reset,
-   Save & pin and Save, Apply, the ⋯ menu (Copy values), and the hint, plus
+   Save & pin, Apply, the ⋯ menu (Copy values), and the hint, plus
    Replay and Speed for motion
    (`references/candidates.md`). Saved looks stay in memory and the log; the
    only write is the result file, and looks go to storage only when persistence
@@ -125,9 +126,9 @@ picker in the panel, with the original as the baseline
    presses it: land from its `UITUNINGLAB_DONE` line right away, without asking
    them to confirm. Skipping the waiter is what makes the user type "done". The
    waiter catches only the first Apply; after it Apply is hidden, and a later
-   pick arrives as a `land <name>` pasted from Save & pin or Save, landed the
-   same way. Save & pin and Save before the first Apply only keep a look; they
-   do not wake the waiter. If
+   pick arrives as a `land <name>` pasted from Save & pin, landed the same way.
+   Save & pin before the first Apply only keeps a look; it does not wake the
+   waiter. If
    the user is not available, stop here and
    report the lab as built, with the smoke launch and every hands-on check listed
    as not run; static and release-artifact checks are still yours to run (step
@@ -171,8 +172,8 @@ module (presets, a diff function) need no marker: the file itself is gated.
 |---|---|
 | **Internal only.** The lab exists only in DEBUG, development, or tester builds. | `sh <skill-dir>/scripts/verify.sh source-gates <dir>` PASSes on a directory holding the feature and lab files (for Kotlin, Dart, and C#, which it cannot read, the manual gate check in `references/platform-handoff.md` instead), and the Release archive or production bundle contains no lab code or activation path (`references/verify-protocol.md`). |
 | **Activatable only in development.** The lab opens through the documented agent path, the chosen human path, and a visible fallback; none survives Release. | Hands-on, during the tuning session with the user: every documented path opens the lab, a focused text field keeps shake-to-undo, and the fallback is reachable. Release archive: launch arguments, URL schemes, shake selectors, notification names, key commands, and fallback labels are absent or inert (`references/verify-protocol.md`). |
-| **Reversible.** The Shipped chip shows the baseline (the declared default) exactly, behavior included. | Hands-on, during the tuning session with the user: open, change everything, close, reopen, select Shipped, and compare with the unmodified app. On a pinned look, change one control and press its ↺: the value equals Shipped's, and Undo brings the change back. |
-| **Explicit persistence.** The only write an ephemeral lab makes is the result file on Apply (and on Save & pin or Save after it); saved looks live only in memory and the log unless the user asked to save them; every write goes only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | An ephemeral lab's only storage writer is the result file; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
+| **Reversible.** The Shipped chip shows the baseline (the declared default) exactly, behavior included. | Hands-on, during the tuning session with the user: open, change everything, close, reopen, select Shipped, and compare with the unmodified app. On a pinned look, change one control: no chip is outlined, and tapping that look shows it unchanged. Press a changed control's ↺: the value equals Shipped's, and Undo brings the change back. |
+| **Explicit persistence.** The only write an ephemeral lab makes is the result file on Apply (and on Save & pin after it); pinned looks live only in memory and the log unless the user asked to save them; every write goes only to `uiTuningLab.*` or `.ui-tuning-lab/`, never a production key. | An ephemeral lab's only storage writer is the result file; a saved file passes `sh <skill-dir>/scripts/verify.sh profile <file>`. |
 | **Complete teardown.** Closing unmounts or releases the lab and every timer, observer, listener, task, and render tree it owns. | Hands-on, during or after the tuning session with the user: close, then confirm with instruments, logging, or DevTools that nothing lab-owned remains. |
 
 `source-gates` is a lint: a PASS does not prove the release build is clean, so
@@ -197,7 +198,7 @@ a save would overwrite a production key.
   controls; default markers and per-control reset.
 - `references/design-variants.md`: alternative designs of a feature as a
   Design picker in the lab, and landing the winning design's code.
-- `references/candidates.md`: chips, Undo, Redo, Reset, Save & pin, Save, Apply, look names, the
+- `references/candidates.md`: chips, forks, Undo, Redo, Reset, Save & pin, Apply, look names, the
   result file, waiting for the pick, and keeping finalists for later.
 - `references/platform-handoff.md`: per platform, how lab lines are logged and
   read, how to wait for Done, where the result file and looks are stored,

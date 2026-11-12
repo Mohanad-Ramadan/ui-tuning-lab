@@ -80,7 +80,7 @@ Before building a panel, look for one the project already has:
 | React Native `DevSettings.addMenuItem` or Flipper plugins | the existing developer menu |
 
 Reuse changes only the control surface. The four guarantees, the naming rule, a
-baseline, the chips, Undo, Redo, Reset, Save & pin and Save, Apply with its hint, Copy values
+baseline, the chips, Undo, Redo, Reset, Save & pin, Apply with its hint, Copy values
 (`references/candidates.md`), and landing still apply. When the tool cannot host
 one of them (Storybook renders outside the running app, so its chips would not
 show the real feature), add it as a plain button beside the library's panel or say

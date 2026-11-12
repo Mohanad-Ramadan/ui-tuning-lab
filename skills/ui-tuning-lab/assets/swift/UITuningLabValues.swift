@@ -37,13 +37,13 @@ func uiTuningLabCopyValues<Value: Encodable>(from baseline: Value, to draft: Val
     return values == "{}" ? "No changes from baseline" : "Copied \(values)"
 }
 
-/// A look the lab holds (references/candidates.md): a pinned look with its
-/// saved version. Edits made since the last save live in the store, not here.
+/// A look the lab holds (references/candidates.md): a pinned look, which
+/// never changes once pinned. Edits on it fork unsaved edits in the store.
 /// It lives in memory, and in storage only when the lab persists it.
 struct UITuningLabCandidate<Value: Codable>: Identifiable {
     var name: String     // `brass-1`, `custom-2`, ...; a kept finalist keeps its name
     var basedOn: String  // a preset's (or design's) kebab-case key, or `baseline`
-    var value: Value     // the saved version
+    var value: Value     // its values, fixed when it is pinned
     var id: String { name }
     /// The chip's label: `Brass-2` for `brass-2`, `Warm Glow-1` for `warm-glow-1`.
     var label: String { uiTuningLabChipLabel(name) }
@@ -58,7 +58,7 @@ func uiTuningLabChipLabel(_ name: String) -> String {
     return "\(words.joined(separator: " "))-\(number)"
 }
 
-/// One point in a look's history: what it showed, and where it came from.
+/// One point in the unsaved tune's history: what it showed, and where it came from.
 private struct UITuningLabStep<Value> {
     var value: Value
     var basedOn: String
@@ -66,47 +66,47 @@ private struct UITuningLabStep<Value> {
 
 /// The looks, oldest first, and the selected chip, owned beside the feature so
 /// they survive closing the lab. The feature always shows the selected look.
-/// Shipped (`original`) is read-only: an edit on it shows live as unsaved
-/// changes, outlining no chip, until Save & pin keeps it as a new look named
-/// after its preset (`brass-1`); tapping a chip first drops them. A pinned look
-/// keeps its saved version plus the edits made since, which stay with it when
-/// the user switches away, until Save. Each look has its own Undo and Redo
-/// history back to its last save, and Reset. Lines the agent can replay:
-/// `UITUNINGLAB_CANDIDATE {...}` whenever a look is saved, and
-/// `UITUNINGLAB_CANDIDATE_REMOVED {...}`.
+/// Every chip is read-only: Shipped (`original`) and every pinned look, which
+/// never changes once pinned. An edit on any of them forks it into unsaved
+/// edits that start from its values, shown live with no chip outlined, until
+/// Save & pin keeps them as a new look named after its preset (`brass-2`);
+/// tapping a chip first drops them. One Undo and Redo history covers the
+/// unsaved edits, back to the look they were forked from, and Reset. Lines the
+/// agent can replay: `UITUNINGLAB_CANDIDATE {...}` whenever a look is pinned,
+/// and `UITUNINGLAB_CANDIDATE_REMOVED {...}`.
 @MainActor
 final class UITuningLabCandidates<Value: Codable & Equatable>: ObservableObject {
     @Published private(set) var all: [UITuningLabCandidate<Value>] = []
-    /// The selected chip: `original` for Shipped, or a look's name.
+    /// The selected chip: `original` for Shipped, or a look's name. While
+    /// there are unsaved edits it is the chip they were forked from.
     @Published private(set) var selected = "original"
-    /// Edits made on Shipped and not pinned yet; while set, no chip is outlined.
+    /// Edits not pinned yet, forked from the selected chip; while set, no chip
+    /// is outlined.
     @Published private(set) var unsaved: Value?
     /// What the last action reported, for the panel's status line.
     @Published var status: String?
     /// How many times a pick reached the agent. The first Apply reaches its
     /// waiter; after it the agent no longer listens, so Apply hides and Save &
-    /// pin and Save also hand the pick over, for the user to paste as
-    /// `land <name>`. Change does not reset it; it lives as long as the lab's
-    /// candidates.
+    /// pin also hands the pick over, for the user to paste as `land <name>`.
+    /// Change does not reset it; it lives as long as the lab's candidates.
     @Published private(set) var applies = 0
     /// The result bar's second line after a pick: where it was saved, or nil
     /// when the write failed (then `status` says why).
     @Published private(set) var saved: String?
-    /// Each pinned look's edits since its last save, by name.
-    @Published private var drafts: [String: Value] = [:]
-    /// Undo and Redo steps per look (`original` for Shipped), back to its last save.
-    @Published private var undoSteps: [String: [UITuningLabStep<Value>]] = [:]
-    @Published private var redoSteps: [String: [UITuningLabStep<Value>]] = [:]
+    /// Undo and Redo steps of the unsaved edits, back to the look they were
+    /// forked from.
+    @Published private var undoSteps: [UITuningLabStep<Value>] = []
+    @Published private var redoSteps: [UITuningLabStep<Value>] = []
     let baseline: Value
-    /// Set by a persisting lab: writes a look's profile whenever it is saved
-    /// (Save & pin, Save, Apply), and deletes it on remove. A failure shows in
-    /// `status`; the look stays.
+    /// Set by a persisting lab: writes a look's profile when it is pinned
+    /// (Save & pin, Apply), and deletes it on remove. A pinned look's file is
+    /// never written again. A failure shows in `status`; the look stays.
     var store: ((UITuningLabCandidate<Value>) throws -> Void)?
     var unstore: ((String) throws -> Void)?
     private var taken: Set<String> = []  // every name issued or reserved this run
     private var unsavedBasedOn = "baseline"
-    private var lastControl: [String: String] = [:]  // the control of each look's newest step
-    private var storeError: String?  // a failed profile write during the current save
+    private var lastControl: String?  // the control of the newest step
+    private var storeError: String?  // a failed profile write during the current pin
     private var logged: [String: String] = [:]  // the line each look last logged
 
     /// Seed with finalists kept in the project to reopen a session; empty by default.
@@ -121,69 +121,67 @@ final class UITuningLabCandidates<Value: Codable & Equatable>: ObservableObject 
 
     var selectedPin: UITuningLabCandidate<Value>? { named(selected) }
 
-    /// The look the feature shows: the selected look with its edits, else
-    /// unsaved edits on Shipped, else the baseline.
-    var selectedLook: Value {
-        if let pin = selectedPin { return drafts[pin.name] ?? pin.value }
-        return unsaved ?? baseline
-    }
+    /// The chip the unsaved edits were forked from (`original` for Shipped),
+    /// or nil when there are none.
+    var unsavedFrom: String? { unsaved == nil ? nil : selected }
 
-    /// Whether a chip is outlined: false while Shipped has unsaved edits.
-    func isOutlined(_ name: String) -> Bool { name == selected && (name != "original" || unsaved == nil) }
+    /// The look the feature shows: the unsaved edits, else the selected chip.
+    var selectedLook: Value { unsaved ?? source.value }
 
-    /// Whether the selected look has edits since its last save.
-    var hasEdits: Bool { selectedPin == nil ? unsaved != nil : drafts[selected] != nil }
+    /// Whether a chip is outlined: only the selected chip, and none while
+    /// there are unsaved edits.
+    func isOutlined(_ name: String) -> Bool { name == selected && unsaved == nil }
 
-    /// The save button's label: Save & pin on Shipped, Save on a pinned look.
-    var saveTitle: String { selectedPin == nil ? "Save & pin" : "Save" }
+    /// Whether there are unsaved edits.
+    var hasEdits: Bool { unsaved != nil }
 
-    /// Save & pin needs edits on Shipped. Save needs edits until the first
-    /// Apply; after it, Save is how a pick reaches the chat, so it stays enabled.
-    var canSave: Bool { selectedPin == nil ? unsaved != nil : hasEdits || applies > 0 }
-    var canUndo: Bool { !(undoSteps[selected] ?? []).isEmpty }
-    var canRedo: Bool { !(redoSteps[selected] ?? []).isEmpty }
-    var canReset: Bool { hasEdits }
+    /// Save & pin, the one save button, needs unsaved edits.
+    var canSave: Bool { unsaved != nil }
+    var canUndo: Bool { !undoSteps.isEmpty }
+    var canRedo: Bool { !redoSteps.isEmpty }
+    var canReset: Bool { unsaved != nil }
 
     /// Marks names as used, such as every file in storage, so no look takes them.
     func reserve(_ names: some Sequence<String>) { taken.formUnion(names) }
 
     /// Selects a chip and returns the look the feature must now show. Unsaved
-    /// edits on Shipped are dropped, so Shipped always shows the baseline; a
-    /// pinned look keeps its edits.
+    /// edits are dropped, so a chip always shows its look exactly, the one
+    /// they were forked from included.
     @discardableResult
     func select(_ name: String) -> Value {
         guard name != selected || unsaved != nil else { return selectedLook }
-        lastControl[selected] = nil  // a drag after coming back is its own step
-        clearHistory("original")
+        clearHistory()
         unsaved = nil
         unsavedBasedOn = "baseline"
         selected = named(name) == nil ? "original" : name
         return selectedLook
     }
 
-    /// Every control edits the selected look: on Shipped as unsaved edits, on
-    /// a pinned look as edits on top of its saved version. A preset (or, in a
-    /// lab with designs, a design) becomes its `basedOn`. Pass `control`, the
-    /// control's key, for sliders and steppers: a run of edits from the same
-    /// control in a row is one Undo step. Presets pass none, so each is a step.
+    /// Every control edits the unsaved tune. On an outlined chip the first
+    /// edit forks it: the edit starts from that look's values and `basedOn`,
+    /// and the look itself is unchanged. A preset (or, in a lab with designs,
+    /// a design) becomes its `basedOn`. Pass `control`, the control's key, for
+    /// sliders and steppers: a run of edits from the same control in a row is
+    /// one Undo step. Presets pass none, so each is a step.
     func edit(_ value: Value, preset: String? = nil, design: String? = nil, control: String? = nil) {
         let current = step
         guard value != current.value || (preset ?? design).map({ $0 != current.basedOn }) == true else { return }
-        if control == nil || control != lastControl[selected] || !canUndo {
-            undoSteps[selected, default: []].append(current)
+        if control == nil || control != lastControl || undoSteps.isEmpty {
+            undoSteps.append(current)
         }
-        redoSteps[selected] = nil
-        lastControl[selected] = control
+        redoSteps = []
+        lastControl = control
         apply(UITuningLabStep(value: value, basedOn: preset ?? design ?? current.basedOn))
     }
 
-    /// Undo: steps the selected look back one edit, never past its last save.
-    /// Returns the look the feature must now show.
+    /// Undo: steps the unsaved edits back one, never past the look they were
+    /// forked from, which is outlined again when they reach it. Returns the
+    /// look the feature must now show.
     @discardableResult
     func undo() -> Value {
-        guard let previous = undoSteps[selected]?.popLast() else { return selectedLook }
-        redoSteps[selected, default: []].append(step)
-        lastControl[selected] = nil
+        guard let previous = undoSteps.popLast() else { return selectedLook }
+        redoSteps.append(step)
+        lastControl = nil
         apply(previous)
         return selectedLook
     }
@@ -191,26 +189,22 @@ final class UITuningLabCandidates<Value: Codable & Equatable>: ObservableObject 
     /// Redo: brings back the edit Undo last took away.
     @discardableResult
     func redo() -> Value {
-        guard let next = redoSteps[selected]?.popLast() else { return selectedLook }
-        undoSteps[selected, default: []].append(step)
-        lastControl[selected] = nil
+        guard let next = redoSteps.popLast() else { return selectedLook }
+        undoSteps.append(step)
+        lastControl = nil
         apply(next)
         return selectedLook
     }
 
-    /// Reset: takes the selected look back to its last save (Shipped: the
-    /// baseline) in one step that Undo can take back.
+    /// Reset: drops the unsaved edits back to the look they were forked from,
+    /// outlined again, in one step that Undo can take back.
     @discardableResult
     func reset() -> Value {
-        guard hasEdits else { return selectedLook }
-        undoSteps[selected, default: []].append(step)
-        redoSteps[selected] = nil
-        lastControl[selected] = nil
-        if let pin = selectedPin {
-            apply(UITuningLabStep(value: pin.value, basedOn: pin.basedOn))
-        } else {
-            apply(UITuningLabStep(value: baseline, basedOn: "baseline"))
-        }
+        guard unsaved != nil else { return selectedLook }
+        undoSteps.append(step)
+        redoSteps = []
+        lastControl = nil
+        apply(source)
         return selectedLook
     }
 
@@ -227,9 +221,10 @@ final class UITuningLabCandidates<Value: Codable & Equatable>: ObservableObject 
     /// ↺ on one control: `restore` copies that control's fields from Shipped
     /// (its second argument) into the look; a spring's two sliders go together,
     /// whatever their types. An ordinary edit: one Undo step that ends the
-    /// current slider run, so it never merges with a drag. On Shipped, a look
-    /// that matches the baseline again has no unsaved edits; on a pinned look
-    /// it is an edit that Save keeps. Returns the look the feature must now show.
+    /// current slider run, so it never merges with a drag. On a pinned look it
+    /// forks unsaved edits; edits that match the look they were forked from
+    /// again are dropped, and that chip is outlined. Returns the look the
+    /// feature must now show.
     @discardableResult
     func resetControl(_ restore: (inout Value, Value) -> Void) -> Value {
         var value = selectedLook
@@ -247,7 +242,8 @@ final class UITuningLabCandidates<Value: Codable & Equatable>: ObservableObject 
         }
     }
 
-    /// Removes a look and returns the look the feature must now show.
+    /// Removes a look and returns the look the feature must now show. The
+    /// panel offers it only on the outlined look.
     @discardableResult
     func remove(_ name: String) -> Value {
         guard let look = named(name) else { return selectedLook }
@@ -256,11 +252,14 @@ final class UITuningLabCandidates<Value: Codable & Equatable>: ObservableObject 
             return selectedLook
         }
         all.removeAll { $0.name == name }
-        drafts[name] = nil
-        clearHistory(name)
         logged[name] = nil
         uiTuningLabLogLine("UITUNINGLAB_CANDIDATE_REMOVED", ["name": name])
-        if selected == name { selected = "original" }
+        if selected == name {
+            selected = "original"
+            unsaved = nil
+            unsavedBasedOn = "baseline"
+            clearHistory()
+        }
         status = "Removed \(look.label)"
         return selectedLook
     }
@@ -276,34 +275,30 @@ final class UITuningLabCandidates<Value: Codable & Equatable>: ObservableObject 
         return true
     }
 
-    /// Save & pin on Shipped (its edits become a new look named after its
-    /// preset, and it is selected) or Save on a pinned look (its edits become
-    /// its saved version); either way copies `land <name>` and starts a fresh
+    /// Save & pin: the unsaved edits become a new look named after their
+    /// preset, selected and outlined; copies `land <name>` and starts a fresh
     /// history. Before the first Apply that is all: the agent's waiter is
     /// listening, so no Done line is sent. After it, it also hands the pick
     /// over like Apply, since the user pastes it in chat. Returns the look's
-    /// name, or nil when there is nothing to save.
+    /// name, or nil when there is nothing to pin.
     @discardableResult
     func save() -> String? {
-        guard canSave else { return nil }
-        let pinned = commit()
-        guard let look = selectedPin else { return nil }
+        guard canSave, let name = commit(), let look = named(name) else { return nil }
         if applies > 0 { return choose() }
         uiTuningLabCopy("land \(look.name)")
         saved = nil
-        status = storeError ?? "\(pinned ? "Pinned" : "Saved") \(look.label) · copied land \(look.name)"
+        status = storeError ?? "Pinned \(look.label) · copied land \(look.name)"
         return look.name
     }
 
-    /// Apply: saves first (unsaved edits on Shipped are pinned, a selected
-    /// look's edits saved), then picks the selected chip, `original` for
-    /// Shipped. Logs `UITUNINGLAB_DONE {...}`, hands it to the agent's waiter,
-    /// replaces the result file atomically, and copies `land <winner>`. Returns
-    /// the winner, or nil when the pick could not be made; sets `status` when
-    /// part of that did not work.
+    /// Apply: pins unsaved edits first, like Save & pin, then picks the
+    /// selected chip, `original` for Shipped. Logs `UITUNINGLAB_DONE {...}`,
+    /// hands it to the agent's waiter, replaces the result file atomically,
+    /// and copies `land <winner>`. Returns the winner, or nil when the pick
+    /// could not be made; sets `status` when part of that did not work.
     @discardableResult
     func choose() -> String? {
-        commit()
+        if unsaved != nil { commit() }
         let winner = selectedPin?.name ?? "original"
         let label = selectedPin?.label ?? "Shipped"
         let line: [String: Any]
@@ -336,17 +331,21 @@ final class UITuningLabCandidates<Value: Codable & Equatable>: ObservableObject 
         return winner
     }
 
-    /// What the selected look shows now, as a history step.
-    private var step: UITuningLabStep<Value> {
-        UITuningLabStep(value: selectedLook, basedOn: selectedPin?.basedOn ?? unsavedBasedOn)
+    /// The selected chip's look, which unsaved edits fork from.
+    private var source: UITuningLabStep<Value> {
+        if let pin = selectedPin { return UITuningLabStep(value: pin.value, basedOn: pin.basedOn) }
+        return UITuningLabStep(value: baseline, basedOn: "baseline")
     }
 
-    /// Shows a step on the selected look. Matching the last save leaves no edits.
+    /// What the feature shows now, as a history step.
+    private var step: UITuningLabStep<Value> {
+        unsaved.map { UITuningLabStep(value: $0, basedOn: unsavedBasedOn) } ?? source
+    }
+
+    /// Shows a step. Matching the look the edits were forked from leaves no
+    /// unsaved edits, and that chip is outlined again.
     private func apply(_ step: UITuningLabStep<Value>) {
-        if let index = all.firstIndex(where: { $0.name == selected }) {
-            all[index].basedOn = step.basedOn
-            drafts[selected] = step.value == all[index].value ? nil : step.value
-        } else if step.value == baseline {
+        if step.value == source.value {
             unsaved = nil
             unsavedBasedOn = "baseline"
         } else {
@@ -355,26 +354,18 @@ final class UITuningLabCandidates<Value: Codable & Equatable>: ObservableObject 
         }
     }
 
-    private func clearHistory(_ name: String) {
-        undoSteps[name] = nil
-        redoSteps[name] = nil
-        lastControl[name] = nil
+    private func clearHistory() {
+        undoSteps = []
+        redoSteps = []
+        lastControl = nil
     }
 
-    /// Keeps the selected look's edits: unsaved edits on Shipped become a new
-    /// look, selected; a pinned look's edits become its saved version. Logs a
-    /// look that changed. Returns true when it pinned a new look.
+    /// Pins the unsaved edits as a new look named after their `basedOn`,
+    /// selects it, and logs it. Returns its name, or nil with no edits.
     @discardableResult
-    private func commit() -> Bool {
+    private func commit() -> String? {
         storeError = nil
-        if let index = all.firstIndex(where: { $0.name == selected }) {
-            if let draft = drafts[selected] { all[index].value = draft }
-            drafts[selected] = nil
-            clearHistory(selected)
-            log(all[index])
-            return false
-        }
-        guard let value = unsaved else { return false }
+        guard let value = unsaved else { return nil }
         let prefix = unsavedBasedOn == "baseline" ? "custom" : unsavedBasedOn
         let used = taken.compactMap { name -> Int? in
             guard name.hasPrefix(prefix + "-") else { return nil }
@@ -387,9 +378,9 @@ final class UITuningLabCandidates<Value: Codable & Equatable>: ObservableObject 
         selected = name
         unsaved = nil
         unsavedBasedOn = "baseline"
-        clearHistory("original")
+        clearHistory()
         log(candidate)
-        return true
+        return name
     }
 
     private func log(_ candidate: UITuningLabCandidate<Value>, storing: Bool = true) {

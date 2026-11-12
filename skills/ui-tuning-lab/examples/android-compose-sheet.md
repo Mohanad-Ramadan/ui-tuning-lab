@@ -19,26 +19,27 @@ Activation (`references/activation.md`):
   screen. If the app has a developer menu or drawer, add a menu entry that sets
   the same `showUITuningLab` state, and keep the pill.
 
-The host owns the `UITuningLabCandidates` store, so looks, `basedOn`, their
-edits and histories, and the selection survive closing the panel. The default
+The host owns the `UITuningLabCandidates` store, so looks, the unsaved edits
+with their history, and the selection survive closing the panel. The default
 lab is ephemeral: looks live in memory and in logcat only, and a name is never
 reused within a process. The panel follows `references/candidates.md`. The chip
 row under the header shows **Shipped** and each pinned look, named after its
 preset (**Compact-1**, **Relaxed-1**, **Custom-1**); the selected chip is
 outlined, and the feature always shows it. Switching chips is the comparison.
-Moving a slider or applying a preset edits the selected look. A pinned look
-keeps its edits when you switch away until **Save** makes them its saved
-version. Shipped is read-only, so its edits are unsaved changes, with no chip
-outlined, until **Save & pin** keeps them as a new look. The edit row under
-the controls holds **Undo**, **Redo**, and **Reset**, each disabled when it
-cannot act. Every look has its own history back to its last save, and a slider
-drag is one step. Each slider marks the Shipped value with a tick under its
+Every chip is read-only, a pinned look included: moving a slider or applying a
+preset forks the selected chip into unsaved changes that start from its values,
+with no chip outlined, until **Save & pin** keeps them as a new look (an edit on
+**Compact-1** pins as **Compact-2**); the chip it came from never changes, and
+tapping a chip drops the unsaved changes. The edit row under the controls holds
+**Undo**, **Redo**, and **Reset**, each disabled when it cannot act. They work
+on the unsaved changes, back to the chip they were forked from, which is
+outlined again, and a slider drag is one step. Each slider marks the Shipped value with a tick under its
 track, on every chip; a drag near it snaps to it exactly with a light haptic
 tick, TalkBack's adjust action still reaches the values beside it, and the
 readout reads `14 dp · default 12` while the value differs. **↺** beside a
 changed slider puts that one control back to Shipped as one Undo step
 (`references/control-mapping.md`, "Default marker and per-control reset"). There are no keyboard shortcuts: the panel uses buttons only.
-**Apply** (hidden after its first use) saves first, picks the selected chip, and
+**Apply** (hidden after its first use) pins unsaved changes first, picks the selected chip, and
 shrinks the panel to the result bar. The **⋯** menu holds Copy values. Closing
 keeps the selected look on screen. The panel's height is capped and the hint
 sits below the scrolling controls, so it is visible at any panel or screen size.
@@ -214,7 +215,6 @@ package com.example.cards
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import org.json.JSONObject
@@ -308,40 +308,39 @@ private fun writeResult(file: File, done: Map<String, Any>) {
 }
 
 class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
-    // The pinned looks, oldest first, each with its saved values. Edits made since
-    // the last save live in `drafts`, not here.
+    // The pinned looks, oldest first, each with its values. A pinned look never
+    // changes: an edit on it forks `unsaved`.
     val list = mutableStateListOf<UITuningLabCandidate>().apply { addAll(initial) }
     // Every name issued in this process, removed ones included, so a look number
     // is never reused. The persist variant adds every stored name.
     internal val issued = initial.map { it.name }.toMutableSet()
-    // The line each look last logged, so a look logs again only after it changed.
+    // The line each look last logged, so a look logs once.
     private val logged = mutableMapOf<String, String>()
-    // The selected chip: "original" (Shipped) or a look's name. The feature always
-    // shows it.
+    // The selected chip: "original" (Shipped) or a look's name. The feature shows
+    // it, or the unsaved edits forked from it.
     var selected by mutableStateOf("original")
         private set
-    // Edits made on Shipped and not pinned yet; while set, no chip is outlined.
+    // Edits not pinned yet, forked from the selected chip; while set, no chip is
+    // outlined. The chip itself never changes.
     var unsaved by mutableStateOf<CardStyle?>(null)
         private set
     private var unsavedBasedOn = "baseline"
-    // Each pinned look's edits since its last save, by name.
-    private val drafts = mutableStateMapOf<String, CardStyle>()
-    // One point in a look's history: what it showed, and where it came from.
+    // One point in the unsaved edits' history: what it showed, and where it came from.
     private class Step(val value: CardStyle, val basedOn: String)
-    // Undo and Redo steps per look ("original" for Shipped), back to its last save.
-    private val undoSteps = mutableStateMapOf<String, List<Step>>()
-    private val redoSteps = mutableStateMapOf<String, List<Step>>()
-    // The control of each look's newest step, so a drag stays one step.
-    private val lastControl = mutableMapOf<String, String?>()
-    // A failed profile write during the current save, so the next status keeps it.
+    // Undo and Redo steps of the unsaved edits, back to the chip they were forked from.
+    private var undoSteps by mutableStateOf(listOf<Step>())
+    private var redoSteps by mutableStateOf(listOf<Step>())
+    // The control of the newest step, so a drag stays one step.
+    private var lastControl: String? = null
+    // A failed profile write during the current pin, so the next status keeps it.
     private var storeError: String? = null
     var status by mutableStateOf<String?>(null)
     // The last pick; while set, the panel is the result bar.
     var result by mutableStateOf<String?>(null)
     // How many picks reached the agent. The first Apply reaches its waiter; after
-    // it the agent no longer listens, so Apply hides and Save & pin and Save also
-    // hand the pick over for the user to paste as `land <name>`. Change does not
-    // reset it.
+    // it the agent no longer listens, so Apply hides and Save & pin also hands
+    // the pick over for the user to paste as `land <name>`. Change does not reset
+    // it.
     var applies by mutableStateOf(0)
         private set
     // The result bar's second line: where the pick was saved, or null when the
@@ -353,33 +352,26 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
     var unstore: ((String) -> Unit)? = null
 
     val selectedPin: UITuningLabCandidate? get() = list.firstOrNull { it.name == selected }
-    // The look the feature shows: the selected look with its edits, else unsaved
-    // edits on Shipped, else the baseline.
-    val selectedLook: CardStyle
-        get() = selectedPin?.let { drafts[it.name] ?: uiTuningLabApply(it.values) } ?: unsaved ?: baseline
-    val shippedOutlined: Boolean get() = selected == "original" && unsaved == null
-    // Whether the selected look has edits since its last save.
-    val hasEdits: Boolean get() = if (selectedPin == null) unsaved != null else drafts.containsKey(selected)
-    // The save button's label: Save & pin on Shipped, Save on a pinned look.
-    val saveTitle: String get() = if (selectedPin == null) "Save & pin" else "Save"
-    // Save & pin needs edits on Shipped. Save needs edits until the first Apply;
-    // after it, Save is how a pick reaches the chat, so it stays enabled.
-    val canSave: Boolean get() = if (selectedPin == null) unsaved != null else hasEdits || applies > 0
-    val canUndo: Boolean get() = undoSteps[selected].orEmpty().isNotEmpty()
-    val canRedo: Boolean get() = redoSteps[selected].orEmpty().isNotEmpty()
+    // The selected chip's look, which unsaved edits fork from.
+    private val source: Step
+        get() = selectedPin?.let { Step(uiTuningLabApply(it.values), it.basedOn) } ?: Step(baseline, "baseline")
+    // The look the feature shows: the unsaved edits, else the selected chip.
+    val selectedLook: CardStyle get() = unsaved ?: source.value
+    // Only the selected chip is outlined, and none while there are unsaved edits.
+    fun isOutlined(chip: String): Boolean = chip == selected && unsaved == null
+    // Save & pin, the one save button, and Reset need unsaved edits.
+    val hasEdits: Boolean get() = unsaved != null
+    val canUndo: Boolean get() = undoSteps.isNotEmpty()
+    val canRedo: Boolean get() = redoSteps.isNotEmpty()
     val canReset: Boolean get() = hasEdits
 
-    // What the selected look shows now, as a history step.
-    private val currentStep: Step get() = Step(selectedLook, selectedPin?.basedOn ?: unsavedBasedOn)
+    // What the feature shows now, as a history step.
+    private val currentStep: Step get() = unsaved?.let { Step(it, unsavedBasedOn) } ?: source
 
-    // Shows a step on the selected look. Matching the last save leaves no edits.
+    // Shows a step. Matching the chip the edits were forked from leaves no
+    // unsaved edits, and that chip is outlined again.
     private fun show(next: Step) {
-        val index = list.indexOfFirst { it.name == selected }
-        if (index >= 0) {
-            val pin = list[index]
-            list[index] = UITuningLabCandidate(pin.name, next.basedOn, pin.values)
-            if (next.value == uiTuningLabApply(pin.values)) drafts.remove(selected) else drafts[selected] = next.value
-        } else if (next.value == baseline) {
+        if (next.value == source.value) {
             unsaved = null
             unsavedBasedOn = "baseline"
         } else {
@@ -388,14 +380,14 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
         }
     }
 
-    private fun clearHistory(name: String) {
-        undoSteps.remove(name)
-        redoSteps.remove(name)
-        lastControl.remove(name)
+    private fun clearHistory() {
+        undoSteps = emptyList()
+        redoSteps = emptyList()
+        lastControl = null
     }
 
-    // Logs a look's line when it is new or changed since it last logged, and
-    // stores it in the persist variant. Only a save logs. A failed write shows in
+    // Logs a look's line the first time, and stores it in the persist variant.
+    // Only a new pin logs and stores. A failed write shows in
     // the status line; the look stays in the panel.
     private fun log(candidate: UITuningLabCandidate, storing: Boolean = true) {
         val line = uiTuningLabJson(candidate.asMap())
@@ -415,30 +407,28 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
     }
 
     // Tapping a chip shows its look in the real feature. Switching chips is the
-    // comparison. Unsaved edits on Shipped are dropped, so Shipped always shows
-    // the baseline; a pinned look keeps its edits.
+    // comparison. Unsaved edits are dropped, so a chip always shows its look
+    // exactly, the one they were forked from included.
     fun select(chip: String, setStyle: (CardStyle) -> Unit) {
         if (chip == selected && unsaved == null) return
-        lastControl.remove(selected)  // a drag after coming back is its own step
-        clearHistory("original")
+        clearHistory()
         unsaved = null
         unsavedBasedOn = "baseline"
         selected = if (list.any { it.name == chip }) chip else "original"
         setStyle(selectedLook)
     }
 
-    // Every control edits the selected look: on Shipped as unsaved edits, on a
-    // pinned look as edits on top of its saved version. A preset becomes its
-    // basedOn. Sliders pass `control`, their key: a run of edits from the same
-    // control in a row is one Undo step. Presets pass none, so each is a step.
+    // Every control makes unsaved edits. On an outlined chip the first edit forks
+    // it: the edits start from its values and basedOn, and the chip itself never
+    // changes. A preset becomes their basedOn. Sliders pass `control`, their key:
+    // a run of edits from the same control in a row is one Undo step. Presets
+    // pass none, so each is a step.
     fun edit(next: CardStyle, setStyle: (CardStyle) -> Unit, preset: String? = null, control: String? = null) {
         val current = currentStep
         if (next == current.value && (preset == null || preset == current.basedOn)) return
-        if (control == null || control != lastControl[selected] || !canUndo) {
-            undoSteps[selected] = undoSteps[selected].orEmpty() + current
-        }
-        redoSteps.remove(selected)
-        lastControl[selected] = control
+        if (control == null || control != lastControl || !canUndo) undoSteps = undoSteps + current
+        redoSteps = emptyList()
+        lastControl = control
         show(Step(next, preset ?: current.basedOn))
         setStyle(selectedLook)
     }
@@ -451,61 +441,49 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
 
     // ↺ on one control: `restore` copies that control's fields from Shipped (a
     // spring's two sliders together). An ordinary edit: one Undo step that ends
-    // the current slider run, so it never merges with a drag. On Shipped,
-    // matching the baseline again leaves no unsaved edits; on a pinned look it is
-    // an edit that Save keeps.
+    // the current slider run, so it never merges with a drag. On a pinned look it
+    // forks unsaved edits; edits that match the chip they were forked from again
+    // are dropped, and that chip is outlined.
     fun resetControl(setStyle: (CardStyle) -> Unit, restore: (look: CardStyle, shipped: CardStyle) -> CardStyle) =
         edit(restore(selectedLook, baseline), setStyle)
 
-    // Undo steps the selected look back one edit, never past its last save.
+    // Undo steps the unsaved edits back one, never past the chip they were forked
+    // from, which is outlined again when they reach it.
     fun undo(setStyle: (CardStyle) -> Unit) {
-        val steps = undoSteps[selected].orEmpty()
-        val previous = steps.lastOrNull() ?: return
-        undoSteps[selected] = steps.dropLast(1)
-        redoSteps[selected] = redoSteps[selected].orEmpty() + currentStep
-        lastControl[selected] = null
+        val previous = undoSteps.lastOrNull() ?: return
+        undoSteps = undoSteps.dropLast(1)
+        redoSteps = redoSteps + currentStep
+        lastControl = null
         show(previous)
         setStyle(selectedLook)
     }
 
     // Redo brings back the edit Undo last took away.
     fun redo(setStyle: (CardStyle) -> Unit) {
-        val steps = redoSteps[selected].orEmpty()
-        val next = steps.lastOrNull() ?: return
-        redoSteps[selected] = steps.dropLast(1)
-        undoSteps[selected] = undoSteps[selected].orEmpty() + currentStep
-        lastControl[selected] = null
+        val next = redoSteps.lastOrNull() ?: return
+        redoSteps = redoSteps.dropLast(1)
+        undoSteps = undoSteps + currentStep
+        lastControl = null
         show(next)
         setStyle(selectedLook)
     }
 
-    // Reset takes the selected look back to its last save (Shipped: the baseline)
-    // in one step that Undo can take back.
+    // Reset drops the unsaved edits back to the chip they were forked from,
+    // outlined again, in one step that Undo can take back.
     fun reset(setStyle: (CardStyle) -> Unit) {
         if (!hasEdits) return
-        undoSteps[selected] = undoSteps[selected].orEmpty() + currentStep
-        redoSteps.remove(selected)
-        lastControl[selected] = null
-        val pin = selectedPin
-        show(if (pin != null) Step(uiTuningLabApply(pin.values), pin.basedOn) else Step(baseline, "baseline"))
+        undoSteps = undoSteps + currentStep
+        redoSteps = emptyList()
+        lastControl = null
+        show(source)
         setStyle(selectedLook)
     }
 
-    // Keeps the selected look's edits: unsaved edits on Shipped become a new look,
-    // named `<prefix>-N` after its basedOn (`custom` for baseline) and selected; a
-    // pinned look's edits become its saved version. Either way the history starts
-    // fresh and the look logs. Returns true when it pinned a new look.
+    // Pins the unsaved edits as a new look, named `<prefix>-N` after their basedOn
+    // (`custom` for baseline), selected and outlined; the history starts fresh and
+    // the look logs. Returns false with no unsaved edits.
     private fun commit(): Boolean {
         storeError = null
-        val index = list.indexOfFirst { it.name == selected }
-        if (index >= 0) {
-            val pin = list[index]
-            drafts[selected]?.let { list[index] = UITuningLabCandidate(pin.name, pin.basedOn, uiTuningLabChanged(it)) }
-            drafts.remove(selected)
-            clearHistory(selected)
-            log(list[index])
-            return false
-        }
         val value = unsaved ?: return false
         val prefix = if (unsavedBasedOn == "baseline") "custom" else unsavedBasedOn
         val used = issued.mapNotNull { if (it.startsWith("$prefix-")) it.removePrefix("$prefix-").toIntOrNull() else null }
@@ -515,23 +493,21 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
         selected = candidate.name
         unsaved = null
         unsavedBasedOn = "baseline"
-        clearHistory("original")
+        clearHistory()
         log(candidate)
         return true
     }
 
-    // Save & pin on Shipped (its edits become a new look, selected) or Save on a
-    // pinned look (its edits become its saved version); either way returns the
-    // land code for the clipboard, or null when there is nothing to save. Before
-    // the first Apply the agent is listening for Apply, so nothing more happens;
-    // after it, the pick is handed over for pasting.
+    // Save & pin, the one save button: the unsaved edits become a new look,
+    // selected; returns the land code for the clipboard, or null when there is
+    // nothing to pin. Before the first Apply the agent is listening for Apply, so
+    // nothing more happens; after it, the pick is handed over for pasting.
     fun save(resultFile: File): String? {
-        if (!canSave) return null
-        val pinned = commit()
+        if (!commit()) return null
         val look = selectedPin ?: return null
         if (applies > 0) return handOver(look, resultFile)
         saved = null
-        status = storeError ?: "${if (pinned) "Pinned" else "Saved"} ${uiTuningLabChipLabel(look.name)} · copied land ${look.name}"
+        status = storeError ?: "Pinned ${uiTuningLabChipLabel(look.name)} · copied land ${look.name}"
         return "land ${look.name}"
     }
 
@@ -548,17 +524,15 @@ class UITuningLabCandidates(initial: List<UITuningLabCandidate>) {
         val label = uiTuningLabChipLabel(name)
         try { unstore?.invoke(name) } catch (e: Exception) { status = "$label not removed: ${e.message}"; return }
         list.removeAll { it.name == name }
-        drafts.remove(name)
-        clearHistory(name)
         logged.remove(name)
         uiTuningLabLog("UITUNINGLAB_CANDIDATE_REMOVED", uiTuningLabJson(mapOf("name" to name)))
-        if (selected == name) selected = "original"
+        if (selected == name) { selected = "original"; clearHistory() }
         status = "Removed $label"
         setStyle(selectedLook)
     }
 
-    // Apply saves first (unsaved edits on Shipped are pinned, a selected look's
-    // edits saved), then hands the pick over; returns the code for the clipboard.
+    // Apply pins unsaved edits first, like Save & pin, then hands the selected
+    // chip over; returns the code for the clipboard.
     fun choose(resultFile: File): String {
         commit()
         return handOver(selectedPin, resultFile)
@@ -700,20 +674,20 @@ fun UITuningLabPanel(
             }
             // The chips: Shipped, then each look. The selected chip is outlined and
             // is what the feature shows; exactly one is selected at a time.
-            val selected = lab.selected
             val outline = MaterialTheme.colorScheme.primary
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                FilterChip(selected = lab.shippedOutlined, onClick = { lab.select("original", setStyle) },
+                FilterChip(selected = lab.isOutlined("original"), onClick = { lab.select("original", setStyle) },
                     label = { Text("Shipped") }, modifier = Modifier.padding(end = 8.dp),
-                    border = FilterChipDefaults.filterChipBorder(enabled = true, selected = lab.shippedOutlined,
+                    border = FilterChipDefaults.filterChipBorder(enabled = true, selected = lab.isOutlined("original"),
                         selectedBorderColor = outline, selectedBorderWidth = 2.dp))
                 for (c in lab.list) {
-                    InputChip(selected = selected == c.name, onClick = { lab.select(c.name, setStyle) },
+                    val on = lab.isOutlined(c.name)
+                    InputChip(selected = on, onClick = { lab.select(c.name, setStyle) },
                         label = { Text(uiTuningLabChipLabel(c.name)) }, modifier = Modifier.padding(end = 8.dp),
-                        border = InputChipDefaults.inputChipBorder(enabled = true, selected = selected == c.name,
+                        border = InputChipDefaults.inputChipBorder(enabled = true, selected = on,
                             selectedBorderColor = outline, selectedBorderWidth = 2.dp),
-                        // × only on the selected look, so nothing is removed by accident.
-                        trailingIcon = if (selected != c.name) null else {
+                        // × only on the selected look, outlined, so nothing is removed by accident.
+                        trailingIcon = if (!on) null else {
                             {
                                 IconButton(onClick = { lab.remove(c.name, setStyle) },
                                     modifier = Modifier.size(24.dp).semantics {
@@ -725,9 +699,9 @@ fun UITuningLabPanel(
                         })
                 }
             }
-            // Always enabled: they show the selected look and edit it. On Shipped,
-            // a change stays unsaved until Save & pin. Sliders pass their key, so a
-            // drag is one Undo step; presets pass none.
+            // Always enabled: they show the selected look; a change forks it into
+            // unsaved edits until Save & pin. Sliders pass their key, so a drag is
+            // one Undo step; presets pass none.
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                 Row {
                     // Presets are actions, not states, so they are never outlined.
@@ -754,17 +728,17 @@ fun UITuningLabPanel(
                 TextButton(enabled = lab.canReset, onClick = { lab.reset(setStyle) }) { Text("Reset") }
             }
             Row(Modifier.padding(top = 8.dp)) {
-                // Save & pin on Shipped, Save on a pinned look.
-                OutlinedButton(enabled = lab.canSave, modifier = Modifier.padding(end = 8.dp), onClick = {
+                // Save & pin, the one save button: pins the unsaved edits.
+                OutlinedButton(enabled = lab.hasEdits, modifier = Modifier.padding(end = 8.dp), onClick = {
                     lab.save(resultFile)?.let { clipboard.setText(AnnotatedString(it)) }
-                }) { Text(lab.saveTitle) }
+                }) { Text("Save & pin") }
                 // Apply reaches the agent once; after that it is hidden for good.
                 if (lab.applies == 0) {
                     Button(onClick = { clipboard.setText(AnnotatedString(lab.choose(resultFile))) }) { Text("Apply") }
                 }
             }
             // Pinned below the controls, visible however long the panel grows.
-            Text(if (lab.applies > 0) "Save, then paste it in chat"
+            Text(if (lab.applies > 0) "Save & pin, then paste it in chat"
                 else "Save & pin to keep a look · Apply to finish",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 12.dp))
         }
@@ -866,8 +840,9 @@ both variants.
 Add this file and hand it to the store; everything else stays the same. It
 writes one `schemaVersion: 2` profile per look to
 `context.noBackupFilesDir/.ui-tuning-lab/candidates/<name>.json`
-(`references/platform-handoff.md`) whenever a look is saved (Save & pin, Save,
-and Apply), never for unsaved edits, and × deletes it. A failed write shows in the status line; the
+(`references/platform-handoff.md`) once, when a look is pinned (Save & pin, or
+Apply with unsaved edits), never for unsaved edits and never again after that,
+and × deletes it. A failed write shows in the status line; the
 look stays in the panel. Unreadable or incompatible files are reported, skipped,
 and left untouched, and their names stay reserved.
 
@@ -887,14 +862,13 @@ import java.time.Instant
 class UITuningLabStorage(context: Context) {
     private val dir = File(context.noBackupFilesDir, ".ui-tuning-lab/candidates")
 
-    // Atomic: write a temporary file, then move it over the look's last profile,
-    // so a reader never sees half a file. A rewrite keeps the first `savedAt`, so
-    // looks load in the order they were pinned.
+    // Atomic: write a temporary file, then move it into place, so a reader never
+    // sees half a file. A pinned look never changes, so it is written once;
+    // `savedAt` orders the looks when they load.
     fun write(candidate: UITuningLabCandidate) {
         if (!dir.isDirectory && !dir.mkdirs()) throw IOException("cannot create $dir")
         val target = File(dir, "${candidate.name}.json")
-        val savedAt = runCatching { JSONObject(target.readText()).getString("savedAt") }
-            .getOrNull() ?: Instant.now().toString()
+        val savedAt = Instant.now().toString()
         val profile = mapOf(
             "basedOn" to candidate.basedOn, "container" to "FeatureScreen.panel",
             "name" to candidate.name, "notes" to "",
@@ -947,7 +921,7 @@ Wiring, in `TuningLabHost`: add `val context = LocalContext.current` and
 create the store with
 `remember { UITuningLabCandidates(initial = emptyList()).apply { store = storage::write; unstore = storage::delete } }`.
 The store already calls them: `store` whenever a look logs its
-`UITUNINGLAB_CANDIDATE` line (Save & pin, Save, and Apply), with a
+`UITUNINGLAB_CANDIDATE` line (a new pin), with a
 failure shown in `status`; `unstore` before × removes a look, which stays if the
 delete fails. The panel's `LaunchedEffect` calls `storage.readAll(lab.issued)`,
 adds the found candidates that are not already in `lab.list`, shows the

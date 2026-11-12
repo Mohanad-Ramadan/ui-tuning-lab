@@ -14,12 +14,14 @@ Every lab in this example provides:
   its preset and numbered (**Snappy-1**, **Playful-1**, or **Custom-1** with no
   preset); the selected chip is outlined, and the card always renders it, so
   switching chips is the comparison. Tapping a chip renders it in the real card
-  and replays it. On Shipped, which is read-only, the controls make unsaved
-  changes, with no chip outlined, until **Save & pin** keeps them as a new look.
-  On a pinned look they make edits that stay with it when you switch away, until
-  **Save**.
-- **Undo**, **Redo**, and **Reset**: act on the selected look, back to its last
-  save; a whole slider drag is one step, and Reset can be undone.
+  and replays it. Every chip is read-only, a pinned look included: the controls
+  fork the selected chip into unsaved changes that start from its values, with
+  no chip outlined, until **Save & pin** keeps them as a new look (an edit on
+  **Snappy-1** pins as **Snappy-2**); the chip it came from never changes, and
+  tapping a chip drops the unsaved changes.
+- **Undo**, **Redo**, and **Reset**: act on the unsaved changes, back to the
+  chip they were forked from, which is outlined again; a whole slider drag is
+  one step, and Reset can be undone.
 - **Default marker and ↺**: each slider marks the Shipped value with a tick
   under its track, on every chip, and a drag near it snaps to it exactly (with
   a light tap on iOS); the readout adds `· default` while the value differs.
@@ -32,9 +34,9 @@ Every lab in this example provides:
   from the baseline and logs them as one `UITUNINGLAB_VALUES {...}` line for
   landing (`references/landing-protocol.md`). Speed is a preview setting and is
   never included.
-- **Save & pin** (Save on a pinned look) and **Apply**: the save button keeps
-  the look and copies `land <name>`, and is disabled when there is nothing to
-  save; Apply saves first, then picks the selected chip, logs
+- **Save & pin** and **Apply**: Save & pin, the one save button, pins the
+  unsaved changes as a new look and copies `land <name>`, and is disabled when
+  there are none; Apply pins unsaved changes first, then picks the selected chip, logs
   `UITUNINGLAB_DONE`, stores the result, copies `land <name>`, collapses the
   panel to a `Applied:` bar with Change and Replay, and is hidden after its
   first use, as in `references/candidates.md`. The hint *Save & pin to keep a
@@ -45,12 +47,12 @@ Every lab in this example provides:
 The toolbar Entrance Lab button is the human path and visible fallback; the DEBUG-only
 `-UITuningLabOpen` launch argument is the agent path, read through
 `UITuningLabLaunch` (`references/activation.md`). The host owns the
-`UITuningLabCandidates` store beside the feature, so the looks, their edits, and
-the selection survive closing the popover, and a name is never reused within a
-run; seed its `initial:` array to reopen a session. Save & pin names a look
-after its preset (**Snappy-1**, **Playful-1**, or **Custom-1**), and Save keeps a
-pinned look's edits; only a save logs the look. Undo, Redo, and Reset act on the
-selected look back to its last save, a whole slider drag is one step, and each
+`UITuningLabCandidates` store beside the feature, so the looks, the unsaved
+changes, and the selection survive closing the popover, and a name is never
+reused within a run; seed its `initial:` array to reopen a session. Save & pin
+names a look after its preset (**Snappy-1**, **Playful-1**, or **Custom-1**);
+only a pin logs the look. Undo, Redo, and Reset act on the unsaved changes back
+to the chip they were forked from, a whole slider drag is one step, and each
 replays the card. `motion` always holds the selected look,
 and `rendered(_:)` only stretches its duration for the speed. Apply writes
 Application Support `.ui-tuning-lab/result.json`. Closing the lab keeps the
@@ -230,7 +232,7 @@ struct UITuningLabMotionControls: View {
             }
         }
         // Closing keeps the card on the selected look, edits included, and logs
-        // nothing: only a save does.
+        // nothing: only a pin does.
         .frame(minWidth: 300)
     }
 
@@ -255,8 +257,8 @@ struct UITuningLabMotionControls: View {
                     ForEach(candidates.all) { pin in
                         HStack(spacing: 2) {
                             chip(pin.label, id: pin.name)
-                            // × only on the selected look, so nothing is removed by accident.
-                            if candidates.selected == pin.name {
+                            // × only on the selected look, outlined, so nothing is removed by accident.
+                            if candidates.isOutlined(pin.name) {
                                 Button("×") { motion = candidates.remove(pin.name) }
                                     .accessibilityLabel("Remove \(pin.label)")
                             }
@@ -295,7 +297,8 @@ struct UITuningLabMotionControls: View {
                 Text("0.1×").tag(0.1)
             }
             .pickerStyle(.segmented)
-            // Undo and Redo per look, back to its last save; each replays the card.
+            // Undo and Redo step through the unsaved edits, back to the chip they
+            // were forked from; each replays the card.
             HStack {
                 Button("Undo") { show(candidates.undo()) }
                     .disabled(!candidates.canUndo)
@@ -306,10 +309,10 @@ struct UITuningLabMotionControls: View {
             }
             HStack {
                 Button("Replay") { lab.replayToken += 1 }
-                // Save & pin keeps Shipped's edits as a new chip; Save keeps a
-                // pinned look's edits. After the first Apply either one also hands
-                // the pick over for pasting in chat.
-                Button(candidates.saveTitle) {
+                // Save & pin, the one save button, keeps unsaved edits as a new
+                // chip. After the first Apply it also hands the pick over for
+                // pasting in chat.
+                Button("Save & pin") {
                     let applied = candidates.applies > 0
                     if let name = candidates.save(), applied { sent = name }
                 }
@@ -325,7 +328,7 @@ struct UITuningLabMotionControls: View {
         // Pinned below the scrolling controls, so it shows at every detent.
         .safeAreaInset(edge: .bottom) {
             Text(candidates.applies > 0
-                ? "Save, then paste it in chat"
+                ? "Save & pin, then paste it in chat"
                 : "Save & pin to keep a look · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -392,8 +395,8 @@ struct UITuningLabMotionControls: View {
         }
     }
 
-    /// Every control edits the selected look: a pinned look's edits until Save,
-    /// or, on Shipped, unsaved changes until Save & pin.
+    /// Every control makes unsaved edits, forked from the selected chip when
+    /// it is outlined; the chip itself never changes. Save & pin keeps them.
     private func edit(_ value: EntranceMotion, preset: String? = nil, control: String? = nil) {
         candidates.edit(value, preset: preset, control: control)
         motion = candidates.selectedLook
@@ -544,12 +547,12 @@ const rowStyle = { display: "flex", flexWrap: "wrap", alignItems: "center", gap:
 const selectedStyle = (on: boolean) =>
   on ? { outline: "2px solid Highlight", outlineOffset: 1, fontWeight: 600 } as const : undefined;
 
-// A pinned look: its saved version, as the fields that differ from the
-// baseline, plus where it came from. Edits since its last save live in `drafts`.
+// A pinned look: the fields that differ from the baseline, plus where it came
+// from. It never changes once pinned: an edit on it forks unsaved edits.
 type Candidate = { name: string; basedOn: string; values: Partial<EntranceMotion> };
-// One point in a look's history: what it showed, and where it came from.
+// One point in the unsaved edits' history: what it showed, and where it came from.
 type Step = { value: EntranceMotion; basedOn: string };
-// Each look's Undo and Redo steps, back to its last save.
+// The unsaved edits' Undo and Redo steps, back to the chip they were forked from.
 type History = { undo: Step[]; redo: Step[] };
 const noHistory: History = { undo: [], redo: [] };
 // Looks the lab opens with. Empty by default; a later session seeds the
@@ -608,15 +611,9 @@ function sortedJson(value: unknown): string {
 function sameLook(a: EntranceMotion, b: EntranceMotion): boolean {
   return sortedJson(changedValues(baseline, a)) === sortedJson(changedValues(baseline, b));
 }
-// A pinned look's saved version, every field filled in.
+// A pinned look's values, every field filled in.
 function savedLook(candidate: Candidate): EntranceMotion {
   return { ...baseline, ...candidate.values };
-}
-// A copy of a record without one key.
-function without<T>(record: Record<string, T>, key: string): Record<string, T> {
-  const copy = { ...record };
-  delete copy[key];
-  return copy;
 }
 
 // A new look's name, `<prefix>-N`: the prefix is its preset's key, or `custom`
@@ -715,45 +712,41 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   const [candidates, setCandidates] = useState(initialCandidates);
   // Every name issued in this run, removed ones included: names are never reused.
   const issued = useRef(new Set([...reservedNames, ...initialCandidates.map(c => c.name)]));
-  // The line each look last logged, so a save that changed nothing logs nothing.
+  // The line each look last logged, so a look logs once.
   const logged = useRef(new Map<string, string>());
-  // The selected chip: "original" (Shipped) or a look's name. The card always
-  // renders it.
+  // The selected chip: "original" (Shipped) or a look's name. The card renders
+  // it, or the unsaved edits forked from it.
   const [selected, setSelected] = useState("original");
-  // Edits made on Shipped and not pinned yet, with the preset they came from.
-  // While set, no chip is outlined.
+  // Edits not pinned yet, forked from the selected chip, with the preset they
+  // came from. While set, no chip is outlined; the chip itself never changes.
   const [unsaved, setUnsaved] = useState<Step | null>(null);
-  // Each pinned look's edits since its last save, by name. They stay with the
-  // look when the user switches away.
-  const [drafts, setDrafts] = useState<Record<string, EntranceMotion>>({});
-  // Undo and Redo per look ("original" for Shipped), and the control of each
-  // look's newest step, so one slider drag is one step.
-  const [history, setHistory] = useState<Record<string, History>>({});
-  const lastControl = useRef(new Map<string, string | undefined>());
+  // Undo and Redo of the unsaved edits, back to the chip they were forked from,
+  // and the control of the newest step, so one slider drag is one step.
+  const [steps, setSteps] = useState<History>(noHistory);
+  const lastControl = useRef<string | undefined>(undefined);
   // The winner after Apply; while set, the panel is the result bar.
   const [sent, setSent] = useState<string | null>(null);
   // How many times a pick reached the agent. The first Apply reaches its
   // waiter; after it the agent no longer listens, so Apply hides and Save & pin
-  // and Save also hand the pick over, for the user to paste as `land <name>`.
-  // Change does not reset it.
+  // also hands the pick over, for the user to paste as `land <name>`. Change
+  // does not reset it.
   const [applies, setApplies] = useState(0);
   const [copied, setCopied] = useState(true);  // the clipboard took `land <name>`
   // The result bar's second line: where the pick was saved, or null when it could not.
   const [saved, setSaved] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const selectedPin = candidates.find(c => c.name === selected);
+  // The selected chip's look, which unsaved edits fork from.
+  const chipLook: Step = selectedPin
+    ? { value: savedLook(selectedPin), basedOn: selectedPin.basedOn }
+    : { value: baseline, basedOn: "baseline" };
   // The look the card renders, and where it came from.
-  const current: Step = selectedPin
-    ? { value: drafts[selectedPin.name] ?? savedLook(selectedPin), basedOn: selectedPin.basedOn }
-    : unsaved ?? { value: baseline, basedOn: "baseline" };
+  const current: Step = unsaved ?? chipLook;
   const selectedValues = changedValues(baseline, current.value);
-  const shippedOutlined = selected === "original" && unsaved === null;
-  const steps = history[selected] ?? noHistory;
-  const hasEdits = selectedPin ? selectedPin.name in drafts : unsaved !== null;
-  // Save & pin needs edits on Shipped. Save needs edits until the first Apply;
-  // after it, Save is how a pick reaches the chat, so it stays enabled.
-  const saveTitle = selectedPin ? "Save" : "Save & pin";
-  const canSave = selectedPin ? hasEdits || applies > 0 : unsaved !== null;
+  // Only the selected chip is outlined, and none while there are unsaved edits.
+  const outlined = (chip: string) => chip === selected && unsaved === null;
+  // Save & pin, the one save button, and Reset need unsaved edits.
+  const hasEdits = unsaved !== null;
 
   // Read the latest looks and selection through refs, so an effect that runs
   // once per open never reads stale state.
@@ -826,83 +819,74 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
 
   function openLab() { setStatus(null); setOpen(true); }
 
-  // Shows a step on the selected look. Matching the last save leaves no edits.
+  // Shows a step. Matching the chip the edits were forked from leaves no
+  // unsaved edits, and that chip is outlined again.
   function show(step: Step) {
-    if (selectedPin) {
-      const name = selectedPin.name;
-      setCandidates(list => list.map(c => c.name === name ? { ...c, basedOn: step.basedOn } : c));
-      setDrafts(all => sameLook(step.value, savedLook(selectedPin))
-        ? without(all, name) : { ...all, [name]: step.value });
-    } else {
-      setUnsaved(sameLook(step.value, baseline) ? null : step);
-    }
+    setUnsaved(sameLook(step.value, chipLook.value) ? null : step);
     setMotion(step.value);
   }
-  function setSteps(name: string, next: History) {
-    setHistory(all => ({ ...all, [name]: next }));
-  }
-  function clearHistory(name: string) {
-    setHistory(all => without(all, name));
-    lastControl.current.delete(name);
+  function clearHistory() {
+    setSteps(noHistory);
+    lastControl.current = undefined;
   }
 
   // Selecting a chip renders its look in the real card and replays it.
-  // Switching chips is the comparison. Unsaved edits on Shipped are dropped, so Shipped always shows
-  // the baseline; a pinned look keeps its edits.
+  // Switching chips is the comparison. Unsaved edits are dropped, so a chip
+  // always shows its look exactly, the one they were forked from included.
   function select(chip: string) {
     if (chip === selected && unsaved === null) return;
-    lastControl.current.delete(selected);  // a drag after coming back is its own step
-    clearHistory("original");
+    clearHistory();
     setUnsaved(null);
     const pin = candidates.find(c => c.name === chip);
     setSelected(pin ? pin.name : "original");
-    setMotion(pin ? drafts[pin.name] ?? savedLook(pin) : { ...baseline });
+    setMotion(pin ? savedLook(pin) : { ...baseline });
     replayNow();
   }
-  // Every control edits the selected look: on Shipped as unsaved edits, on a
-  // pinned look as edits on top of its saved version. A preset becomes its
-  // basedOn. Sliders pass their key as `control`: a run of edits from the same
-  // control in a row is one Undo step. Presets pass none, so each is a step.
+  // Every control makes unsaved edits. On an outlined chip the first edit forks
+  // it: the edits start from its values and basedOn, and the chip itself never
+  // changes. A preset becomes their basedOn. Sliders pass their key as
+  // `control`: a run of edits from the same control in a row is one Undo step.
+  // Presets pass none, so each is a step.
   function edit(next: EntranceMotion, preset?: string, control?: string) {
     if (sameLook(next, current.value) && (preset === undefined || preset === current.basedOn)) return;
-    const extend = control !== undefined && control === lastControl.current.get(selected) && steps.undo.length > 0;
-    setSteps(selected, { undo: extend ? steps.undo : [...steps.undo, current], redo: [] });
-    lastControl.current.set(selected, control);
+    const extend = control !== undefined && control === lastControl.current && steps.undo.length > 0;
+    setSteps({ undo: extend ? steps.undo : [...steps.undo, current], redo: [] });
+    lastControl.current = control;
     show({ value: next, basedOn: preset ?? current.basedOn });
   }
   function apply(name: keyof typeof presets) { edit({ ...presets[name] }, name); replayNow(); }
   const resetSpring = () => resetControl("durationMs", "bounce");
   // The spring's ↺ hands focus to its first slider as it goes away.
   const springInput = useRef<HTMLInputElement>(null);
-  // Undo steps the selected look back one edit, never past its last save.
+  // Undo steps the unsaved edits back one, never past the chip they were
+  // forked from, which is outlined again when they reach it.
   function undo() {
     const previous = steps.undo[steps.undo.length - 1];
     if (!previous) return;
-    setSteps(selected, { undo: steps.undo.slice(0, -1), redo: [...steps.redo, current] });
-    lastControl.current.delete(selected);
+    setSteps({ undo: steps.undo.slice(0, -1), redo: [...steps.redo, current] });
+    lastControl.current = undefined;
     show(previous);
   }
   // Redo brings back the edit Undo last took away.
   function redo() {
     const next = steps.redo[steps.redo.length - 1];
     if (!next) return;
-    setSteps(selected, { undo: [...steps.undo, current], redo: steps.redo.slice(0, -1) });
-    lastControl.current.delete(selected);
+    setSteps({ undo: [...steps.undo, current], redo: steps.redo.slice(0, -1) });
+    lastControl.current = undefined;
     show(next);
   }
-  // Reset takes the selected look back to its last save (Shipped: the
-  // baseline) in one step that Undo can take back.
+  // Reset drops the unsaved edits back to the chip they were forked from,
+  // outlined again, in one step that Undo can take back.
   function reset() {
     if (!hasEdits) return;
-    setSteps(selected, { undo: [...steps.undo, current], redo: [] });
-    lastControl.current.delete(selected);
-    show(selectedPin ? { value: savedLook(selectedPin), basedOn: selectedPin.basedOn }
-      : { value: baseline, basedOn: "baseline" });
+    setSteps({ undo: [...steps.undo, current], redo: [] });
+    lastControl.current = undefined;
+    show(chipLook);
   }
   // ↺ on one control: puts its fields back to Shipped. An ordinary edit:
   // one Undo step that ends the current slider run, so it never merges with a
-  // drag. On Shipped, matching the baseline again leaves no unsaved edits; on
-  // a pinned look it is an edit that Save keeps.
+  // drag. On a pinned look it forks unsaved edits; edits that match the chip
+  // they were forked from again are dropped, and that chip is outlined.
   function resetControl(...keys: (keyof EntranceMotion)[]) {
     edit({ ...current.value, ...Object.fromEntries(keys.map(key => [key, baseline[key]])) });
   }
@@ -918,22 +902,12 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     else if ((key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey)) { event.preventDefault(); redo(); }
   }
 
-  // Keeps the selected look's edits: unsaved edits on Shipped become a new
-  // look, named after its preset and selected; a pinned look's edits become its
-  // saved version. Logs a look that changed. Returns the look (none on plain
-  // Shipped), the list it is in, read before React re-renders, and whether it
-  // pinned a new look.
-  function commit(): { look?: Candidate; list: Candidate[]; pinned: boolean } {
-    if (selectedPin) {
-      const look = { ...selectedPin, values: changedValues(baseline, current.value) };
-      const list = candidates.map(c => c.name === look.name ? look : c);
-      setCandidates(list);
-      setDrafts(all => without(all, look.name));
-      clearHistory(look.name);
-      logPin(look);
-      return { look, list, pinned: false };
-    }
-    if (unsaved === null) return { list: candidates, pinned: false };
+  // Pins the unsaved edits as a new look, named after their preset, selected
+  // and outlined, and logs it. Returns the look the pick is (with no unsaved
+  // edits the selected chip's, none for Shipped) and the list it is in, read
+  // before React re-renders.
+  function commit(): { look?: Candidate; list: Candidate[] } {
+    if (unsaved === null) return { look: selectedPin, list: candidates };
     const prefix = unsaved.basedOn === "baseline" ? "custom" : unsaved.basedOn;
     const look: Candidate = { name: pinName(issued.current, prefix), basedOn: unsaved.basedOn,
       values: changedValues(baseline, unsaved.value) };
@@ -942,20 +916,20 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
     setCandidates(list);
     setSelected(look.name);
     setUnsaved(null);
-    clearHistory("original");
+    clearHistory();
     logPin(look);
-    return { look, list, pinned: true };
+    return { look, list };
   }
-  // Save & pin on Shipped, Save on a pinned look: keeps the look and copies its
-  // land code. Before the first Apply the agent is listening for Apply, so
-  // nothing more happens; after it, the pick is handed over for pasting.
+  // Save & pin, the one save button: pins the unsaved edits and copies the new
+  // look's land code. Before the first Apply the agent is listening for Apply,
+  // so nothing more happens; after it, the pick is handed over for pasting.
   async function saveLook() {
-    if (!canSave) return;
-    const { look, list, pinned } = commit();
+    if (!hasEdits) return;
+    const { look, list } = commit();
     if (!look) return;
     if (applies > 0) { await handOver(look, list); return; }
     setSaved(null);
-    const kept = pinned ? `Pinned ${chipLabel(look.name)}` : `Saved ${chipLabel(look.name)}`;
+    const kept = `Pinned ${chipLabel(look.name)}`;
     try {
       await navigator.clipboard.writeText(`land ${look.name}`);
       setStatus(`${kept} · copied land ${look.name}`);
@@ -963,8 +937,8 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
       setStatus(`${kept}; clipboard unavailable, tell the agent "land ${look.name}"`);
     }
   }
-  // Apply saves first (unsaved edits on Shipped are pinned, a selected look's
-  // edits saved), then hands the pick over.
+  // Apply pins unsaved edits first, like Save & pin, then hands the selected
+  // chip over.
   async function applyLook() {
     const { look, list } = commit();
     await handOver(look, list);
@@ -984,17 +958,15 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
   }
   function remove(name: string) {
     setCandidates(list => list.filter(c => c.name !== name));
-    setDrafts(all => without(all, name));
-    clearHistory(name);
     logged.current.delete(name);
     console.info(`UITUNINGLAB_CANDIDATE_REMOVED ${sortedJson({ name })}`);
     setStatus(`Removed ${chipLabel(name)}`);
-    if (selected === name) { setMotion({ ...baseline }); setSelected("original"); replayNow(); }
+    if (selected === name) { setMotion({ ...baseline }); setSelected("original"); clearHistory(); replayNow(); }
   }
   // Hands a pick to the agent: logs it, sends it to the waiter, stores it under
   // `uiTuningLab.result` (one setItem replaces it atomically), copies its land
   // code, and collapses the panel to one bar. Picking again replaces the result.
-  // `candidates` carry each look's saved version.
+  // `candidates` carry every pinned look.
   async function handOver(look: Candidate | undefined, list: Candidate[]) {
     const winner = look ? look.name : "original";
     const result = { candidates: list, values: look?.values ?? {}, winner };
@@ -1050,14 +1022,14 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
           <button type="button" onClick={copyValues}>Copy values</button>
         </div>}
         <div role="group" aria-label="Looks" style={rowStyle}>
-          <button ref={firstControl} type="button" aria-pressed={shippedOutlined}
-            style={selectedStyle(shippedOutlined)}
+          <button ref={firstControl} type="button" aria-pressed={outlined("original")}
+            style={selectedStyle(outlined("original"))}
             onClick={() => select("original")}>Shipped</button>
           {candidates.map(c => <span key={c.name}>
-            <button type="button" aria-pressed={selected === c.name} style={selectedStyle(selected === c.name)}
+            <button type="button" aria-pressed={outlined(c.name)} style={selectedStyle(outlined(c.name))}
               onClick={() => select(c.name)}>{chipLabel(c.name)}</button>
-            {/* × only on the selected look, so nothing is removed by accident. */}
-            {selected === c.name && <button type="button" aria-label={`Remove ${chipLabel(c.name)}`}
+            {/* × only on the selected look, outlined, so nothing is removed by accident. */}
+            {outlined(c.name) && <button type="button" aria-label={`Remove ${chipLabel(c.name)}`}
               onClick={() => remove(c.name)}>×</button>}
           </span>)}
         </div>
@@ -1100,14 +1072,14 @@ export default function UITuningLabEntrance({ motion, setMotion }: TuningLabHost
           <button type="button" disabled={!hasEdits} onClick={reset}>Reset</button>
         </div>
         <div style={rowStyle}>
-          <button type="button" disabled={!canSave} onClick={saveLook}>{saveTitle}</button>
+          <button type="button" disabled={!hasEdits} onClick={saveLook}>Save & pin</button>
           {/* Apply reaches the agent once; after that it is hidden for good. */}
           {applies === 0 && <button type="button" onClick={applyLook}>Apply</button>}
         </div>
       </>}
       {status && !sent && <p role="status">{status}</p>}
       {!sent && <p style={{ position: "sticky", bottom: 0, margin: 0, padding: "8px 0", background: "Canvas" }}>
-        {applies > 0 ? "Save, then paste it in chat"
+        {applies > 0 ? "Save & pin, then paste it in chat"
           : "Save & pin to keep a look · Apply to finish"}</p>}
     </div>}
   </>;
@@ -1119,7 +1091,7 @@ the motion values; SwiftUI replays when a slider is released. Undo, Redo, and
 Reset change the motion too, so they replay the card; on the web, Ctrl-Z and
 Ctrl-Shift-Z (Cmd on a Mac, or Ctrl-Y) run Undo and Redo while focus is in the
 panel. Save & pin names a web look after its preset (**Snappy-1**,
-**Playful-1**, or **Custom-1**), and only a save logs it. Validate on device
+**Playful-1**, or **Custom-1**), and only a pin logs it. Validate on device
 with Reduce Motion on and off, at every speed, and with each chip selected, and
 confirm that closing the lab resets speed so the feature plays the selected look
 at real time. Looks live in React state and the console log only, and

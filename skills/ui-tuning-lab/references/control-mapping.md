@@ -26,15 +26,17 @@ keep each one labelled.
 
 - **Presets**: at least two meaningful presets that differ clearly from the
   baseline and from each other.
-- **Chips, Save & pin and Save, and Apply**, with the hint line: see
+- **Chips, Save & pin, and Apply**, with the hint line: see
   `references/candidates.md`. The selected chip is outlined and is what the
-  feature shows; the controls edit it. Shipped is read-only, so an edit on it
-  stays unsaved until Save & pin keeps it as a new look named after its preset
-  (`Brass-1`), and never lands on the baseline. On a pinned look the button
-  reads Save and keeps its edits.
-- **Undo, Redo, and Reset** in one row under the controls: per-look history
-  since the last save, one step per control run, Reset back to the last save
-  (`references/candidates.md`, "Edits, Undo, Redo, and Reset").
+  feature shows. Every chip is read-only, Shipped and pinned looks alike: an
+  edit forks the outlined chip into unsaved edits, outlining none, until Save &
+  pin keeps them as a new look named after its `basedOn` (an edit on `Brass-1`
+  pins as `Brass-2`). An edit never lands on the baseline or changes a pinned
+  look. There is no Save button.
+- **Undo, Redo, and Reset** in one row under the controls: one history of the
+  unsaved edits, back to the chip they were forked from, one step per control
+  run, Reset back to that chip (`references/candidates.md`, "Edits, Undo,
+  Redo, and Reset").
 - **Default marker and per-control reset** on every control that edits a
   look's values (next section).
 - **⋯ menu** with **Copy values** (`references/landing-protocol.md`; it reports
@@ -47,9 +49,9 @@ keep each one labelled.
 
 ## Default marker and per-control reset
 
-Reset takes the whole look back to its last save. To put one control back,
-each control shows its default and has its own ↺. The default is always the
-baseline, what the Shipped chip shows, never a pinned look's saved value.
+Reset takes the whole tune back to the chip it was forked from. To put one
+control back, each control shows its default and has its own ↺. The default is
+always the baseline, what the Shipped chip shows, never a pinned look's value.
 
 | Control | Default shown as |
 |---|---|
@@ -87,9 +89,12 @@ still reaches it.
 
 A per-control reset is an ordinary edit through the same path as any other
 (`references/candidates.md`, "Edits, Undo, Redo, and Reset"): one Undo step,
-and it ends the current slider run, so it never merges with a drag. On Shipped,
-a look whose values all match the baseline again has no unsaved edits. On a
-pinned look it is an edit, which Save keeps.
+and it ends the current slider run, so it never merges with a drag. With a
+pinned look outlined, ↺ forks it like any edit: the look loses its outline, the
+reset value becomes an unsaved edit that Save & pin keeps as a new look, and
+the pinned look stays as it was. When ↺ makes the unsaved edits match the chip
+they were forked from again, they are dropped and that chip is outlined again;
+on Shipped, that is a look whose values all match the baseline.
 
 The marker, snap, captions, and swatch are display only: they never enter a
 look's values, Copy values, or a saved profile.

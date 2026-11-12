@@ -24,10 +24,11 @@ into your agent's skills directory (for Claude Code, `~/.claude/skills/`).
 
 - **A panel beside the real feature**, not a mockup: presets, direct controls,
   and Replay and Speed for motion.
-- **Looks you compare by switching chips.** Shipped is the declared default and
-  is read-only. Save & pin keeps the current look as a chip named after its
-  preset (Brass-1, Brass-2, Custom-1); on a pinned look the button reads Save.
-  Undo, Redo, and Reset step back through your edits since the last save.
+- **Looks you compare by switching chips.** Shipped is the declared default,
+  and every chip is read-only: an edit forks the chip into unsaved changes, and
+  Save & pin keeps them as a new chip named after its preset (Brass-1,
+  Custom-1; an edit on Brass-1 pins as Brass-2). A pinned look never changes.
+  Undo, Redo, and Reset step back through your unsaved changes.
 - **Every control shows its default.** Sliders mark the Shipped value with a
   tick and snap onto it as you drag; a changed control reads
   `14 px · default 12` and gets a ↺ that puts it alone back to Shipped.

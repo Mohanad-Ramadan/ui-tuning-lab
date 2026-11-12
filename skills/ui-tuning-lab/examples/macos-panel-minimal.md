@@ -8,31 +8,33 @@ Command-Shift-L are the human path and visible fallback; the DEBUG-only
 the agent path (`references/activation.md`). **Copy values** puts the fields that differ
 from the baseline on the pasteboard and logs them as one
 `UITUNINGLAB_VALUES {...}` line for landing (`references/landing-protocol.md`).
-The chips, **Save & pin** / **Save**, the **Undo**, **Redo**, and **Reset** row,
+The chips, **Save & pin**, the **Undo**, **Redo**, and **Reset** row,
 **Apply**, and the **⋯** menu (Copy values) follow `references/candidates.md`.
 The chip row shows Shipped and each pinned look, named after its preset
 (**Compact-1**, **Spacious-1**, or **Custom-1** for a look started from the
 sliders); the selected chip is outlined, and the toolbar always shows it, so
-switching chips is the comparison. Shipped is read-only: the controls make
-unsaved changes on it, with no chip outlined, until **Save & pin** keeps them as
-a new look. On a pinned look the controls make edits that stay with it when you
-switch away, until **Save** makes them its saved version. Undo and Redo step
-through the selected look's edits back to its last save, and a whole slider drag
-is one step; Command-Z and Command-Shift-Z run them while the panel is key.
-Reset takes the look back to its last save, and Undo can take that back. Each
+switching chips is the comparison. Every chip is read-only, a pinned look
+included: the controls fork the selected chip into unsaved changes that start
+from its values, with no chip outlined, until **Save & pin** keeps them as a new
+look (an edit on **Compact-1** pins as **Compact-2**); the chip it came from
+never changes, and tapping a chip drops the unsaved changes. Undo and Redo step
+through the unsaved changes back to the chip they were forked from, which is
+outlined again, and a whole slider drag is one step; Command-Z and
+Command-Shift-Z run them while the panel is key. Reset drops the unsaved
+changes back to that chip, and Undo can take that back. Each
 slider marks the Shipped value with a tick under its track, on every chip; a
 drag near it snaps to it exactly, the arrow keys still reach the values beside
 it, and the readout reads `40 pt · default 44` while the value differs. **↺**
 beside a changed slider, or a double-click on its label, puts that one control
 back to Shipped as one Undo step (`references/control-mapping.md`, "Default marker and per-control reset").
-**Apply** (hidden after its first use) saves, picks the selected chip, logs
+**Apply** (hidden after its first use) pins unsaved changes, picks the selected chip, logs
 `UITUNINGLAB_DONE`, writes Application Support
 `<bundle-id>/.ui-tuning-lab/result.json`, copies `land <name>`, and collapses
 the panel to a `Applied:` bar whose Change button reopens it. After that, Save
-& pin and Save hand the pick over too, for pasting in chat. The coordinator
-owns the `UITuningLabCandidates` store, so the looks, their edits, and the
+& pin hands the pick over too, for pasting in chat. The coordinator owns the
+`UITuningLabCandidates` store, so the looks, the unsaved changes, and the
 selection survive closing the panel; in the default candidate they live in
-memory and in the log, and a name is never reused within a run. Only a save
+memory and in the log, and a name is never reused within a run. Only a pin
 logs a look's `UITUNINGLAB_CANDIDATE` line; closing logs nothing. To reopen a
 session, seed the store's `initial:` array; each seeded look logs its own line.
 The default candidate stores no looks.
@@ -45,7 +47,13 @@ content: the hosting view's `sizingOptions` are empty, because by default the
 content resizes the window and AppKit keeps its bottom-left corner fixed, so the
 panel would jump and change size after a chip is selected. The coordinator
 switches the size itself between the full panel and the result bar, keeping the
-top edge in place, and the chip row scrolls sideways rather than widening it. Every lab type carries the `UITuningLab` prefix and lives in a file wrapped in
+top edge in place, on the run-loop turn after `sent` changes (resizing inside
+the `@Published` emission lays SwiftUI out with the old value, and the bar never
+shows), and the chip row scrolls sideways rather than widening it. Like every utility panel it keeps `hidesOnDeactivate`:
+while another app is active (the terminal, after Apply wakes the agent) the
+panel is hidden, and it comes back, result bar included, when the app is active
+again. Leave that default: a floating panel that stayed visible would float over
+the terminal and every other app. Every lab type carries the `UITuningLab` prefix and lives in a file wrapped in
 `#if DEBUG`, so `source-gates` can find it and Release builds compile it out.
 
 <!-- file: ExampleApp.swift -->
@@ -181,9 +189,14 @@ final class UITuningLabCoordinator: NSObject, NSWindowDelegate {
         panel.contentMaxSize = UITuningLabState.panelSize
         panel.setContentSize(UITuningLabState.panelSize)
         // Apply and Change swap the panel and the result bar: resize the panel
-        // to match, keeping its top edge where it is.
+        // to match, keeping its top edge where it is. @Published emits before
+        // `sent` is stored, and `setFrame(_:display: true)` lays SwiftUI out at
+        // once, so resizing inside the emission renders the old content and
+        // the result bar never appears. Resize on the next turn of the run
+        // loop, once `sent` holds the new value.
         resizing = lab.$sent
             .map { $0 != nil }
+            .receive(on: RunLoop.main)
             .sink { [weak self] collapsed in
                 self?.fit(collapsed ? UITuningLabState.barSize : UITuningLabState.panelSize)
             }
@@ -211,8 +224,8 @@ final class UITuningLabCoordinator: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        // The feature keeps the selected look, edits included; closing logs
-        // nothing, since only a save does.
+        // The feature keeps the selected look, unsaved edits included; closing
+        // logs nothing, since only a pin does.
         resizing = nil
         lab.sent = nil
         panel?.delegate = nil
@@ -316,8 +329,8 @@ struct UITuningLabPanel: View {
                     ForEach(candidates.all) { pin in
                         HStack(spacing: 2) {
                             chip(pin.label, id: pin.name)
-                            // × only on the selected look, so nothing is removed by accident.
-                            if candidates.selected == pin.name {
+                            // × only on the selected look, outlined, so nothing is removed by accident.
+                            if candidates.isOutlined(pin.name) {
                                 Button("×") { model.style = candidates.remove(pin.name) }
                                     .buttonStyle(.borderless)
                                     .accessibilityLabel("Remove \(pin.label)")
@@ -340,8 +353,9 @@ struct UITuningLabPanel: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // Undo and Redo per look, back to its last save. The shortcuts work
-            // only while the panel is key, so the app's own Undo wins elsewhere.
+            // Undo and Redo step through the unsaved edits, back to the chip they
+            // were forked from. The shortcuts work only while the panel is key,
+            // so the app's own Undo wins elsewhere.
             HStack {
                 Button("Undo") { model.style = candidates.undo() }
                     .keyboardShortcut("z", modifiers: .command)
@@ -354,10 +368,10 @@ struct UITuningLabPanel: View {
             }
             Divider()
             HStack {
-                // Save & pin keeps Shipped's edits as a new chip; Save keeps a
-                // pinned look's edits. After the first Apply either one also hands
-                // the pick over for pasting in chat.
-                Button(candidates.saveTitle) {
+                // Save & pin, the one save button, keeps unsaved edits as a new
+                // chip. After the first Apply it also hands the pick over for
+                // pasting in chat.
+                Button("Save & pin") {
                     let applied = candidates.applies > 0
                     if let name = candidates.save(), applied { lab.sent = name }
                 }
@@ -371,7 +385,7 @@ struct UITuningLabPanel: View {
             }
             // Pinned at the bottom, so it shows however long the controls grow.
             Text(candidates.applies > 0
-                ? "Save, then paste it in chat"
+                ? "Save & pin, then paste it in chat"
                 : "Save & pin to keep a look · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -433,8 +447,8 @@ struct UITuningLabPanel: View {
             .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// Every control edits the selected look: a pinned look's edits until Save,
-    /// or, on Shipped, unsaved changes until Save & pin.
+    /// Every control makes unsaved edits, forked from the selected chip when
+    /// it is outlined; the chip itself never changes. Save & pin keeps them.
     private func edit(_ value: ToolbarStyle, preset: String? = nil, control: String? = nil) {
         candidates.edit(value, preset: preset, control: control)
         model.style = candidates.selectedLook
@@ -461,12 +475,13 @@ the archived Release app before approval.
 
 If the user explicitly requests persistence, replace `UITuningLabPanel.swift`
 with this version. The app and coordinator files stay unchanged. Each look is
-written as a `schemaVersion` 2 profile when it is saved (Save & pin, Save, or
-Apply), never on an unsaved edit, and × deletes that look's file and nothing else. Files live under
+written as a `schemaVersion` 2 profile once, when it is pinned (Save & pin, or
+Apply with unsaved changes), never on an unsaved edit and never again after
+that, and × deletes that look's file and nothing else. Files live under
 Application Support's `<bundle-id>/.ui-tuning-lab/candidates/`: a non-sandboxed
 app shares Application Support with every other app, so the bundle ID keeps labs
 apart. Opening the panel adds every saved look as a chip, ordered by the
-`savedAt` of its first write (which keeps fractional seconds) and then by name,
+`savedAt` of its write (which keeps fractional seconds) and then by name,
 and logs each one; the baseline stays the declared default, so Shipped still
 shows it. Every stored file name stays taken, even for a file that was skipped.
 A file that does not decode, has another schema or platform, or has a name that
@@ -519,7 +534,7 @@ struct UITuningLabPanel: View {
     @State private var dragging: String?  // the slider being dragged: only a drag snaps
     @FocusState private var focused: String?  // ↺ hands focus to its slider as it hides
 
-    // A persisting lab writes each look whenever it is saved, and deletes it on ×.
+    // A persisting lab writes each look once, when it is pinned, and deletes it on ×.
     private func persist() {
         candidates.store = save
         candidates.unstore = { try FileManager.default.removeItem(at: UITuningLabProfile.fileURL($0)) }
@@ -576,8 +591,8 @@ struct UITuningLabPanel: View {
                     ForEach(candidates.all) { pin in
                         HStack(spacing: 2) {
                             chip(pin.label, id: pin.name)
-                            // × only on the selected look, so nothing is removed by accident.
-                            if candidates.selected == pin.name {
+                            // × only on the selected look, outlined, so nothing is removed by accident.
+                            if candidates.isOutlined(pin.name) {
                                 Button("×") { model.style = candidates.remove(pin.name) }
                                     .buttonStyle(.borderless)
                                     .accessibilityLabel("Remove \(pin.label)")
@@ -600,8 +615,9 @@ struct UITuningLabPanel: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // Undo and Redo per look, back to its last save. The shortcuts work
-            // only while the panel is key, so the app's own Undo wins elsewhere.
+            // Undo and Redo step through the unsaved edits, back to the chip they
+            // were forked from. The shortcuts work only while the panel is key,
+            // so the app's own Undo wins elsewhere.
             HStack {
                 Button("Undo") { model.style = candidates.undo() }
                     .keyboardShortcut("z", modifiers: .command)
@@ -614,10 +630,10 @@ struct UITuningLabPanel: View {
             }
             Divider()
             HStack {
-                // Save & pin keeps Shipped's edits as a new chip; Save keeps a
-                // pinned look's edits. After the first Apply either one also hands
-                // the pick over for pasting in chat.
-                Button(candidates.saveTitle) {
+                // Save & pin, the one save button, keeps unsaved edits as a new
+                // chip. After the first Apply it also hands the pick over for
+                // pasting in chat.
+                Button("Save & pin") {
                     let applied = candidates.applies > 0
                     if let name = candidates.save(), applied { lab.sent = name }
                 }
@@ -631,7 +647,7 @@ struct UITuningLabPanel: View {
             }
             // Pinned at the bottom, so it shows however long the controls grow.
             Text(candidates.applies > 0
-                ? "Save, then paste it in chat"
+                ? "Save & pin, then paste it in chat"
                 : "Save & pin to keep a look · Apply to finish")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -693,23 +709,20 @@ struct UITuningLabPanel: View {
             .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// Every control edits the selected look: a pinned look's edits until Save,
-    /// or, on Shipped, unsaved changes until Save & pin.
+    /// Every control makes unsaved edits, forked from the selected chip when
+    /// it is outlined; the chip itself never changes. Save & pin keeps them.
     private func edit(_ value: ToolbarStyle, preset: String? = nil, control: String? = nil) {
         candidates.edit(value, preset: preset, control: control)
         model.style = candidates.selectedLook
     }
 
-    /// Writes a look atomically. An existing file keeps its `savedAt`, so looks
-    /// load in the order they were made.
+    /// Writes a look atomically, once, when it is pinned: a pinned look never
+    /// changes. `savedAt` orders the looks when they load.
     private func save(_ candidate: UITuningLabCandidate<ToolbarStyle>) throws {
         let file = UITuningLabProfile.fileURL(candidate.name)
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let existing = try? JSONDecoder().decode(UITuningLabProfile.self, from: Data(contentsOf: file))
         let profile = UITuningLabProfile(
             name: candidate.name, basedOn: candidate.basedOn,
-            savedAt: existing?.savedAt ?? formatter.string(from: .now), overrides: candidate.value)
+            savedAt: ISO8601DateFormatter.uiTuningLabSavedAt.string(from: .now), overrides: candidate.value)
         let data = try JSONEncoder().encode(profile)
         try FileManager.default.createDirectory(
             at: UITuningLabProfile.directory, withIntermediateDirectories: true)

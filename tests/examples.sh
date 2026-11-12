@@ -191,6 +191,9 @@ require_text examples/web-floating-panel.md 'value={config.gap}' 'web lab contro
 require_text examples/web-floating-panel.md 'uiTuningLab.candidates.' 'web candidates use the uiTuningLab namespace'
 require_text examples/macos-panel-minimal.md '.frame(width: 320, height: 420, alignment: .top)' 'macOS panel keeps its size after Change'
 require_text examples/macos-panel-minimal.md 'sizingOptions = []' 'macOS panel never resizes itself to its content'
+# @Published emits before the value is stored; resizing inside the emission
+# rendered the old panel and the Applied bar never showed.
+require_text examples/macos-panel-minimal.md '.receive(on: RunLoop.main)' 'macOS panel resizes after Apply stores the pick, so the result bar shows'
 require_text examples/macos-panel-minimal.md '.keyboardShortcut("z", modifiers: .command)' 'macOS panel runs Undo on Command-Z'
 require_text examples/macos-panel-minimal.md '.keyboardShortcut("z", modifiers: [.command, .shift])' 'macOS panel runs Redo on Command-Shift-Z'
 if grep -rqE '\.leave\(\)|func leave\(' "$SKILL/examples" "$SKILL/assets"; then
@@ -266,8 +269,8 @@ for example in swiftui-popover-palette macos-panel-minimal web-floating-panel; d
   fi
 done
 
-# Chips (named after their preset), Undo, Redo, Reset, Save & pin and Save,
-# Apply (hidden after the first), and the result file
+# Chips (named after their preset), Undo, Redo, Reset, Save & pin (the one
+# save button), Apply (hidden after the first), and the result file
 # are in every variant users copy (references/candidates.md), the ephemeral
 # default included.
 for example in $EXAMPLES; do
@@ -275,7 +278,7 @@ for example in $EXAMPLES; do
     dir="$WORK/${example%.md}-$variant"
     label="$example [$variant]"
     for needle in 'Shipped' 'Save & pin' 'Apply' 'Save & pin to keep a look · Apply to finish' \
-        'Save, then paste it in chat' 'Applied: ' 'Saved ' 'Pinned ' 'custom' 'Undo' 'Redo' 'Reset' \
+        'Save & pin, then paste it in chat' 'Applied: ' 'Saved ' 'Pinned ' 'custom' 'Undo' 'Redo' 'Reset' \
         'paste it in chat so the agent applies it' 'land ' 'result' 'UITUNINGLAB_CANDIDATE' 'UITUNINGLAB_CANDIDATE_REMOVED' 'UITUNINGLAB_DONE' \
         'only on the selected look'; do
       if grep -rqF "$needle" "$dir"; then ok "$label has $needle"; else not_ok "$label has $needle"; fi
@@ -305,6 +308,15 @@ for example in $EXAMPLES; do
     fi
   done
 done
+
+# A pinned look never changes: an edit forks unsaved edits, so there is no
+# Save button, no per-look drafts, and no save-title swap in any example
+# (references/candidates.md).
+if grep -nE 'saveTitle|SaveTitle|\bdrafts\b|"Save"|>Save<|Text\("Save"\)|Text\(.Save.\)' "$SKILL"/examples/*.md "$SKILL"/assets/swift/*.swift; then
+  not_ok 'no example has a Save button or per-look drafts'
+else
+  ok 'no example has a Save button or per-look drafts'
+fi
 
 # Every example has the default marker and per-control reset
 # (references/control-mapping.md): the reset itself, the ↺ with its accessible

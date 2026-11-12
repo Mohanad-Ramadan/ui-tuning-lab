@@ -42,9 +42,10 @@ Common checks:
 - On corrupt or incompatible saved data, keep the file untouched, keep the
   current look, and report the incompatibility.
 - Apply, Reset, and × need no confirmation: Shipped is one tap away, Reset can
-  be undone, × shows only on the selected look, Save keeps a version worth
-  keeping, and a new pick replaces the old one.
-- Undo never reaches past a save, and a new edit clears Redo. A slider drag is
+  be undone, × shows only on the outlined look, a pinned look never changes
+  (an edit forks a new tune), and a new pick replaces the old one.
+- Undo never reaches past the chip the unsaved edits were forked from, nor
+  past a pin, and a new edit clears Redo. A slider drag is
   one step, not one per frame.
 - A default off the step grid (12.5 with a step of 1): a slider with that step
   can never land on it. A web range input with `step="1"` cannot even hold
@@ -64,6 +65,6 @@ Common checks:
   silently rewritten.
 - The log is the agent's only view of an ephemeral lab's candidates. When the
   log no longer reaches back to the lab's opening (a relaunch, a cleared
-  console), read the result file, or ask the user to press Apply (Save after
-  the first Apply) again: it
+  console), read the result file, or ask the user to press Apply (Save & pin
+  after the first Apply) again: it
   carries every look still in the panel, with its values.

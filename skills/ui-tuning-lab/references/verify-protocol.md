@@ -91,38 +91,65 @@ or no matching lab references. It is not a pass and supplies no gating evidence.
 - Copy values copies, and logs as one `UITUNINGLAB_VALUES` line, only the fields
   that differ from the baseline; `{}` when nothing changed. Landing writes those
   values into the feature defaults (`references/landing-protocol.md`).
-- Chips, Save & pin and Save, and Apply (`references/candidates.md`): at most
-  one chip is outlined, and it is the look the feature shows; after an edit on
-  Shipped no chip is outlined and no chip appears. Applying a preset such as
-  Brass and pressing Save & pin adds **Brass-1**, selects it, turns the button
-  into Save (disabled), and copies `land brass-1` without a `UITUNINGLAB_DONE`
-  line; edits made from Shipped with no preset pin as **Custom-1**. An edit on
-  a pinned look enables Save, Undo, and Reset and is still there after
-  switching away and back; it logs nothing until Save, which logs the new
-  `UITUNINGLAB_CANDIDATE` line. Save & pin is disabled on Shipped with no edits; × shows only on the selected look and
-  logs `UITUNINGLAB_CANDIDATE_REMOVED`. Apply logs one
-  `UITUNINGLAB_DONE` line naming the selected chip as `winner`, ends the
+- Chips, Save & pin, and Apply (`references/candidates.md`): at most one chip
+  is outlined, and it is the look the feature shows; after an edit on Shipped
+  no chip is outlined and no chip appears. There is no Save button anywhere,
+  only Save & pin, which is always shown and enabled only with unsaved edits.
+  Applying a preset such as Brass and pressing Save & pin adds **Brass-1**,
+  selects and outlines it, leaves Save & pin disabled, and copies
+  `land brass-1` without a `UITUNINGLAB_DONE` line; edits made from Shipped
+  with no preset pin as **Custom-1**. A pinned look never changes:
+  1. With Brass-1 outlined, move a slider. Brass-1 loses its outline, no chip
+     is outlined, × is gone, the feature shows the moved value, and Save & pin,
+     Undo, and Reset are enabled. Nothing is logged.
+  2. Press Undo until the first edit is undone: Brass-1 is outlined again and
+     the feature shows it exactly. Redo brings the edit back without an outline.
+  3. Press Save & pin: **Brass-2** appears, outlined, and `land brass-2` is
+     copied with its `UITUNINGLAB_CANDIDATE` line. Tap Brass-1: it shows its
+     original values, unchanged.
+  4. Edit Brass-2, then tap Brass-2: the edit is dropped and Brass-2 shows
+     exactly as pinned.
+  Save & pin is disabled with no unsaved edits; × shows only on the outlined
+  look and logs `UITUNINGLAB_CANDIDATE_REMOVED`. Close and reopen with unsaved
+  edits: they are still shown, no chip is outlined, and Undo walks back to the
+  chip they were forked from. Apply logs one
+  `UITUNINGLAB_DONE` line naming the selected chip as `winner` (pinning unsaved
+  edits first), ends the
   agent's background waiter with that line (no message from the user), writes
   the result file, copies `land <name>`, and shrinks the panel to the result bar; Change
   brings back the whole panel, controls included, at its full size (on desktop
   windows that follow their content, check the frame after Change). After
-  Change, Apply is gone and the hint reads *Save, then paste it in chat*;
-  Save shows `Copied land <name>: paste it in chat so the agent applies
-  it` over `Saved Brass-2 in .ui-tuning-lab/result.json` (web: in
+  Change, Apply is gone and the hint reads *Save & pin, then paste it in chat*;
+  an edit then Save & pin shows `Copied land <name>: paste it in chat so the
+  agent applies it` over `Saved Brass-3 in .ui-tuning-lab/result.json` (web: in
   `localStorage uiTuningLab.result`), and the pasted line lands. The hint is
   visible without scrolling past the controls.
-- Undo, Redo, and Reset: two slider drags then a preset are three steps; Undo
-  walks them back one at a time and stops at the last save (the baseline on
-  Shipped); Redo brings them back; a new edit disables Redo; Reset returns to
-  the last save and Undo brings the edits back. After Save, Undo is disabled.
+- **Apply, result bar, Change: mandatory, with screenshots.** Never infer it
+  from the log, the result file, or the waiter's output: a pick can reach the
+  agent while the panel never shows the bar. With the app active, press Apply
+  and screenshot the panel: it is the result bar, `Applied: <name>` with
+  **Change** and the `Saved … in …` line, at the bar's size, with no controls
+  and no Apply left behind. On macOS, activate another app (the terminal) and
+  then the app again, and screenshot once more: a utility panel hides while
+  its app is inactive, and it must come back as the bar. Press Change and
+  screenshot the full panel, controls included, at its full size. Report all
+  screenshots; a missing one is a failed check, not a skipped one.
+- Undo, Redo, and Reset act only on unsaved edits: two slider drags then a
+  preset are three steps; Undo walks them back one at a time and stops at the
+  chip they were forked from, outlined again (Shipped at the baseline); Redo
+  brings them back; a new edit disables Redo; Reset drops the edits back to
+  that chip, outlined, and Undo brings them back. All three are disabled with
+  no unsaved edits and no history. After Save & pin, Undo is disabled.
 - Default marker and ↺ (`references/control-mapping.md`, "Default marker and
   per-control reset"): every slider shows a tick at the Shipped value, on every
   chip, under the thumb's center when the slider sits there. A drag near the
-  tick snaps to it; the arrow keys reach the values on either side. On a pinned
-  look, change one control and press its ↺: that value equals Shipped's, the
-  other controls keep their edits, the ↺ hides, and Save is enabled. Undo
-  brings the value back in one step. On Shipped with one edited control, ↺
-  leaves no unsaved edits and outlines Shipped again.
+  tick snaps to it; the arrow keys reach the values on either side. On an
+  outlined pinned look, press a changed control's ↺: that value equals
+  Shipped's, the other controls keep the look's values, the ↺ hides, no chip is
+  outlined (it forked), and Save & pin is enabled; the pinned look is
+  unchanged when tapped. Undo brings the value back in one step and outlines
+  the look again. On Shipped with one edited control, ↺ leaves no unsaved edits
+  and outlines Shipped again.
 - Layout: screenshot the panel after opening, after an edit, and after Apply
   then Change. Labels and controls line up in one column, no label shows twice,
   and the hint sits at the bottom. On macOS the panel is never a `Form`, and its

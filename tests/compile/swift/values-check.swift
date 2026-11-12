@@ -64,17 +64,49 @@ MainActor.assumeIsolated {
     if store.hasEdits || store.unsaved != nil || store.canSave || !store.canUndo {
         print("resetControl: expected Shipped back at the baseline to have no unsaved edits"); failed = true
     }
-    // On a pinned look, a reset is a draft that Save keeps.
-    store.edit(draft { $0.radius = 20 })
+    // A pinned look never changes: ↺ on it forks unsaved edits that start
+    // from its values, outline no chip, and pin as a new look.
+    store.edit(draft { $0.radius = 20 }, preset: "brass")
     store.save()
+    let pinned = store.selectedPin
+    if pinned?.name != "brass-1" || !store.isOutlined("brass-1") || store.canUndo || store.canSave {
+        print("save: expected Brass-1 pinned, outlined, with a fresh history"); failed = true
+    }
     store.resetControl(\.radius)
-    if !store.hasEdits || store.selectedLook.radius != store.defaultValue(\.radius) {
-        print("resetControl: expected a draft on a pinned look"); failed = true
+    if !store.hasEdits || store.isOutlined("brass-1") || store.unsavedFrom != "brass-1" ||
+        store.selectedLook.radius != store.defaultValue(\.radius) || store.named("brass-1")?.value.radius != 20 {
+        print("resetControl: expected a fork of Brass-1, Brass-1 unchanged"); failed = true
     }
-    store.save()
-    if store.selectedPin?.value != baseline || store.canUndo {
-        print("resetControl: expected Save to keep the reset"); failed = true
+    // Undo back past the first edit after the fork outlines the source again.
+    store.undo()
+    if store.hasEdits || !store.isOutlined("brass-1") || store.selectedLook.radius != 20 || !store.canRedo {
+        print("undo: expected Brass-1 outlined again"); failed = true
     }
+    store.redo()
+    store.edit(draft { $0.radius = 12; $0.bounce = 0.6 }, control: "bounce")
+    store.reset()
+    if store.hasEdits || !store.isOutlined("brass-1") || !store.canUndo || store.canReset {
+        print("reset: expected the fork dropped back to Brass-1, undoably"); failed = true
+    }
+    store.undo()
+    // The fork keeps Brass-1's basedOn, so Save & pin names it Brass-2.
+    if store.save() != "brass-2" || store.named("brass-1")?.value != pinned?.value ||
+        store.selectedLook != draft({ $0.bounce = 0.6 }) || !store.isOutlined("brass-2") {
+        print("save: expected the fork pinned as Brass-2, Brass-1 unchanged"); failed = true
+    }
+    // ↺ that brings the fork back to its source outlines the source again.
+    store.edit(draft { $0.radius = 18; $0.bounce = 0.6 }, control: "radius")
+    store.resetControl(\.radius)
+    if store.hasEdits || !store.isOutlined("brass-2") {
+        print("resetControl: expected the fork back at Brass-2 to be outlined"); failed = true
+    }
+    // Tapping the source chip drops the unsaved edits.
+    store.edit(draft { $0.radius = 30 }, control: "radius")
+    store.select("brass-2")
+    if store.hasEdits || store.canUndo || store.selectedLook != draft({ $0.bounce = 0.6 }) {
+        print("select: expected tapping the source to drop the edits"); failed = true
+    }
+    store.select("original")
     // Fields of different types reset together as one step.
     store.edit(draft { $0.radius = 18; $0.enabled = true })
     store.resetControl { look, shipped in look.radius = shipped.radius; look.enabled = shipped.enabled }

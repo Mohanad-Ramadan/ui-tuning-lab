@@ -47,9 +47,10 @@ accessibility, right-to-left, light and dark).
    design with those defaults plus the changed values.
 6. **Everything else is unchanged.** The Shipped chip renders `original`
    with the baseline values; Copy values reports only what differs
-   (`{"design":"strip","cardRadius":16}`); a saved look records the design in
-   `values` and is named after the design or preset it came from
-   (`Timeline-2`); the chips flip the real
+   (`{"design":"strip","cardRadius":16}`); picking a design is an edit like any
+   other, so on a pinned look it forks unsaved edits and leaves the look as it
+   was; a pinned look records the design in `values` and is named after the
+   design or preset it came from (`Timeline-2`); the chips flip the real
    screen between looks of different designs; Apply hands the pick
    over (`references/candidates.md`). A saved profile
    keeps `design` inside `overrides` like any other field, so a persisted or
