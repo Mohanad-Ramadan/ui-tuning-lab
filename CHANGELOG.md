@@ -1,6 +1,6 @@
 # Changelog — ui-tuning-lab
 
-## Unreleased
+## 1.7.0 — 2026-11-12
 
 ### A pinned look never changes: edits fork a new tune, and Save is gone
 
