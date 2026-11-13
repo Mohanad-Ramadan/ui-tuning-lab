@@ -5,7 +5,7 @@
       "id": 1,
       "name": "ephemeral-web-lab",
       "prompt": "In this Vite + React app, I want to tune the card radius and gap on the home screen live in the browser. Set up whatever you need.",
-      "expected_output": "A development-only lab module next to the feature, loaded through a gated dynamic import, with presets, sliders, the Shipped chip, Duplicate, Choose, and Copy values, and no storage writer besides the result file.",
+      "expected_output": "A development-only lab module next to the feature, loaded through a gated dynamic import, with presets, sliders with default markers and ↺, the Shipped chip, Undo, Redo, Reset, Save & pin, Apply, and Copy values, and no storage writer besides the result file.",
       "files": [
         "pilots/web-vite"
       ],
@@ -13,8 +13,12 @@
         "Lab code lives in a *.ui-tuning-lab.tsx module",
         "The host loads the lab only via import() inside if (import.meta.env.DEV) {",
         "scripts/verify.sh source-gates on the feature directory exits 0",
-        "The lab has at least two presets, the Shipped chip and pins with exactly the selected chip outlined, edits on Shipped starting a new pin, Duplicate, Choose, and Copy values",
-        "No localStorage, sessionStorage, or IndexedDB writes exist in the lab",
+        "The lab has at least two presets, the Shipped chip, Undo, Redo, Reset, Save & pin, Apply, and Copy values, and no Save, Duplicate, or Choose button",
+        "An edit on an outlined chip leaves no chip outlined and adds no chip; only Save & pin (or Apply) adds one, named <preset>-N or custom-N",
+        "Every slider marks the Shipped value and a changed control has a per-control reset to it",
+        "Apply logs a UITUNINGLAB_DONE line, POSTs it to http://localhost:47321/pick, and writes the result to localStorage uiTuningLab.result",
+        "The agent started scripts/wait-for-pick.py in the background and ended its turn with How to try it, without tuning the lab itself",
+        "The lab's only storage write is the uiTuningLab.result key; no other localStorage, sessionStorage, or IndexedDB write exists",
         "vite build output contains no UITuningLab, uiTuningLab, or ui-tuning-lab strings"
       ]
     },
@@ -39,15 +43,15 @@
       "id": 3,
       "name": "ios-lab-with-save",
       "prompt": "Add a tuning panel to the card palette screen in my SwiftUI iOS app so I can tweak corner radius and spacing, and let me save my favourite setting so it's still there next time I run it.",
-      "expected_output": "A DEBUG-only lab whose types carry the UITuningLab prefix, with Pin writing one schemaVersion 2 file per pin only under Application Support/.ui-tuning-lab/candidates/, candidates loaded on open with schema and platform checks, and the baseline unchanged by loading.",
+      "expected_output": "A DEBUG-only lab whose types carry the UITuningLab prefix, with Save & pin writing one schemaVersion 2 file per pinned look only under Application Support/.ui-tuning-lab/candidates/, candidates loaded on open with schema and platform checks, and the baseline unchanged by loading.",
       "files": [],
       "assertions": [
         "Every new lab type name starts with UITuningLab",
         "Each lab file is wrapped in #if DEBUG",
-        "Pin writes only under .ui-tuning-lab/candidates/ in Application Support, atomically, never over an existing file",
+        "Save & pin writes only under .ui-tuning-lab/candidates/ in Application Support, atomically, never over an existing file",
         "Loading stored candidates checks schemaVersion == 2 and platform == \"ios\"",
-        "Loading assigns to the draft, not to the captured baseline",
-        "The panel has the chip row, Choose writing the result file, and the hint line",
+        "Loading adds the stored looks as chips and never assigns to the captured baseline",
+        "The panel has the chip row, Save & pin, Apply writing the result file, and the hint line",
         "The app typechecks in both DEBUG and Release configurations"
       ]
     }

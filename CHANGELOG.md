@@ -1,5 +1,16 @@
 # Changelog — ui-tuning-lab
 
+## Unreleased
+
+- `SKILL.md`: the handover step is a numbered sequence (build, run the fresh
+  build, smoke-check, start the waiter, hand over), with how the pick comes
+  back and the two exceptions listed after it. No behavior change.
+- `tools/package.sh` strips `.omc` directories at every depth, not only the
+  top one, so none lands in the zip.
+- Evals and validation receipts follow the 1.7.0 model (Save & pin, Apply,
+  forks, default markers); the retired Duplicate, Choose, Keep, and Compare
+  checks are gone. Unrun checks stay unrun.
+
 ## 1.7.0 — 2026-11-12
 
 ### A pinned look never changes: edits fork a new tune, and Save is gone

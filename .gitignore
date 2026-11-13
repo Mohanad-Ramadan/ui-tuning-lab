@@ -3,3 +3,6 @@
 node_modules/
 pilots/**/dist/
 dist/
+evals/workspace/
+pilots/ios-swiftui/*.xcodeproj/
+pilots/ios-swiftui/build/

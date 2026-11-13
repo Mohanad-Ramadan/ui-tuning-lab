@@ -13,7 +13,7 @@ PACKAGE="$OUT/ui-tuning-lab"
 rm -rf "$PACKAGE" "$OUT/ui-tuning-lab-$VERSION.zip"
 mkdir -p "$OUT"
 cp -R "$SKILL" "$PACKAGE"
-rm -rf "$PACKAGE/.omc"
+find "$PACKAGE" -name '.omc' -type d -prune -exec rm -rf {} +
 find "$PACKAGE" -name '.DS_Store' -delete
 (cd "$OUT" && zip -qr "ui-tuning-lab-$VERSION.zip" ui-tuning-lab)
 echo "$PACKAGE"

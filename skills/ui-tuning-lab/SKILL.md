@@ -33,8 +33,8 @@ A good lab feels like this:
   comparison. Every chip is read-only, a pinned look included: the controls
   fork the selected chip into unsaved changes that no chip holds, with no chip
   outlined, until Save & pin keeps them as a new look (an edit on Brass-1 pins
-  as Brass-2). No chip appears, changes, or is renamed on its own. **Replay** and **Speed** make motion
-  judgeable.
+  as Brass-2). No chip appears, changes, or is renamed on its own.
+- **Replay** and **Speed** make motion judgeable.
 - **Undo**, **Redo**, and **Reset** step through the unsaved changes back to
   the chip they were forked from, which is outlined again, or drop them all.
 - **Every control shows its default**, the Shipped value: a tick on a slider
@@ -104,38 +104,49 @@ picker in the panel, with the original as the baseline
    was requested
    (`references/config-schema.md`). When `.ui-tuning-lab/lab.json` lists kept
    `candidates`, seed the lab with them.
-4. **Hand it over, then tune with the user.** Build, typecheck, and run the gate
-   lint. Then make sure the app on screen is the build you just made: quit any
-   copy that is already running, launch the new build, and confirm the running
-   process started after the build finished (`references/setup-protocol.md`,
-   "Run the fresh build"). An app that was open before the build still shows the
-   old code, with no lab in it. Open the lab once through the agent path to
-   confirm it renders and opens, then close it and stop. Leave the fresh build
-   running for the user. A lab with designs is the one exception:
-   select each design once through the agent path and confirm by screenshot
-   that the feature visibly changes and is not covered by the panel, then
-   return to Shipped (`references/design-variants.md`, "Check each design
-   renders"). Do not iterate the controls, flip the chips,
-   Save & pin, Apply, compare candidates, or capture screenshots before the
-   user has seen it: the user tunes, and a self-review pass runs only when they
-   ask for one ("check it yourself first"). Then, in this order: start
-   `python3 <skill-dir>/scripts/wait-for-pick.py` with the platform's flag **in
-   the background** (`references/platform-handoff.md`, "Wait for Done"), hand
-   over with **How to try it**, and end the turn without a question. Apply
-   reaches the waiter directly, so it exits and you resume the moment the user
-   presses it: land from its `UITUNINGLAB_DONE` line right away, without asking
-   them to confirm. Skipping the waiter is what makes the user type "done". The
-   waiter catches only the first Apply; after it Apply is hidden, and a later
-   pick arrives as a `land <name>` pasted from Save & pin, landed the same way.
-   Save & pin before the first Apply only keeps a look; it does not wake the
-   waiter. If
-   the user is not available, stop here and
-   report the lab as built, with the smoke launch and every hands-on check listed
-   as not run; static and release-artifact checks are still yours to run (step
-   6). When the app builds only in CI or a cloud device service, the smoke launch
-   is reported as not run and the lab still ships complete; ask before pushing,
-   and the pick reaches you as a pasted `land <name>` line
-   (`references/platform-handoff.md`, "No local toolchain").
+4. **Hand it over, then tune with the user.** In this order:
+   1. **Build.** Build, typecheck, and run the gate lint.
+   2. **Run the fresh build.** Quit any copy that is already running, launch
+      the new build, and confirm the running process started after the build
+      finished (`references/setup-protocol.md`, "Run the fresh build"). An app
+      that was open before the build still shows the old code, with no lab in
+      it.
+   3. **Smoke-check once.** Open the lab through the agent path to confirm it
+      renders and opens, then close it and stop. Leave the fresh build running
+      for the user. A lab with designs is the one exception: select each design
+      once through the agent path and confirm by screenshot that the feature
+      visibly changes and is not covered by the panel, then return to Shipped
+      (`references/design-variants.md`, "Check each design renders").
+   4. **Start the waiter.** Run
+      `python3 <skill-dir>/scripts/wait-for-pick.py` with the platform's flag
+      **in the background** (`references/platform-handoff.md`, "Wait for
+      Done"). Skipping the waiter is what makes the user type "done".
+   5. **Hand over and end the turn.** Report with **How to try it** and end the
+      turn without a question.
+
+   Do not tune it yourself: do not iterate the controls, flip the chips, Save &
+   pin, Apply, compare candidates, or capture screenshots before the user has
+   seen it. The user tunes, and a self-review pass runs only when they ask for
+   one ("check it yourself first").
+
+   How the pick comes back:
+   - **First Apply.** Apply reaches the waiter directly, so it exits and you
+     resume the moment the user presses it: land from its `UITUNINGLAB_DONE`
+     line right away, without asking them to confirm.
+   - **Later picks.** The waiter catches only the first Apply; after it Apply
+     is hidden, and a later pick arrives as a `land <name>` pasted from Save &
+     pin, landed the same way.
+   - Save & pin before the first Apply only keeps a look; it does not wake the
+     waiter.
+
+   When handover cannot run as written:
+   - **The user is not available.** Stop after the smoke check and report the
+     lab as built, with the smoke launch and every hands-on check listed as not
+     run; static and release-artifact checks are still yours to run (step 6).
+   - **The app builds only in CI or a cloud device service.** The smoke launch
+     is reported as not run and the lab still ships complete; ask before
+     pushing, and the pick reaches you as a pasted `land <name>` line
+     (`references/platform-handoff.md`, "No local toolchain").
 5. **Land the winner.** Take the candidate or values the user names in chat,
    else the newest `UITUNINGLAB_DONE` or `UITUNINGLAB_VALUES` line
    (`references/landing-protocol.md`, step 1), write the values into the
