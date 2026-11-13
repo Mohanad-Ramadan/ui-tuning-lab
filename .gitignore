@@ -6,3 +6,5 @@ dist/
 evals/workspace/
 pilots/ios-swiftui/*.xcodeproj/
 pilots/ios-swiftui/build/
+pilots/macos-swiftui/*.xcodeproj/
+pilots/macos-swiftui/build/

@@ -54,6 +54,24 @@
         "The panel has the chip row, Save & pin, Apply writing the result file, and the hint line",
         "The app typechecks in both DEBUG and Release configurations"
       ]
+    },
+    {
+      "id": 4,
+      "name": "macos-panel-lab",
+      "prompt": "In my SwiftUI macOS app I want to dial in the card corner radius and spacing on the palette window by eye. Put some live controls next to it while it runs.",
+      "expected_output": "A DEBUG-only lab in a lazily created NSPanel beside the window, opened by a DEBUG menu command with a key equivalent and a launch argument, with presets, sliders with default markers and ↺, chips, Undo, Redo, Reset, Save & pin, Apply writing the result file, and the waiter started at handover.",
+      "files": [
+        "pilots/macos-swiftui"
+      ],
+      "assertions": [
+        "Every new lab type name starts with UITuningLab and each lab file is wrapped in #if DEBUG",
+        "The lab is an NSPanel (or NSWindow) created lazily from DEBUG code, separate from the palette window, and its content is released on close",
+        "The lab opens through a DEBUG-only menu command with a key equivalent and a -UITuningLabOpen launch argument",
+        "The panel has at least two presets, sliders that mark the Shipped value, the chip row, Undo, Redo, Reset, Save & pin, Apply, and the hint line, and no Save button",
+        "Apply writes Application Support <bundle-id>/.ui-tuning-lab/result.json and the lab writes nothing else to storage",
+        "The agent started scripts/wait-for-pick.py with --log macos in the background and ended with How to try it",
+        "The app builds in both Debug and Release configurations"
+      ]
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Evals, run 2 (2026-11-13)
 
-E1, E2, and E3 ran against the working tree on top of `1d22d24` (1.7.0, plus the
+E1 to E4 ran against the working tree on top of `1d22d24` (1.7.0, plus the
 handover-step restructure in `SKILL.md`), one run per configuration, with
 skill-creator's with-skill and no-skill setup. Each agent got a fresh copy of
 `pilots/web-vite`; the with-skill agents read only a copy of the packaged
@@ -12,6 +12,7 @@ evidence below is what the grader observed, not a link.
 | E1 ephemeral-web-lab | 10/10 | 1/10 |
 | E2 tune-land-remove | 6/6 | 5/6 |
 | E3 ios-lab-with-save (Sonnet) | 7/7 | 1/7 |
+| E4 macos-panel-lab (Sonnet) | 7/7 | 1/7 |
 
 ## E1 ephemeral-web-lab
 
@@ -67,6 +68,25 @@ skill's gates exist to prevent. Only the build assertion passed.
 
 Neither agent could tap in the simulator, so no hands-on check ran in either
 configuration.
+
+## E4 macos-panel-lab
+
+New in this run, on Sonnet, against `pilots/macos-swiftui` (the iOS pilot's
+screen in a macOS window). With the skill, all 7 assertions passed: four lab
+files inside `#if DEBUG`; a `UITuningLabNSPanel` created on first open whose
+content is released on close; a DEBUG `Development > Card Lab` command on
+Command-Shift-L plus `-UITuningLabOpen`; presets, default ticks and ↺, chips,
+Undo, Redo, Reset, Save & pin, Apply, and the hint; `result.json` under
+Application Support `<bundle-id>/.ui-tuning-lab/` as the only write; the waiter
+started with `--log macos`. The grader built Debug and Release and found no lab
+strings in the Release binary.
+
+Without the skill, the agent added a `Window("Tuning")` scene that opens on
+every launch, ships in Release, and has three sliders, Reset, and Copy values.
+Only the build assertion passed.
+
+Neither agent could take screenshots (no screen-recording permission), so no
+hands-on check ran.
 
 ## Caveats
 
