@@ -53,8 +53,9 @@ into your agent's skills directory (for Claude Code, `~/.claude/skills/`).
 ## Platforms
 
 Used in real apps on web (React), iOS, and macOS (SwiftUI), with a recorded web
-pilot in `validation/`. Android (Compose), Flutter, React Native, and Windows
-(WinUI) are newer adaptations whose examples have not been compiled here yet;
+pilot in `validation/`. React Native's example is typechecked but not run on a device. Android
+(Compose), Flutter, and Windows (WinUI) are newer adaptations whose examples
+have not been compiled here yet;
 visionOS, Linux, and HarmonyOS are adapted from the nearest example. Issues and
 pull requests from any platform are welcome: that is how the newer ones mature.
 
@@ -72,10 +73,12 @@ sh tests/package.sh     # the skill folder is self-contained and holds only ship
 sh tools/package.sh     # builds dist/ui-tuning-lab/ and dist/ui-tuning-lab-<version>.zip
 ```
 
-`tests/compile.sh` exits `3` with `SKIP` when a toolchain is missing. The web
-pilot lives in `pilots/web-vite/`, its cross-engine checks in
-`tests/pilot-web/check.mjs` (run with `sh tests/pilot-web/run.sh`), evals in
-`evals/`, platform receipts in `validation/`, and release notes in
+`tests/compile.sh` exits `3` with `SKIP` when a toolchain is missing. The
+pilots in `pilots/` are small apps the evals run against: `web-vite/`,
+`ios-swiftui/` and `macos-swiftui/` (generated with xcodegen), and
+`react-native/` (typecheck only). The web pilot's cross-engine checks are in
+`tests/pilot-web/check.mjs` (run with `sh tests/pilot-web/run.sh`); evals are
+in `evals/`, platform receipts in `validation/`, and release notes in
 `CHANGELOG.md`.
 
 ## License

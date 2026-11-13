@@ -9,7 +9,8 @@ SKILL="$ROOT/skills/ui-tuning-lab"
 . "$ROOT/tests/lib/extract.sh"
 WEB="$ROOT/tests/compile/web"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/ui-tuning-lab-compile.XXXXXX")
-trap 'rm -rf "$WORK" "$WEB/.work"' EXIT
+RN="$ROOT/pilots/react-native"
+trap 'rm -rf "$WORK" "$WEB/.work" "$RN/.work"' EXIT
 trap 'exit 130' INT TERM
 passes=0
 failures=0
@@ -125,6 +126,43 @@ if web_ready; then
   done
 else
   report skip "web examples" "TypeScript toolchain unavailable (npm ci failed in tests/compile/web)"
+fi
+
+# The React Native example names each file in a backticked line above its fence
+# (no <!-- file: --> tags), so extract those blocks here. Typecheck-only: the
+# pilot has no native folders, and its node_modules supply React Native's types.
+rn_extract() {
+  mkdir -p "$2"
+  awk -v out="$2" '
+    /^`[A-Za-z0-9._-]+\.tsx?`$/ { name = substr($0, 2, length($0) - 2); pending = 1; next }
+    pending && /^```tsx?$/ { path = out "/" name; printf "" > path; active = 1; pending = 0; next }
+    pending && $0 != "" { pending = 0 }
+    /^```$/ && active { close(path); active = 0; next }
+    active { print > path }
+  ' "$1"
+}
+
+RN_EXAMPLE="react-native-overlay.md"
+if [ -x "$RN/node_modules/.bin/tsc" ]; then
+  dir="$RN/.work/${RN_EXAMPLE%.md}"
+  rn_extract "$SKILL/examples/$RN_EXAMPLE" "$dir"
+  if [ -z "$(ls "$dir"/*.tsx 2>/dev/null)" ]; then
+    report fail "$RN_EXAMPLE tsx" "no code blocks extracted"
+  else
+    cat > "$dir/tsconfig.json" <<EOF
+{
+  "extends": "$RN/tsconfig.json",
+  "include": ["*.ts", "*.tsx"]
+}
+EOF
+    if output=$("$RN/node_modules/.bin/tsc" -p "$dir/tsconfig.json" 2>&1); then
+      report ok "$RN_EXAMPLE tsx" ""
+    else
+      report fail "$RN_EXAMPLE tsx" "$output"
+    fi
+  fi
+else
+  report skip "$RN_EXAMPLE tsx" "pilots/react-native/node_modules missing (run npm install there)"
 fi
 
 printf '\n%s passed; %s failed; %s skipped\n' "$passes" "$failures" "$skips"

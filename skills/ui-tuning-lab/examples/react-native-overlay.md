@@ -108,6 +108,7 @@ export function FeatureScreen() {
 
 ```tsx
 import { useEffect, useRef, useState } from "react";
+import type { ComponentRef } from "react";
 import { AccessibilityInfo, DevSettings, findNodeHandle, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { appDefault, CardFeature } from "./CardFeature";
 import type { CardConfig } from "./CardFeature";
@@ -220,7 +221,9 @@ function Stepper({ label, value, shipped, max, onChange, onReset }: {
   label: string; value: number; shipped: number; max: number; onChange: (v: number) => void; onReset: () => void;
 }) {
   const set = (v: number) => onChange(Math.min(max, Math.max(0, v)));
-  const adjustable = useRef<View>(null);
+  // View is a function component in current React Native, so type the ref by
+  // what it holds, not by the component.
+  const adjustable = useRef<ComponentRef<typeof View>>(null);
   const reset = () => {
     onReset();
     const node = findNodeHandle(adjustable.current);

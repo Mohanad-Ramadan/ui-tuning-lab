@@ -57,9 +57,9 @@ web files, or no lab reference. That is deliberately distinct from PASS.
 
 ## Status
 
-Used in real apps on web (React), iOS, and macOS (SwiftUI). Android (Compose),
-Flutter, React Native, and Windows (WinUI) are newer adaptations whose examples
-have not been compiled yet; visionOS, Linux, and HarmonyOS are adapted from the
+Used in real apps on web (React), iOS, and macOS (SwiftUI). React Native's
+example is typechecked but not run on a device. Android (Compose), Flutter, and
+Windows (WinUI) are newer adaptations whose examples have not been compiled yet; visionOS, Linux, and HarmonyOS are adapted from the
 nearest example. Every platform still gets the whole lab.
 
 ## License

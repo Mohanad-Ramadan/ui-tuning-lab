@@ -7,6 +7,10 @@
   back and the two exceptions listed after it. No behavior change.
 - `tools/package.sh` strips `.omc` directories at every depth, not only the
   top one, so none lands in the zip.
+- `examples/react-native-overlay.md`: the stepper's ref is typed
+  `useRef<ComponentRef<typeof View>>`. `useRef<View>` failed to typecheck on
+  React Native 0.88, where `View` is a function component. The example is now
+  typechecked by `tests/compile.sh` against `pilots/react-native`.
 - Evals and validation receipts follow the 1.7.0 model (Save & pin, Apply,
   forks, default markers); the retired Duplicate, Choose, Keep, and Compare
   checks are gone. Unrun checks stay unrun.
